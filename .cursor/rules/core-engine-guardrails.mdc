@@ -1,0 +1,23 @@
+---
+description: Preserve core data integration flow and protection
+globs: app/api/**/*.ts
+alwaysApply: true
+---
+
+# Core Engine + Protection Guardrails
+
+- Never remove or bypass the existing Google/Sheets/Drive integration flow in these routes:
+  - `app/api/draft/route.ts` (GET/POST)
+  - `app/api/submit/route.ts`
+  - `app/api/registry/ensure/route.ts`
+  - `app/api/_registrySheet.ts`
+- Never remove or bypass `withGoogleApiRetry` usage.
+  - When calling Google APIs (Sheets/Drive/permissions), the call must be wrapped by `withGoogleApiRetry(...)`.
+  - Do not refactor these calls into unwrapped direct Google client calls.
+- Do not change the request/response contract for these endpoints unless explicitly requested:
+  - `/api/draft` (`ok`, `draft` payload)
+  - `/api/pdf` (PDF generation inputs)
+  - `/api/submit` (submit payload)
+  - `/api/registry/ensure` (ensure login row)
+- If a change risks touching these routes or their contracts, ask for confirmation before applying the edit.
+

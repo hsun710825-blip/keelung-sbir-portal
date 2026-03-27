@@ -1,0 +1,20 @@
+---
+description: Preserve login 3-step flow and draft auto-fill
+globs: app/page.tsx
+alwaysApply: true
+---
+
+# Auth + Draft Flow Lock
+
+- Keep this login sequence unchanged unless explicitly requested:
+  1) show loading text after Google login
+  2) complete `/api/registry/ensure`
+  3) show confirm dialog with Google email and require clicking `確定`
+  4) then enter consent and writing pages
+- Keep draft auto-fill on login in `ApplicationForm`:
+  - must call `/api/draft` on mount
+  - must hydrate `formData` from returned draft
+- Do not remove session keys used by this flow:
+  - `sbir_registry_ensure_email`
+  - `sbir_login_dialog_ok`
+- For later feature edits, avoid changing this flow behavior.

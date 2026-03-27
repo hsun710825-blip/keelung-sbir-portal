@@ -1,0 +1,25 @@
+---
+description: After code changes in this repo, deploy to Vercel production automatically.
+alwaysApply: true
+---
+
+# Vercel：修改後自動部署
+
+專案根目錄：`C:\Users\User\keelung-sbir-portal`（Vercel 專案 `keelung-sbir-portal` 已連結 `.vercel`）。
+
+## 必須遵守
+
+- 當次對話中若**已完成**對本 repo 內**應用程式原始碼或設定的實質修改**（例如 `app/`、`components/`、`lib/`、`api` route、`package.json` 等），在回覆使用者之前**一律**執行：
+
+  `npm run deploy`
+
+  工作目錄須為 `C:\Users\User\keelung-sbir-portal`。
+
+- 部署成功後，在回覆中貼上 **Production** 與 **keelung-sbir-portal.vercel.app** 等可用網址（以 CLI 輸出為準）。
+
+## 可略過部署的情況
+
+- 僅閱讀／搜尋、未改檔。
+- 僅改 `.md` 說明或註解且使用者明確不要部署。
+
+若 `vercel` 未登入或指令失敗，回報錯誤並說明需在本機執行 `npx vercel login` 或檢查權限。

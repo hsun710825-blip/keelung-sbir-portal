@@ -1,0 +1,12 @@
+---
+description: Preserve original landing homepage exactly
+globs: app/page.tsx
+alwaysApply: true
+---
+
+# Homepage Preservation Rule
+
+- Keep the unauthenticated landing homepage in `app/page.tsx` pixel-identical to the original baseline design.
+- Do not change hero image, title image, text spacing, mask/overlay, card copy, or contact-info layout unless the user explicitly requests homepage redesign.
+- For other feature updates, avoid modifying homepage sections; scope edits to auth flow, form tabs, APIs, and components outside the landing block.
+- If a requested change risks touching homepage layout, confirm first and apply minimal diff.
