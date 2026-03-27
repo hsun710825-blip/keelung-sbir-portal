@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { EXPECTED_BENEFITS_HINT } from "../lib/sbirAppendixNotes";
 
 // --- 共用小元件（沿用公司概況視覺風格） ---
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -96,11 +97,13 @@ export default function ExpectedBenefitsForm({
     impactOnIndustry: "",
   });
 
+  const didInitFromValue = React.useRef(false);
   useEffect(() => {
-    if (!value) return;
+    if (!value || didInitFromValue.current) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormData(value.formData);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    didInitFromValue.current = true;
+  }, [value]);
 
   useEffect(() => {
     if (!onChange) return;
@@ -118,6 +121,15 @@ export default function ExpectedBenefitsForm({
         <div className="bg-gray-800 text-white px-8 py-6">
           <h1 className="text-2xl font-semibold tracking-wider">參、預期效益</h1>
           <p className="text-gray-300 text-sm mt-2">請說明結案當年與後兩年可完成之效益（含量化與非量化）。</p>
+        </div>
+
+        <div className="px-8 pt-6">
+          <div
+            className="rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3 text-amber-950 text-sm font-semibold leading-relaxed"
+            role="note"
+          >
+            {EXPECTED_BENEFITS_HINT}
+          </div>
         </div>
 
         <div className="p-8">
@@ -183,21 +195,11 @@ export default function ExpectedBenefitsForm({
               </div>
             </div>
 
-            <div className="mt-6">
-              <Label>（二）量化效益分析與評估基準（含時間點/配套措施）</Label>
-              <Hint>請說明：何時達成（結案當年/後兩年）、需要哪些配套（通路/產能/人力/合作）、以及如何驗證（報表/合約/佐證）。</Hint>
-              <Textarea
-                name="quantitativeNarrative"
-                value={formData.quantitativeNarrative}
-                onChange={handleChange}
-                placeholder="請說明：各指標如何估算、何時達成、需哪些配套（例如通路/產能/人力/法規/合作夥伴），以及驗證方式。"
-              />
-            </div>
           </section>
 
           <section className="mb-12 pt-8 border-t border-gray-200">
             <SectionTitle>二、非量化效益</SectionTitle>
-            <Label required>請以敘述性方式說明（例如對公司的影響…等）</Label>
+            <Label required>請以敘述性方式說明，例如對公司的影響．．．等。</Label>
             <Hint>建議條列 3–7 點，聚焦可被審查理解的改變：能力建立、制度流程、品質/交付、品牌信任、合作關係等。</Hint>
             <Textarea
               name="qualitativeBenefits"
@@ -208,11 +210,13 @@ export default function ExpectedBenefitsForm({
           </section>
 
           <section className="mb-8 pt-8 border-t border-gray-200">
-            <SectionTitle>三、請說明本計畫完成後</SectionTitle>
+            <SectionTitle>三、效益影響說明（敘述）</SectionTitle>
+            <div className="text-sm text-gray-600 bg-gray-50/60 border border-gray-100 rounded-lg p-4 mb-6 leading-relaxed">
+              以下兩項為長文本欄位，請具體說明結案當年與後兩年可完成之效益；可搭配條列與可驗證描述。
+            </div>
 
-            <SubTitle>（一）對公司之影響</SubTitle>
-            <Label>如研發能量建立、研發人員質/量提升、研發制度建立、技術升級、國際化或企業轉型等</Label>
-            <Hint>請寫成「完成後會多出什麼能力/制度」：例如建立測試流程、研發 SOP、資料資產、內訓制度、產品化能力。</Hint>
+            <Label required>（一）對公司之影響：</Label>
+            <Hint>如研發能量建立、研發人員質／量提升、研發制度建立、跨高科技領域、技術升級、國際化或企業轉型等。</Hint>
             <Textarea
               name="impactOnCompany"
               value={formData.impactOnCompany}
@@ -220,15 +224,16 @@ export default function ExpectedBenefitsForm({
               placeholder="請條列說明：能力/制度/流程的提升、團隊成長、產品線延伸、營運指標改善等。"
             />
 
-            <SubTitle>（二）對產業、產業技術之影響</SubTitle>
-            <Label>如產值貢獻、研發水準提升、服務範圍擴大、競合關係、研發服務業興起、商品化時程縮短、吸引就業或投資等</Label>
-            <Hint>請聚焦外溢效益：在地供應鏈合作、示範場域、技術擴散、帶動投資/就業等（可用條列）。</Hint>
-            <Textarea
-              name="impactOnIndustry"
-              value={formData.impactOnIndustry}
-              onChange={handleChange}
-              placeholder="請條列說明：對產業鏈/技術擴散/供應鏈合作/在地產業升級的影響與可外溢效益。"
-            />
+            <div className="mt-8">
+              <Label required>（二）對產業、產業技術所具有之創造、加值、或流通之效益：</Label>
+              <Hint>如產值貢獻、對產業技術研發水準之提昇、服務範圍家數之擴大、對產業技術研究機構研發服務之競合、研發服務業之興起、技術商品化時程之縮短、系統化之研究方法、吸引就業人數或引導投資數量等。</Hint>
+              <Textarea
+                name="impactOnIndustry"
+                value={formData.impactOnIndustry}
+                onChange={handleChange}
+                placeholder="請條列說明：對產業鏈/技術擴散/供應鏈合作/在地產業升級的影響與可外溢效益。"
+              />
+            </div>
           </section>
         </div>
       </div>

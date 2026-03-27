@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 // --- 共用小元件（沿用公司概況視覺風格） ---
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -69,7 +69,7 @@ function ImageDropzone({
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const next = [...value];
-    const accepted = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const accepted = Array.from(files).filter((f) => ["image/png", "image/jpeg", "image/jpg"].includes((f.type || "").toLowerCase()));
     const dataUrls = await Promise.all(
       accepted.map(async (f) => {
         try {
@@ -118,7 +118,7 @@ function ImageDropzone({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/jpg"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -155,74 +155,187 @@ function ImageDropzone({
 export type TreeNode = {
   id: string;
   text: string;
+  weight?: string; // percent, e.g. "30"
+  execUnit?: string; // 執行單位
   children: TreeNode[];
 };
 
 function newNode(text = ""): TreeNode {
-  return { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, text, children: [] };
+  return { id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, text, weight: "", execUnit: "", children: [] };
 }
 
-function TreeEditor({
+function createDefaultArchitectureTemplate(): TreeNode {
+  return {
+    id: `${Date.now()}-root-${Math.random().toString(16).slice(2)}`,
+    text: "○○○○○計畫",
+    weight: "100",
+    execUnit: "",
+    children: [
+      {
+        id: `${Date.now()}-a-${Math.random().toString(16).slice(2)}`,
+        text: "A 分項計畫",
+        weight: "0",
+        execUnit: "本公司",
+        children: [
+          { id: `${Date.now()}-a1-${Math.random().toString(16).slice(2)}`, text: "A-1分項計畫", weight: "0", execUnit: "○○○○", children: [] },
+          { id: `${Date.now()}-a2-${Math.random().toString(16).slice(2)}`, text: "A-2分項計畫", weight: "0", execUnit: "○○○○", children: [] },
+        ],
+      },
+      {
+        id: `${Date.now()}-b-${Math.random().toString(16).slice(2)}`,
+        text: "B 分項計畫",
+        weight: "0",
+        execUnit: "AAA公司",
+        children: [
+          { id: `${Date.now()}-b1-${Math.random().toString(16).slice(2)}`, text: "B-1分項計畫", weight: "0", execUnit: "○○○○", children: [] },
+          { id: `${Date.now()}-b2-${Math.random().toString(16).slice(2)}`, text: "B-2分項計畫", weight: "0", execUnit: "○○○○", children: [] },
+        ],
+      },
+    ],
+  };
+}
+
+function normalizeTreeNode(n: TreeNode): TreeNode {
+  return {
+    ...n,
+    weight: n.weight ?? "",
+    execUnit: n.execUnit ?? "",
+    children: (n.children || []).map(normalizeTreeNode),
+  };
+}
+
+function HorizontalTreeEditor({
   value,
   onChange,
 }: {
   value: TreeNode;
   onChange: (next: TreeNode) => void;
 }) {
-  const updateNode = (node: TreeNode, id: string, updater: (n: TreeNode) => TreeNode): TreeNode => {
+  const latestValueRef = useRef(value);
+  useEffect(() => {
+    latestValueRef.current = value;
+  }, [value]);
+
+  const updateNode = useCallback((node: TreeNode, id: string, updater: (n: TreeNode) => TreeNode): TreeNode => {
     if (node.id === id) return updater(node);
     return { ...node, children: node.children.map((c) => updateNode(c, id, updater)) };
-  };
+  }, []);
 
-  const removeNode = (node: TreeNode, id: string): TreeNode => {
+  const removeNode = useCallback((node: TreeNode, id: string): TreeNode => {
     return { ...node, children: node.children.filter((c) => c.id !== id).map((c) => removeNode(c, id)) };
-  };
+  }, []);
 
-  const Row = ({ node, depth }: { node: TreeNode; depth: number }) => (
-    <div className="space-y-2">
-      <div className="flex items-start gap-2" style={{ paddingLeft: depth * 18 }}>
-        <input
-          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
-          value={node.text}
-          onChange={(e) => onChange(updateNode(value, node.id, (n) => ({ ...n, text: e.target.value })))}
-          placeholder={depth === 0 ? "請輸入計畫架構主幹（例如：整體架構/分項計畫）" : "請輸入節點內容（例如：A1 需求分析）"}
-        />
-        <button
-          type="button"
-          className="px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50"
-          onClick={() =>
-            onChange(updateNode(value, node.id, (n) => ({ ...n, children: [...n.children, newNode("")] })))
-          }
-        >
-          + 子節點
-        </button>
-        {depth > 0 && (
-          <button
-            type="button"
-            className="px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-red-600"
-            onClick={() => onChange(removeNode(value, node.id))}
-          >
-            刪除
-          </button>
-        )}
-      </div>
-      {node.children.length > 0 && (
-        <div className="space-y-2">
-          {node.children.map((c) => (
-            <Row key={c.id} node={c} depth={depth + 1} />
-          ))}
-        </div>
-      )}
-    </div>
+  const patchNode = useCallback(
+    (id: string, patch: Partial<TreeNode>) => {
+      onChange(updateNode(latestValueRef.current, id, (n) => ({ ...n, ...patch })));
+    },
+    [onChange, updateNode]
   );
+
+  const renderBranch = (
+    node: TreeNode,
+    depth: number,
+    branch: { isRoot: boolean; isFirst: boolean; isLast: boolean; isOnly: boolean }
+  ): React.ReactNode => {
+    const hasChildren = node.children.length > 0;
+    return (
+      <div key={node.id} className="flex flex-row items-stretch shrink-0 min-h-0">
+        {!branch.isRoot && (
+          <div className="flex w-4 shrink-0 flex-col items-stretch self-stretch">
+            <div
+              className={`min-h-[6px] flex-1 border-r-2 border-black shrink-0 ${
+                branch.isFirst || branch.isOnly ? "border-r-transparent" : ""
+              }`}
+            />
+            <div className="h-0.5 w-full bg-black shrink-0" />
+            <div
+              className={`min-h-[6px] flex-1 border-r-2 border-black shrink-0 ${
+                branch.isLast || branch.isOnly ? "border-r-transparent" : ""
+              }`}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-row items-stretch shrink-0">
+          <div className="flex flex-col justify-center shrink-0">
+            <div className="rounded-lg border border-gray-200 bg-white/90 p-2 shadow-sm w-[min(100vw-4rem,288px)] max-w-xs">
+              <div className="flex flex-col gap-2">
+                <input
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white"
+                  value={node.text ?? ""}
+                  onChange={(e) => patchNode(node.id, { text: e.target.value })}
+                  placeholder={
+                    depth === 0 ? "請輸入計畫架構主幹（例如：整體架構/分項計畫）" : "請輸入節點內容（例如：A1 需求分析）"
+                  }
+                />
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    className="w-24 shrink-0 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white"
+                    value={node.weight ?? ""}
+                    onChange={(e) => patchNode(node.id, { weight: e.target.value })}
+                    placeholder="%權重"
+                    inputMode="numeric"
+                  />
+                  <input
+                    className="min-w-[7rem] flex-1 border border-gray-300 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 bg-white"
+                    value={node.execUnit ?? ""}
+                    onChange={(e) => patchNode(node.id, { execUnit: e.target.value })}
+                    placeholder="執行單位"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    className="px-2.5 py-1.5 text-xs rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+                    onClick={() =>
+                      onChange(updateNode(latestValueRef.current, node.id, (n) => ({ ...n, children: [...n.children, newNode("")] })))
+                    }
+                  >
+                    + 新增子計畫
+                  </button>
+                  {depth > 0 && (
+                    <button
+                      type="button"
+                      className="px-2.5 py-1.5 text-xs rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-red-600"
+                      onClick={() => onChange(removeNode(latestValueRef.current, node.id))}
+                    >
+                      − 刪除
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {hasChildren ? (
+            <div className="flex flex-row items-stretch shrink-0">
+              <div className="flex w-3.5 shrink-0 flex-col justify-center">
+                <div className="h-0.5 w-full bg-black" />
+              </div>
+              <div className="flex flex-col shrink-0 justify-center gap-0 py-1">
+                {node.children.map((child, index) =>
+                  renderBranch(child, depth + 1, {
+                    isRoot: false,
+                    isFirst: index === 0,
+                    isLast: index === node.children.length - 1,
+                    isOnly: node.children.length === 1,
+                  })
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="mt-2 space-y-3">
       <div className="text-xs text-gray-500">
-        以「主幹→分支→子節點」方式建立樹枝圖。建議用 A/B 分項計畫與 A1/A2 工作項目對齊後續進度表。
+        由左至右橫向建立樹枝圖，並為各節點填寫「權重(%)」與「執行單位」以符合計畫書原格式。建議與 A/B 分項及 A1/A2… 工作項目對齊後續進度表與 KPI 編號。
       </div>
-      <div className="p-4 bg-gray-50/50 border border-gray-200 rounded-lg">
-        <Row node={value} depth={0} />
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50/50">
+        <div className="inline-block min-w-max p-4">{renderBranch(value, 0, { isRoot: true, isFirst: false, isLast: false, isOnly: false })}</div>
       </div>
     </div>
   );
@@ -244,7 +357,26 @@ export type TechTransferRow = {
   budget: string;
   content: string;
   period: string;
+  periodStartYear?: string;
+  periodStartMonth?: string;
+  periodEndYear?: string;
+  periodEndMonth?: string;
 };
+
+function buildPeriod(
+  row: TechTransferRow,
+  sy?: string,
+  sm?: string,
+  ey?: string,
+  em?: string
+): string {
+  const a = sy ?? row.periodStartYear;
+  const b = sm ?? row.periodStartMonth;
+  const c = ey ?? row.periodEndYear;
+  const d = em ?? row.periodEndMonth;
+  if (a && b && c && d) return `${a}/${b}~${c}/${d}`;
+  return row.period || "";
+}
 
 export type PlanContentDraft = {
   formData: {
@@ -283,7 +415,7 @@ export default function PlanContentImplementationForm({
     ipRisk: "",
   });
 
-  const [architectureTree, setArchitectureTree] = useState<TreeNode>(newNode(""));
+  const [architectureTree, setArchitectureTree] = useState<TreeNode>(createDefaultArchitectureTemplate());
   const [competitorRows, setCompetitorRows] = useState<CompetitorRow[]>([
     { name: "申請人（本計畫研發標的）", price: "", launchTime: "", marketShare: "", segment: "", channel: "", advantage: "" },
     { name: "A公司", price: "", launchTime: "", marketShare: "", segment: "", channel: "", advantage: "" },
@@ -306,19 +438,48 @@ export default function PlanContentImplementationForm({
     ipRisk: [],
   });
 
-  useEffect(() => {
-    if (!value) return;
-    setFormData(value.formData);
-    setArchitectureTree(value.architectureTree);
-    setCompetitorRows(value.competitorRows);
-    setTechTransferRows(value.techTransferRows);
-    setImages(value.images);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  function normalizeTechTransferRow(row: TechTransferRow): TechTransferRow {
+    if (row.periodStartYear != null) return row;
+    const m = row.period.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
+    if (m) {
+      return { ...row, periodStartYear: m[1], periodStartMonth: m[2], periodEndYear: m[3], periodEndMonth: m[4] };
+    }
+    return row;
+  }
 
+  const didInitFromValue = useRef(false);
+  useEffect(() => {
+    if (didInitFromValue.current) return;
+    if (!value) {
+      didInitFromValue.current = true;
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData(value.formData);
+    const normalized = normalizeTreeNode(value.architectureTree);
+    const hasContent = Boolean((normalized.text || "").trim()) || (normalized.children?.length ?? 0) > 0;
+    setArchitectureTree(hasContent ? normalized : createDefaultArchitectureTemplate());
+    setCompetitorRows(value.competitorRows);
+    setTechTransferRows(value.techTransferRows.map(normalizeTechTransferRow));
+    setImages(value.images);
+    didInitFromValue.current = true;
+  }, [value]);
+
+  // Debounce JSON serialization to prevent input lag in large trees.
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setFormData((p) => ({ ...p, architectureTreeJson: JSON.stringify(architectureTree) }));
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [architectureTree]);
+
+  // Debounce outward onChange to avoid IME/composition disruption and heavy parent re-renders while typing.
   useEffect(() => {
     if (!onChange) return;
-    onChange({ formData, architectureTree, competitorRows, techTransferRows, images });
+    const handle = window.setTimeout(() => {
+      onChange({ formData, architectureTree, competitorRows, techTransferRows, images });
+    }, 350);
+    return () => window.clearTimeout(handle);
   }, [formData, architectureTree, competitorRows, techTransferRows, images, onChange]);
 
   // Back-compat aliases for existing JSX below
@@ -342,7 +503,9 @@ export default function PlanContentImplementationForm({
 
         <div className="p-8">
           <section className="mb-12">
-            <SectionTitle>一、背景與說明</SectionTitle>
+            <SectionTitle>
+              一、背景與說明 (請說明計畫背景、面臨的問題、市場、環境及使用者之需求、未來對客戶層、使用者產生之效益等計畫發展願景)
+            </SectionTitle>
             <Label required>計畫背景、面臨的問題、市場/環境與使用者需求、發展願景</Label>
             <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；避免只描述產品功能，請說清楚為何需要做這個計畫。</Hint>
             <Textarea
@@ -355,7 +518,9 @@ export default function PlanContentImplementationForm({
           </section>
 
           <section className="mb-12 pt-8 border-t border-gray-200">
-            <SectionTitle>二、國內外產業現況、發展趨勢及競爭力分析</SectionTitle>
+            <SectionTitle>
+              二、國內外產業現況、發展趨勢及競爭力分析 (請註明索引據資料來源)
+            </SectionTitle>
 
             <SubTitle>（一）國內外產業現況與發展方向</SubTitle>
             <Label required>產業現況與趨勢（請註明資料來源）</Label>
@@ -382,71 +547,86 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（二）競爭力分析（產品/服務競爭優勢比較）</SubTitle>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="w-full text-sm text-left text-gray-600 min-w-[980px]">
+              <table className="w-full text-sm text-left text-gray-600 min-w-[1050px]">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-100 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 border-r border-gray-200 w-48">名稱／項目</th>
-                    <th className="px-4 py-3 border-r border-gray-200">1. 價格（單位：）</th>
-                    <th className="px-4 py-3 border-r border-gray-200">2. 產品／服務上市時間</th>
-                    <th className="px-4 py-3 border-r border-gray-200">3. 市場占有率（%）</th>
-                    <th className="px-4 py-3 border-r border-gray-200">4. 市場區隔</th>
-                    <th className="px-4 py-3 border-r border-gray-200">5. 行銷管道</th>
-                    <th className="px-4 py-3">6. 技術或服務優勢</th>
+                    <th className="px-4 py-3 border-r border-gray-200 w-56" rowSpan={2}>
+                      項目
+                    </th>
+                    <th className="px-4 py-3 border-r border-gray-200">名稱</th>
+                    <th className="px-4 py-3 border-r border-gray-200" rowSpan={2}>
+                      A公司
+                    </th>
+                    <th className="px-4 py-3 border-r border-gray-200" rowSpan={2}>
+                      B公司
+                    </th>
+                    <th className="px-4 py-3" rowSpan={2}>
+                      C公司
+                    </th>
+                  </tr>
+                  <tr>
+                    <th className="px-4 py-3 border-r border-gray-200">申請人(本計畫研發標的)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {competitors.map((row, idx) => (
-                    <tr key={idx} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2 border-r border-gray-200 font-medium text-gray-700">
-                        <input
-                          className="w-full bg-transparent outline-none px-2 py-1"
-                          value={row.name}
-                          onChange={(e) => {
-                            const next = [...competitors];
-                            next[idx] = { ...next[idx], name: e.target.value };
-                            setCompetitors(next);
-                          }}
-                          placeholder={idx === 0 ? "申請人（本計畫研發標的）" : `競品 ${idx}`}
-                        />
-                      </td>
-                      {(["price", "launchTime", "marketShare", "segment", "channel", "advantage"] as const).map((k, cIdx) => (
-                        <td
-                          key={k}
-                          className={`px-4 py-2 ${cIdx < 5 ? "border-r border-gray-200" : ""}`}
-                        >
-                          <input
-                            className={`w-full bg-transparent outline-none px-2 py-1 ${
-                              k === "marketShare" ? "text-right" : ""
-                            }`}
-                            value={row[k]}
-                            onChange={(e) => {
-                              const next = [...competitors];
-                              next[idx] = { ...next[idx], [k]: e.target.value } as CompetitorRow;
-                              setCompetitors(next);
-                            }}
-                            placeholder={
-                              k === "price"
-                                ? "例如：$2,000/套"
-                                : k === "launchTime"
-                                  ? "例如：2026/01"
-                                  : k === "marketShare"
-                                    ? "0"
-                                    : k === "segment"
-                                      ? "例如：中小企業/政府"
-                                      : k === "channel"
-                                        ? "例如：直銷/代理/平台"
-                                        : "請條列優勢重點"
-                            }
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {([
+                    { label: "1. 價格(單位： )", key: "price" as const, placeholder: "例如：$2,000/套", isMarketShare: false },
+                    { label: "2. 產品/服務上市時間", key: "launchTime" as const, placeholder: "例如：2026/01", isMarketShare: false },
+                    { label: "3. 市場占有率(%)", key: "marketShare" as const, placeholder: "0", isMarketShare: true },
+                    { label: "4. 市場區隔", key: "segment" as const, placeholder: "例如：中小企業/政府", isMarketShare: false },
+                    { label: "5. 行銷管道", key: "channel" as const, placeholder: "例如：直銷/代理/平台", isMarketShare: false },
+                    { label: "6. 技術或服務優勢", key: "advantage" as const, placeholder: "請條列優勢重點", isMarketShare: false },
+                  ] as const).map((rowItem) => {
+                    const f = rowItem.key;
+                    return (
+                      <tr key={rowItem.key} className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-2 border-r border-gray-200 font-medium text-gray-700 whitespace-nowrap">{rowItem.label}</td>
+                        {[0, 1, 2, 3].map((companyIdx) => (
+                          <td
+                            key={companyIdx}
+                            className={`px-4 py-2 ${companyIdx < 3 ? "border-r border-gray-200" : ""}`}
+                          >
+                            {rowItem.key === "advantage" ? (
+                              <textarea
+                                className="w-full bg-transparent outline-none px-2 py-1 min-h-[72px] resize-y whitespace-pre-wrap break-words"
+                                value={(competitors[companyIdx] as CompetitorRow | undefined)?.[f] ?? ""}
+                                onChange={(e) => {
+                                  const next = [...competitors];
+                                  const cur = next[companyIdx] ?? ({} as CompetitorRow);
+                                  next[companyIdx] = { ...cur, [f]: e.target.value } as CompetitorRow;
+                                  setCompetitors(next);
+                                }}
+                                placeholder={"請逐點條列（可按 Enter 換行）"}
+                              />
+                            ) : (
+                              <input
+                                className={`w-full bg-transparent outline-none px-2 py-1 ${
+                                  rowItem.isMarketShare ? "text-right" : ""
+                                }`}
+                                type="text"
+                                inputMode={rowItem.isMarketShare ? "decimal" : undefined}
+                                value={(competitors[companyIdx] as CompetitorRow | undefined)?.[f] ?? ""}
+                                onChange={(e) => {
+                                  const next = [...competitors];
+                                  const cur = next[companyIdx] ?? ({} as CompetitorRow);
+                                  next[companyIdx] = { ...cur, [f]: e.target.value } as CompetitorRow;
+                                  setCompetitors(next);
+                                }}
+                                placeholder={rowItem.placeholder}
+                              />
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            <SubTitle>（三）計畫可行性分析</SubTitle>
+            <SubTitle>
+              （三）計畫可行性分析 (依計畫屬性與內容，客觀評估分析本案整體之可行性程度，如市場商機、營運模式、系統 技術、商品化 應用或其他優勢等說明。)
+            </SubTitle>
             <Label required>市場商機、營運模式、系統/技術、商品化/應用或其他優勢</Label>
             <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策。</Hint>
             <Textarea
@@ -477,13 +657,18 @@ export default function PlanContentImplementationForm({
             <SubTitle>（一）計畫架構（請以樹枝圖撰寫）</SubTitle>
             <Label required>分項計畫/開發技術、占比、執行單位、委託研究/技術引進</Label>
             <Hint>請先建立主幹（整體架構），再往下拆分分項計畫（A/B）與工作項目（A1/A2…）；建議與後續進度表、KPI 編號一致。</Hint>
-            <TreeEditor
+            <HorizontalTreeEditor
               value={architectureTree}
               onChange={(next) => {
                 setArchitectureTree(next);
-                setFormData((p) => ({ ...p, architectureTreeJson: JSON.stringify(next) }));
               }}
             />
+            <div className="text-xs text-gray-500 leading-relaxed -mt-2 mb-3 whitespace-pre-wrap break-words">
+              請註明下列資料：
+              {"\n"}1.開發計畫中各分項計畫及所開發技術依開發經費占總開發費用之百分比。
+              {"\n"}2.執行該分項計畫 開發技術之單位。
+              {"\n"}3.若有委託研究或技術引進請一併列入計畫架構。
+            </div>
 
             <SubTitle>（二）執行步驟及方法</SubTitle>
             <Label required>流程、驗證/測試、修正流程與預期結果</Label>
@@ -494,9 +679,14 @@ export default function PlanContentImplementationForm({
               onChange={handleChange}
               placeholder="請以流程圖/條列說明：各分項工作步驟、里程碑、驗證測試方式、修正迭代流程、試營運/服務模式（如適用），以及各階段產出。"
             />
+            <div className="text-xs text-gray-500 leading-relaxed mt-2 mb-1 whitespace-pre-wrap break-words">
+              ※本項撰寫參考建議
+              {"\n"}技術開發：以計畫架構項目用流程圖示逐項說明本計畫進行步驟與實施方式，並有驗證測試、商品化開發之修正流程等之具體性與結果。
+              {"\n"}創新服務: 從需求端以服務流、資訊流、金流等等表達計畫架構項目，用流程圖示逐項說明本計畫進行步驟與實施方式，並有試營運 服務模式等機制，以驗證該商業模式、電子商務或服務模式之可行性與結果。
+            </div>
             <ImageDropzone value={images.stepsMethod} onChange={(next) => setImages((p) => ({ ...p, stepsMethod: next }))} />
 
-            <SubTitle>（三）技術移轉來源分析（擬與業界/學術界/研究機構合作）</SubTitle>
+            <SubTitle>（三）技術移轉來源分析：擬與業界、學術界及其他研究機構合作計畫</SubTitle>
             <Label>合作/引進/委外來源背景與合作方式</Label>
             <Hint>若有委外/引進，請說明對象背景、合作範圍、交付物與驗收方式；並於表格填入起迄期間與預算。</Hint>
             <Textarea
@@ -505,6 +695,9 @@ export default function PlanContentImplementationForm({
               onChange={handleChange}
               placeholder="若有合作/委外/技術引進，請說明來源對象背景、技術/智財能力、合作方式與預期成果。"
             />
+            <div className="text-xs text-gray-500 leading-relaxed mt-2 mb-1 whitespace-pre-wrap break-words">
+              (本計畫是否進行專利檢索分析，是否涉及他人智慧財產權說明？是否已申請或掌握關鍵智財權)
+            </div>
             <ImageDropzone value={images.techTransferAnalysis} onChange={(next) => setImages((p) => ({ ...p, techTransferAnalysis: next }))} />
 
             <div className="mt-6 overflow-x-auto border border-gray-200 rounded-lg">
@@ -560,21 +753,75 @@ export default function PlanContentImplementationForm({
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <input
-                          className="w-full bg-transparent outline-none px-2 py-1"
-                          value={row.period}
-                          onChange={(e) => {
-                            const next = [...techTransfers];
-                            next[idx] = { ...next[idx], period: e.target.value };
-                            setTechTransfers(next);
-                          }}
-                          placeholder="年 月 日 ~ 年 月 日"
-                        />
+                        <div className="flex flex-wrap items-center gap-1">
+                          <select
+                            className="border border-gray-200 rounded bg-white text-sm py-1 outline-none"
+                            value={row.periodStartYear ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = techTransfers.map((r, i) => i === idx ? { ...r, periodStartYear: v, period: buildPeriod(r, v, r.periodStartMonth, r.periodEndYear, r.periodEndMonth) } : r);
+                              setTechTransfers(next);
+                            }}
+                          >
+                            <option value="">年</option>
+                            {[111, 112, 113, 114, 115, 116, 117].map((y) => (
+                              <option key={y} value={String(y)}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">/</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-sm py-1 outline-none"
+                            value={row.periodStartMonth ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = techTransfers.map((r, i) => i === idx ? { ...r, periodStartMonth: v, period: buildPeriod(r, r.periodStartYear, v, r.periodEndYear, r.periodEndMonth) } : r);
+                              setTechTransfers(next);
+                            }}
+                          >
+                            <option value="">月</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <option key={m} value={String(m)}>{m}月</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">~</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-sm py-1 outline-none"
+                            value={row.periodEndYear ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = techTransfers.map((r, i) => i === idx ? { ...r, periodEndYear: v, period: buildPeriod(r, r.periodStartYear, r.periodStartMonth, v, r.periodEndMonth) } : r);
+                              setTechTransfers(next);
+                            }}
+                          >
+                            <option value="">年</option>
+                            {[111, 112, 113, 114, 115, 116, 117].map((y) => (
+                              <option key={y} value={String(y)}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">/</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-sm py-1 outline-none"
+                            value={row.periodEndMonth ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = techTransfers.map((r, i) => i === idx ? { ...r, periodEndMonth: v, period: buildPeriod(r, r.periodStartYear, r.periodStartMonth, r.periodEndYear, v) } : r);
+                              setTechTransfers(next);
+                            }}
+                          >
+                            <option value="">月</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <option key={m} value={String(m)}>{m}月</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="text-xs text-gray-500 leading-relaxed mt-3 whitespace-pre-wrap break-words">
+              註：各項引進計畫及委託研究計畫均應將明確對象註明，並附契約書、協議書或專利證書（如為外文請附中譯本）等相關必要資料影本，如尚未完成簽約，須附雙方簽署之合作意願書（備忘錄）。
             </div>
 
             <div className="mt-6">

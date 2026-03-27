@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   Calendar, CircleDollarSign, ShieldCheck, ArrowRight, User, 
   LogOut, Phone, Building2, FileText, CheckSquare, 
@@ -10,10 +10,13 @@ import PlanContentImplementationForm from '@/components/PlanContentImplementatio
 import ExpectedBenefitsForm from '@/components/ExpectedBenefitsForm';
 import ScheduleCheckpointsForm from '@/components/ScheduleCheckpointsForm';
 import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsForm';
+import { signIn, signOut, useSession } from "next-auth/react";
+import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
 
-type CurrentView = "home" | "dashboard";
 type UserRole = "applicant" | "reviewer";
 type UserContext = { name: string; role: UserRole; email: string };
+const REGISTRY_ENSURE_KEY = "sbir_registry_ensure_email";
+const LOGIN_DIALOG_OK_KEY = "sbir_login_dialog_ok";
 
 type CompanyProfileValue = React.ComponentProps<typeof CompanyProfileForm>["value"];
 type PlanContentValue = React.ComponentProps<typeof PlanContentImplementationForm>["value"];
@@ -22,30 +25,45 @@ type ScheduleCheckpointsValue = React.ComponentProps<typeof ScheduleCheckpointsF
 type HumanBudgetValue = React.ComponentProps<typeof HumanBudgetRequirementsForm>["value"];
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<CurrentView>('home');
-  const [userContext, setUserContext] = useState<UserContext | null>(null);
+  const { data: session, status } = useSession();
   const [isSimulatingLogin, setIsSimulatingLogin] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole>("applicant");
 
   const handleGoogleLogin = (role: UserRole) => {
+    setUserRole(role);
     setIsSimulatingLogin(true);
-    setTimeout(() => {
-      setUserContext({
-        name: role === 'applicant' ? '基隆新創企業 (測試)' : '審查委員 (測試)',
-        role: role,
-        email: role === 'applicant' ? 'startup@example.com' : 'reviewer@example.com'
-      });
-      setIsSimulatingLogin(false);
-      setCurrentView('dashboard');
-    }, 1500);
+    void signIn("google", { callbackUrl: "/" }).finally(() => setIsSimulatingLogin(false));
   };
 
   const handleLogout = () => {
-    setUserContext(null);
-    setCurrentView('home');
+    try {
+      sessionStorage.removeItem(REGISTRY_ENSURE_KEY);
+      sessionStorage.removeItem(LOGIN_DIALOG_OK_KEY);
+    } catch {
+      // ignore
+    }
+    void signOut({ callbackUrl: "/" });
   };
 
-  if (currentView === 'dashboard') {
+  const userContext: UserContext | null =
+    status === "authenticated" && session?.user?.email
+      ? {
+          name: session.user.name ?? "申請者",
+          email: session.user.email,
+          role: userRole,
+        }
+      : null;
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
+        <p className="text-slate-500">載入中...</p>
+      </div>
+    );
+  }
+
+  if (userContext) {
     return <Dashboard user={userContext} onLogout={handleLogout} />;
   }
 
@@ -202,8 +220,10 @@ export default function App() {
         </div>
       </div>
 
-      <footer className="w-full pb-8 pt-6 text-center">
-        <p className="text-xs text-slate-400 font-light tracking-wider">© 2026 基隆市政府 產業發展處. All Rights Reserved.</p>
+      <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
+        <p>
+          Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+        </p>
       </footer>
     </div>
   );
@@ -211,6 +231,87 @@ export default function App() {
 
 function Dashboard({ user, onLogout }: { user: UserContext | null; onLogout: () => void }) {
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [authGate, setAuthGate] = useState<"loading" | "dialog" | "ready" | "failed">("loading");
+
+  useEffect(() => {
+    if (!user?.email) return;
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        if (typeof window !== "undefined" && sessionStorage.getItem(LOGIN_DIALOG_OK_KEY) === user.email) {
+          if (!cancelled) setAuthGate("ready");
+          return;
+        }
+      } catch {
+        // ignore sessionStorage errors
+      }
+
+      const post = () => fetch("/api/registry/ensure", { method: "POST", credentials: "include" });
+      const delays = [0, 800, 1500];
+      for (let i = 0; i < delays.length; i += 1) {
+        if (delays[i] > 0) await new Promise((r) => setTimeout(r, delays[i]));
+        const res = await post();
+        if (res.ok) {
+          try {
+            if (typeof window !== "undefined") sessionStorage.setItem(REGISTRY_ENSURE_KEY, user.email);
+          } catch {
+            // ignore
+          }
+          if (!cancelled) setAuthGate("dialog");
+          return;
+        }
+      }
+      if (!cancelled) setAuthGate("failed");
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
+
+  if (authGate === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
+        <p className="text-slate-600 text-center">系統正將登入資料寫入後台中...</p>
+      </div>
+    );
+  }
+
+  if (authGate === "failed") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
+        <p className="text-red-600 text-center">登入資料寫入失敗，請重新整理後再試。</p>
+      </div>
+    );
+  }
+
+  if (authGate === "dialog") {
+    return (
+      <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center px-4">
+        <div className="max-w-xl w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-6">
+          <p className="text-slate-800 leading-relaxed break-all">
+            系統寫入帳號為 {user?.email || ""}
+          </p>
+          <button
+            type="button"
+            className="mt-6 w-full py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            onClick={() => {
+              try {
+                if (user?.email) sessionStorage.setItem(LOGIN_DIALOG_OK_KEY, user.email);
+              } catch {
+                // ignore
+              }
+              setAuthGate("ready");
+            }}
+          >
+            確定
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!hasAgreed) {
     return <ConsentView onAgree={() => setHasAgreed(true)} onLogout={onLogout} />;
@@ -282,6 +383,73 @@ function ConsentView({ onAgree, onLogout }: { onAgree: () => void; onLogout: () 
   );
 }
 
+function FoundingRocSelectors({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+}) {
+  const parts = isoDateToRocParts(value);
+  const years = rocYearOptions();
+  const rocY = parts?.rocY;
+  const month = parts?.month;
+  const day = parts?.day;
+
+  return (
+    <div className="flex flex-wrap gap-2 items-center">
+      <select
+        className="form-input min-w-[9rem]"
+        value={rocY ? String(rocY) : ""}
+        onChange={(e) => {
+          const y = parseInt(e.target.value || "0", 10);
+          if (!y) return onChange("");
+          onChange(rocYmdToIso(y, month ?? 1, day ?? 1));
+        }}
+      >
+        <option value="">選擇民國年</option>
+        {years.map((y) => (
+          <option key={y} value={y}>
+            民國{y}年
+          </option>
+        ))}
+      </select>
+      <select
+        className="form-input w-[6.5rem]"
+        disabled={!rocY}
+        value={month ? String(month) : ""}
+        onChange={(e) => {
+          if (!rocY) return;
+          onChange(rocYmdToIso(rocY, parseInt(e.target.value || "1", 10), day ?? 1));
+        }}
+      >
+        <option value="">月</option>
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+          <option key={m} value={m}>
+            {m}月
+          </option>
+        ))}
+      </select>
+      <select
+        className="form-input w-[6.5rem]"
+        disabled={!rocY}
+        value={day ? String(day) : ""}
+        onChange={(e) => {
+          if (!rocY) return;
+          onChange(rocYmdToIso(rocY, month ?? 1, parseInt(e.target.value || "1", 10)));
+        }}
+      >
+        <option value="">日</option>
+        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+          <option key={d} value={d}>
+            {d}日
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 type ApplicationFormData = {
   projectCategory: string;
   projectName: string;
@@ -308,6 +476,7 @@ type ApplicationFormData = {
   benefitInventionPatent: string;
   benefitUtilityPatent: string;
   qualitativeBenefits: string;
+  attachmentChecks: { a1: boolean; a2: boolean; a3: boolean; a4: boolean; a5: boolean };
   files: Array<{
     id: string;
     name: string;
@@ -315,18 +484,154 @@ type ApplicationFormData = {
     status: "uploading" | "uploaded" | "error";
     drive: { webViewLink?: string } | null;
     error: string | null;
+    attachmentIndex?: 1 | 2 | 3 | 4 | 5;
   }>;
   companyProfile: CompanyProfileValue;
   planContent: PlanContentValue;
   expectedBenefits: ExpectedBenefitsValue;
   scheduleCheckpoints: ScheduleCheckpointsValue;
   humanBudget: HumanBudgetValue;
+  workflowStatus?: "draft" | "submitted";
+  submittedAt?: string;
+  expiresAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
 };
+
+function getPlanLockState(formData: Partial<ApplicationFormData>) {
+  // 前端顯示層鎖定判定：僅負責控制互動（真正阻擋仍由 API 端執行）。
+  const status = String(formData.workflowStatus || "").toLowerCase();
+  const deleted = Boolean(formData.isDeleted || formData.deletedAt);
+  const expiresAtTs = formData.expiresAt ? Date.parse(String(formData.expiresAt)) : NaN;
+  const expired = Number.isFinite(expiresAtTs) && expiresAtTs < Date.now();
+  const locked = deleted || expired || status === "submitted";
+  const reason = deleted ? "已刪除" : expired ? "已過期" : status === "submitted" ? "已送出" : "";
+  return { locked, reason };
+}
+
+async function compressImageDataUrl(dataUrl: string): Promise<string> {
+  const raw = String(dataUrl || "");
+  if (!raw.startsWith("data:image/")) return raw;
+  // Keep small images untouched.
+  if (raw.length < 900_000) return raw;
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error("圖片壓縮失敗"));
+    i.src = raw;
+  });
+
+  const maxSide = 1600;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return raw;
+  ctx.drawImage(img, 0, 0, w, h);
+
+  let out = canvas.toDataURL("image/jpeg", 0.86);
+  if (out.length > 1_800_000) out = canvas.toDataURL("image/jpeg", 0.76);
+  if (out.length > 2_200_000) out = canvas.toDataURL("image/jpeg", 0.68);
+  return out;
+}
+
+type RawTreeNode = { id?: string; text?: string; name?: string; weight?: string | number; execUnit?: string; unit?: string; children?: unknown[] };
+
+function cleanTreeData(input: unknown): RawTreeNode | null {
+  if (!input || typeof input !== "object") return null;
+  const n = input as RawTreeNode;
+  const text = String(n.text ?? n.name ?? "").trim();
+  if (!text) return null;
+  const childrenRaw = Array.isArray(n.children) ? n.children : [];
+  const cleanedChildren = childrenRaw.map((c) => cleanTreeData(c)).filter(Boolean) as RawTreeNode[];
+  const out: RawTreeNode = {
+    id: typeof n.id === "string" ? n.id : undefined,
+    text,
+    weight: String(n.weight ?? "").trim(),
+    execUnit: String(n.execUnit ?? n.unit ?? "").trim(),
+  };
+  if (cleanedChildren.length > 0) out.children = cleanedChildren;
+  return out;
+}
+
+function sanitizePlanContent(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const plan = { ...(input as Record<string, unknown>) };
+  const cleanedTree = cleanTreeData(plan.architectureTree);
+  if (cleanedTree) {
+    plan.architectureTree = cleanedTree;
+    const formData = { ...((plan.formData as Record<string, unknown> | undefined) ?? {}) };
+    formData.architectureTreeJson = JSON.stringify(cleanedTree);
+    plan.formData = formData;
+  } else {
+    plan.architectureTree = null;
+    const formData = { ...((plan.formData as Record<string, unknown> | undefined) ?? {}) };
+    formData.architectureTreeJson = "";
+    plan.formData = formData;
+  }
+  return plan;
+}
+
+async function buildDraftPayload(input: unknown): Promise<unknown> {
+  if (Array.isArray(input)) {
+    const out = await Promise.all(input.map((v) => buildDraftPayload(v)));
+    return out;
+  }
+  if (!input || typeof input !== "object") return input;
+
+  const obj = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === "planContent") {
+      out[k] = await buildDraftPayload(sanitizePlanContent(v));
+    } else if (k === "dataUrl" && typeof v === "string") {
+      // Preserve all applicant-uploaded image content, but compress oversized inline image payloads.
+      out[k] = await compressImageDataUrl(v);
+    } else {
+      out[k] = await buildDraftPayload(v);
+    }
+  }
+  return out;
+}
+
+function formatApiErrorForAlert(prefix: string, err: unknown): string {
+  const e = (err || {}) as {
+    error?: string;
+    hint?: string;
+    detail?: { stage?: string; name?: string; code?: unknown; cause?: string; stackTop?: string | null };
+  };
+  const lines: string[] = [`${prefix}：${e.error || "未知錯誤"}`];
+  if (e.hint) lines.push(`提示：${e.hint}`);
+  if (e.detail) {
+    lines.push(
+      `detail => stage=${e.detail.stage || "-"}, name=${e.detail.name || "-"}, code=${String(e.detail.code ?? "-")}`
+    );
+    if (e.detail.cause) lines.push(`cause => ${e.detail.cause}`);
+    if (e.detail.stackTop) lines.push(`stackTop =>\n${e.detail.stackTop}`);
+  }
+  return lines.join("\n");
+}
 
 function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [statusToast, setStatusToast] = useState<string | null>(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [lastPdfBlob, setLastPdfBlob] = useState<Blob | null>(null);
+  const [lastPdfFilename, setLastPdfFilename] = useState<string>("");
+  const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null);
+  // PDF 防連點狀態：避免短時間重複觸發 /api/pdf。
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  // 畫面唯讀鎖定狀態：當草稿狀態為 submitted/expired/deleted 時禁止編輯。
+  const [isPlanLocked, setIsPlanLocked] = useState(false);
+  const [planLockReason, setPlanLockReason] = useState<string>("");
 
   const [formData, setFormData] = useState<ApplicationFormData>({
     // 第一頁籤：封面
@@ -345,6 +650,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     // 第二頁籤：預期效益 (非量化)
     qualitativeBenefits: '',
     // 附件
+    attachmentChecks: { a1: false, a2: false, a3: false, a4: false, a5: false },
     files: [],
     // Tab 3-7 data containers (for draft + PDF filling)
     companyProfile: undefined,
@@ -354,6 +660,36 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     humanBudget: undefined,
   });
 
+  const formSaveBlocked = useMemo(() => {
+    const planMonthsNum = parseInt(formData.projectMonths, 10);
+    const planTooLong =
+      Boolean(formData.projectStartDate && formData.projectEndDate) &&
+      Number.isFinite(planMonthsNum) &&
+      planMonthsNum > 10;
+    const summaryOver = Array.from(formData.summary || "").length > 110 || Array.from(formData.innovationFocus || "").length > 110;
+    return planTooLong || summaryOver;
+  }, [formData]);
+
+  // 登入後自動載入先前草稿（若有）
+  useEffect(() => {
+    fetch('/api/draft')
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; draft?: { formData?: ApplicationFormData } }) => {
+        if (data?.ok && data?.draft?.formData) {
+          const next = { ...data.draft!.formData };
+          const lock = getPlanLockState(next);
+          setIsPlanLocked(lock.locked);
+          setPlanLockReason(lock.reason);
+          setFormData((prev) => ({ ...prev, ...next }));
+          if (next.submittedAt) setLastSubmittedAt(next.submittedAt);
+        }
+      })
+      .catch(() => {
+        // ignore
+      })
+      .finally(() => setDraftLoaded(true));
+  }, []);
+
   const tabs = [
     { id: 1, title: '封面與基本資料' },
     { id: 2, title: '計畫書摘要表' },
@@ -362,15 +698,34 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     { id: 5, title: '參、預期效益' },
     { id: 6, title: '肆、預定進度及查核點' },
     { id: 7, title: '伍、人力及經費需求表' },
-    { id: 8, title: '陸、附件上傳' }
+    { id: 8, title: '陸、附件（依計畫實際情況檢附，無則免附）' },
+    { id: 9, title: '柒、送出前PDF預覽' },
   ];
+
+  useEffect(() => {
+    if (!statusToast) return;
+    const t = setTimeout(() => setStatusToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [statusToast]);
+
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    };
+  }, [previewPdfUrl]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
+    if (isPlanLocked) return;
     const { name, value } = e.target;
     setFormData(prev => {
-      const next = { ...prev, [name]: value };
+      let inputValue = value;
+      if (name === "summary" || name === "innovationFocus") {
+        const chars = Array.from(value);
+        if (chars.length > 110) inputValue = chars.slice(0, 110).join("");
+      }
+      const next = { ...prev, [name]: inputValue };
 
       // 自動計算：計畫相差月數（避免在 effect 中 setState）
       if (name === 'projectStartDate' || name === 'projectEndDate') {
@@ -390,50 +745,132 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     });
   };
 
-  const handleSaveDraft = () => {
+  const saveDraftCore = async (): Promise<boolean> => {
+    if (!draftLoaded) return false;
+    if (isPlanLocked) {
+      alert(`此計畫書目前為鎖定狀態（${planLockReason || "已鎖定"}），不可再修改。`);
+      return false;
+    }
+    if (formSaveBlocked) {
+      alert(
+        formData.projectStartDate &&
+          formData.projectEndDate &&
+          parseInt(formData.projectMonths || "0", 10) > 10
+          ? "已超過10個月請撰寫者重新輸入"
+          : "計畫摘要與創新重點需在 110 字以內"
+      );
+      return false;
+    }
     setIsSaving(true);
-    // 儲存到後端（本機草稿）
-    fetch('/api/draft', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData }),
-    })
-      .then(() => {
-        setLastSaved(new Date().toLocaleTimeString());
-      })
-      .finally(() => setIsSaving(false));
+    try {
+      const draftPayload = (await buildDraftPayload(formData)) as ApplicationFormData;
+      const res = await fetch('/api/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData: draftPayload }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(async () => ({ error: await res.text().catch(() => "草稿儲存失敗") }));
+        alert(`草稿儲存失敗：${err?.error || "未知錯誤"}`);
+        return false;
+      }
+      const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!body?.ok) {
+        alert(`草稿儲存失敗：${body?.error || "未知錯誤"}`);
+        return false;
+      }
+      setLastSaved(new Date().toLocaleTimeString());
+      return true;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleNext = () => {
-    handleSaveDraft();
+  const handleSaveDraft = async (opts?: { autoDownload?: boolean }): Promise<boolean> => {
+    setStatusToast("草稿儲存中");
+    const ok = await saveDraftCore();
+    if (!ok) return false;
+    if (opts?.autoDownload) {
+      await handleGeneratePdf({ download: true, openPreview: true });
+    }
+    return true;
+  };
+
+  const handleNext = async () => {
+    if (isPlanLocked) {
+      if (activeTab < tabs.length) setActiveTab(activeTab + 1);
+      return;
+    }
+    const ok = await saveDraftCore();
+    if (!ok) {
+      alert("草稿暫時無法儲存，已先帶您前往下一步；請稍後再按儲存草稿。");
+    }
     if (activeTab < tabs.length) setActiveTab(activeTab + 1);
   };
 
-  const handleTabChange = (nextTab: number) => {
+  const handleTabChange = async (nextTab: number) => {
     if (nextTab === activeTab) return;
-    handleSaveDraft();
+    if (isPlanLocked) {
+      setActiveTab(nextTab);
+      return;
+    }
+    const ok = await saveDraftCore();
+    if (!ok) {
+      alert("草稿暫時無法儲存，已先切換頁籤；請稍後再按儲存草稿。");
+    }
     setActiveTab(nextTab);
   };
 
-  const handleGeneratePdf = async () => {
-    handleSaveDraft();
+  const handleGeneratePdf = async (opts?: { download?: boolean; openPreview?: boolean }) => {
+    if (formSaveBlocked || isSaving || isSubmitting || isPdfGenerating) return;
+    setIsPdfGenerating(true);
+    try {
+    const saved = await saveDraftCore();
+    if (!saved) return;
+    const payloadFormData = (await buildDraftPayload(formData)) as ApplicationFormData;
     const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
     const filename = `${safeBaseName}.pdf`;
     const res = await fetch('/api/pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData, filename }),
+      body: JSON.stringify({ formData: payloadFormData, filename }),
     });
     if (!res.ok) {
       const err = await res.json().catch(async () => ({ error: await res.text().catch(() => 'PDF 產製失敗') }));
-      alert(`PDF 產製失敗：${err?.error || '未知錯誤'}`);
+      alert(formatApiErrorForAlert("PDF 產製失敗", err));
       return;
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    setLastPdfBlob(blob);
+    setLastPdfFilename(filename);
+    if (opts?.openPreview) {
+      const p = URL.createObjectURL(blob);
+      setPreviewPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return p;
+      });
+    }
+    if (opts?.download !== false) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
+
+  const handleDownloadLastPdf = () => {
+    if (!lastPdfBlob || !lastPdfFilename) return;
+    const url = URL.createObjectURL(lastPdfBlob);
+    const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = lastPdfFilename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -441,27 +878,90 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   };
 
   const handleSubmitToDrive = async () => {
-    // 先產製 PDF，再送到後端上傳 Drive（需設定 service account 環境變數）
-    handleSaveDraft();
-    const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
-    const filename = `${safeBaseName}.pdf`;
-    const pdfRes = await fetch('/api/pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData, filename }),
-    });
-    if (!pdfRes.ok) {
-      const err = await pdfRes.json().catch(async () => ({ error: await pdfRes.text().catch(() => 'PDF 產製失敗') }));
-      alert(`PDF 產製失敗：${err?.error || '未知錯誤'}`);
+    if (isPlanLocked) {
+      alert(`此計畫書目前為鎖定狀態（${planLockReason || "已鎖定"}），不可再送出或修改。`);
       return;
     }
-    const buf = await pdfRes.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    await fetch('/api/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pdfBase64: base64, filename }),
-    });
+    if (formSaveBlocked) {
+      alert(
+        formData.projectStartDate &&
+          formData.projectEndDate &&
+          parseInt(formData.projectMonths || "0", 10) > 10
+          ? "已超過10個月請撰寫者重新輸入"
+          : "計畫摘要與創新重點需在 110 字以內"
+      );
+      return;
+    }
+    if (isSaving || isSubmitting) return;
+    setIsSubmitting(true);
+    setStatusToast("送出中（上傳 Drive 中，可能需數分鐘，請勿關閉頁面）");
+
+    const controller = new AbortController();
+    const timeoutMs = 5 * 60 * 1000; // 5 分鐘避免無限期卡住
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      // 先產製 PDF，再送到後端上傳 Drive（需設定 service account 環境變數）
+      const saved = await saveDraftCore();
+      if (!saved) return;
+      const payloadFormData = (await buildDraftPayload(formData)) as ApplicationFormData;
+
+      const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
+      const filename = `${safeBaseName}.pdf`;
+      const pdfRes = await fetch("/api/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formData: payloadFormData, filename }),
+        signal: controller.signal,
+      });
+      if (!pdfRes.ok) {
+        const err = await pdfRes
+          .json()
+          .catch(async () => ({ error: await pdfRes.text().catch(() => "PDF 產製失敗") }));
+        alert(formatApiErrorForAlert("PDF 產製失敗", err));
+        return;
+      }
+      const submitRes = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Let backend generate/upload PDF from formData to avoid large base64 conversion in browser.
+        body: JSON.stringify({ formData: payloadFormData, filename, projectName: formData.projectName }),
+        signal: controller.signal,
+      });
+
+      if (!submitRes.ok) {
+        const err = await submitRes
+          .json()
+          .catch(async () => ({ error: await submitRes.text().catch(() => "送出失敗") }));
+        alert(`送出失敗：${err?.error || "未知錯誤"}`);
+        return;
+      }
+
+      const submittedAt = new Date();
+      const stamp = `${submittedAt.getFullYear()}/${String(submittedAt.getMonth() + 1).padStart(2, "0")}/${String(
+        submittedAt.getDate()
+      ).padStart(2, "0")} ${String(submittedAt.getHours()).padStart(2, "0")}:${String(submittedAt.getMinutes()).padStart(
+        2,
+        "0"
+      )}:${String(submittedAt.getSeconds()).padStart(2, "0")}`;
+      setLastSubmittedAt(stamp);
+      setIsPlanLocked(true);
+      setPlanLockReason("已送出");
+      setFormData((prev) => ({ ...prev, workflowStatus: "submitted", submittedAt: stamp }));
+      setStatusToast(`已於${stamp}成功送出`);
+      alert(`已於${stamp}成功送出`);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        alert("送出逾時：上傳流程可能尚未完成。請稍後再檢查狀態，必要時可再送出一次。");
+        setStatusToast("送出逾時，請稍後重試");
+      } else {
+        alert(`送出失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+        setStatusToast("送出失敗");
+      }
+    } finally {
+      clearTimeout(t);
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -482,6 +982,12 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           {lastSaved && (
             <span className="text-xs text-slate-400 flex items-center gap-1"><CheckCircle2 size={12} className="text-green-500" />已儲存草稿 ({lastSaved})</span>
           )}
+          {lastSubmittedAt && (
+            <span className="text-xs text-emerald-600 flex items-center gap-1">
+              <CheckCircle2 size={12} className="text-emerald-600" />
+              已於{lastSubmittedAt}成功送出
+            </span>
+          )}
           <div className="text-sm text-slate-500 flex items-center gap-2 border-l border-slate-100 pl-6"><User size={16} />{user.name}</div>
           <button onClick={onLogout} className="flex items-center gap-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><LogOut size={16} />離開</button>
         </div>
@@ -494,7 +1000,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
+                onClick={() => void handleTabChange(tab.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl transition-all duration-200 ${
                   activeTab === tab.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 font-light'
                 }`}
@@ -518,7 +1024,16 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                </h2>
             )}
 
-            <div className="space-y-8 animate-in fade-in duration-300">
+            <div
+              className={`space-y-8 animate-in fade-in duration-300 ${
+                isPlanLocked ? "opacity-75" : ""
+              } ${isPlanLocked && activeTab !== 9 ? "pointer-events-none" : ""}`}
+            >
+              {isPlanLocked && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  此計畫書目前為鎖定狀態（{planLockReason || "已鎖定"}），僅可檢視，不可再修改或上傳附件。
+                </div>
+              )}
               
               {/* 第 1 頁籤：正式封面設計 */}
               {activeTab === 1 && (
@@ -575,6 +1090,9 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                          <span className="font-medium whitespace-nowrap">至</span>
                          <input type="date" name="projectEndDate" value={formData.projectEndDate} onChange={handleInputChange} className="form-input py-1.5 text-center text-base w-[150px] cursor-pointer text-slate-600" />
                          <span className="font-medium whitespace-nowrap">止</span>
+                         {formData.projectMonths ? (
+                          <span className="text-slate-600 text-base font-semibold whitespace-nowrap">共 {formData.projectMonths} 個月</span>
+                         ) : null}
                        </div>
                        <div className="flex items-center gap-2 mt-2 md:mt-0">
                          <span className="font-medium whitespace-nowrap">(共</span>
@@ -582,7 +1100,15 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                          <span className="font-medium whitespace-nowrap">個月)</span>
                        </div>
                     </div>
-                    <div className="text-center text-xs text-slate-500 font-light leading-relaxed">
+                    {formData.projectStartDate &&
+                    formData.projectEndDate &&
+                    formData.projectMonths &&
+                    parseInt(formData.projectMonths, 10) > 10 ? (
+                      <p className="text-center text-sm text-red-600 font-medium whitespace-pre-wrap break-words px-2">
+                        已超過10個月請撰寫者重新輸入
+                      </p>
+                    ) : null}
+                    <div className="text-center text-xs text-slate-500 font-light leading-relaxed whitespace-pre-wrap break-words">
                       計畫期間請與後續「預定進度及查核點」一致；若跨年度，仍以實際起訖日填寫（系統會自動計算月數）。
                     </div>
 
@@ -619,7 +1145,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               {/* 第 2 頁籤：計畫書摘要表 */}
               {activeTab === 2 && (
                 <div className="space-y-10">
-                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-2 text-sm text-blue-700 font-light">
+                  <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-2 text-sm text-blue-700 font-light whitespace-pre-wrap break-words">
                     本摘要得於政府相關網站上公開發佈。請重點條列說明，並以1頁為原則。本摘要所有格式不得刪減、調整。
                   </div>
 
@@ -629,8 +1155,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       <InputGroup label="(一) 公司名稱" required hint="會從封面自動帶入；請確認與公司登記全名一致。">
                         <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="form-input" />
                       </InputGroup>
-                      <InputGroup label="(二) 設立日期" required hint="請填公司設立登記日期；後續公司概況也會引用此欄位。">
-                        <input type="date" name="foundingDate" value={formData.foundingDate} onChange={handleInputChange} className="form-input text-slate-600 cursor-pointer" />
+                      <InputGroup label="(二) 設立日期（民國）" required hint="請以民國日期填寫（支援民國 50 年起）；後續公司概況也會同步帶入。">
+                        <FoundingRocSelectors
+                          value={formData.foundingDate}
+                          onChange={(iso) => setFormData((prev) => ({ ...prev, foundingDate: iso }))}
+                        />
                       </InputGroup>
                       <InputGroup label="(三) 負責人" required hint="會從封面自動帶入；請填公司登記負責人。">
                         <input type="text" name="leaderName" value={formData.leaderName} onChange={handleInputChange} className="form-input" />
@@ -642,25 +1171,27 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   </div>
 
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">計畫摘要 (此摘要內容屬可公開部份)</h3>
+                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">二、計畫摘要 (此摘要內容屬可公開部份)</h3>
                     <InputGroup
-                      label="(一) 計畫內容摘要 (約100字)"
+                      label="(一) 計畫內容摘要（110字以內）"
                       required
                       hint="建議格式：目標（做什麼）→方法（怎麼做）→產出（交付物）→對象（誰受益）。避免放商業機密。"
                     >
                       <textarea name="summary" value={formData.summary} onChange={handleInputChange} className="form-textarea h-24" placeholder="請簡述計畫目標、主要工作項目等..." />
+                      <p className="text-xs text-slate-400 mt-1">{Array.from(formData.summary || "").length} / 110 字</p>
                     </InputGroup>
                     <InputGroup
-                      label="(二) 計畫創新重點 (約100字)"
+                      label="(二) 計畫創新重點（110字以內）"
                       required
                       hint="請聚焦 1–3 個可驗證的創新點：相較既有方案的差異、突破點、量化指標（例如效能/成本/時間）。"
                     >
                       <textarea name="innovationFocus" value={formData.innovationFocus} onChange={handleInputChange} className="form-textarea h-24" placeholder="請說明本計畫與現有技術/服務的差異與創新之處..." />
+                      <p className="text-xs text-slate-400 mt-1">{Array.from(formData.innovationFocus || "").length} / 110 字</p>
                     </InputGroup>
                   </div>
 
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">執行優勢</h3>
+                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">三、執行優勢</h3>
                     <InputGroup
                       label="請說明公司執行本計畫優勢為何？"
                       required
@@ -671,9 +1202,9 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   </div>
 
                   <div className="space-y-4">
-                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">預期效益 (結案三年內產出)</h3>
-                    <div className="text-sm text-slate-500 mb-2 font-light">
-                      (一) 量化效益：量化效益應客觀評估，並作為本計畫驗收成果之參考，若無請填「0」。
+                    <h3 className="text-lg font-medium text-slate-800 border-b border-slate-100 pb-2">四、預期效益 (結案三年內產出)</h3>
+                    <div className="text-sm text-slate-500 mb-2 font-light whitespace-pre-wrap break-words">
+                      (一) 量化效益（{formatRocDateLongFromIso(formData.projectEndDate) || "請先於封面填寫計畫期間結束日期"}結案前可產出之效益）：量化效益應客觀評估，並作為本計畫驗收成果之參考，若無請填「0」。
                     </div>
                     
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 bg-slate-50 p-6 rounded-xl border border-slate-100">
@@ -728,18 +1259,25 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                         <span className="text-sm text-slate-500 w-10 flex-shrink-0">件</span>
                       </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-2 font-light leading-relaxed">
+                    <div className="text-[11px] text-slate-400 mt-2 font-light leading-relaxed whitespace-pre-wrap break-words">
                       ※增加產值(因本計畫產生之營業額)、額外投入研發費用(不含政府補助款與自籌款)、促成投資額(自行增資或吸引外在投資)、增加就業人數(需加保勞保，若其為計畫編列之待聘人員需聘用超過3個月)
                     </div>
 
                     <div className="mt-8 pt-4 border-t border-slate-100">
                       <InputGroup
-                        label="(二) 非量化效益"
+                        label="(二) 非量化效益（請以敘述性方式說明，例如對公司的影響等）"
                         required
                         hint="例如：建立研發制度、提升品質/交付能力、品牌信任、跨域合作、產業示範效應等（可條列）。"
                       >
                         <textarea name="qualitativeBenefits" value={formData.qualitativeBenefits} onChange={handleInputChange} className="form-textarea h-24" placeholder="請以敘述性方式說明，例如對公司的影響等..." />
                       </InputGroup>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-xs text-slate-600 leading-relaxed whitespace-pre-wrap break-words">
+                      填表說明：
+                      {"\n"}1. 本摘要得於政府相關網站上公開發佈。
+                      {"\n"}2. 請重點條列說明，並以1頁為原則。
+                      {"\n"}3. 本摘要所有格式不得刪減、調整。
+                      {"\n"}4. 量化效益應客觀評估，並作為本計畫驗收成果之參考，若無請填「0」。
                     </div>
                   </div>
                 </div>
@@ -747,7 +1285,42 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
               {/* 第 8 頁籤 */}
               {activeTab === 8 && (
-                <FileUploadUI formData={formData} setFormData={setFormData} />
+                <FileUploadUI
+                  formData={formData}
+                  setFormData={setFormData}
+                  projectName={formData.projectName}
+                  locked={isPlanLocked}
+                />
+              )}
+              {activeTab === 9 && (
+                <div className="space-y-4">
+                  <div className="text-sm text-slate-600 whitespace-pre-wrap break-words">
+                    請先檢視完整計畫書 PDF，確認內容正確後再送出。
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleGeneratePdf({ download: false, openPreview: true })}
+                      disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked}
+                      className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      {isPdfGenerating ? "PDF 產製中..." : "重新產製預覽PDF"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadLastPdf}
+                      disabled={!lastPdfBlob || isSaving || isPdfGenerating}
+                      className="px-4 py-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:pointer-events-none"
+                    >
+                      下載PDF檔
+                    </button>
+                  </div>
+                  {previewPdfUrl ? (
+                    <iframe title="計畫書預覽" src={previewPdfUrl} className="w-full h-[760px] rounded-lg border border-slate-200 bg-white" />
+                  ) : (
+                    <div className="text-sm text-slate-500">尚未產製預覽PDF，請點「重新產製預覽PDF」。</div>
+                  )}
+                </div>
               )}
 
               {/* 第 3 分頁載入做好的 CompanyProfileForm，其餘佔位 */}
@@ -758,6 +1331,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       companyName: formData.companyName,
                       establishDate: formData.foundingDate,
                       representative: formData.leaderName,
+                      mainBusiness: formData.mainBusinessItems,
                     }}
                     onSharedChange={(next) =>
                       setFormData((prev) => ({
@@ -765,6 +1339,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                         companyName: next.companyName,
                         foundingDate: next.establishDate,
                         leaderName: next.representative,
+                        mainBusinessItems: next.mainBusiness,
                       }))
                     }
                     value={formData.companyProfile || undefined}
@@ -777,7 +1352,6 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   />
                 )}
 
-                {activeTab === 4 && <PlanContentImplementationForm />}
                 {activeTab === 4 && (
                   <PlanContentImplementationForm
                     value={formData.planContent || undefined}
@@ -792,6 +1366,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                 )}
                 {activeTab === 6 && (
                   <ScheduleCheckpointsForm
+                    projectStartDate={formData.projectStartDate}
+                    projectEndDate={formData.projectEndDate}
                     value={formData.scheduleCheckpoints || undefined}
                     onChange={(next) => setFormData((p) => ({ ...p, scheduleCheckpoints: next }))}
                   />
@@ -809,9 +1385,9 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
           <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center rounded-b-2xl">
             <button 
-              onClick={handleSaveDraft}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium text-sm shadow-sm"
+              onClick={() => void handleSaveDraft({ autoDownload: true })}
+              disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked || isPlanLocked}
+              className="flex items-center gap-2 px-6 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
             >
               <Save size={16} className={isSaving ? 'animate-pulse' : ''} />
               {isSaving ? '儲存中...' : '儲存草稿'}
@@ -821,33 +1397,62 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               {activeTab === 8 && (
                 <>
                   <button
-                    onClick={handleGeneratePdf}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm"
+                    onClick={() => setActiveTab((prev) => Math.max(1, prev - 1))}
+                    disabled={isSaving || isSubmitting || isPlanLocked}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                   >
-                    撰寫完成產製PDF檔
+                    上一步
                   </button>
                   <button
-                    onClick={handleSubmitToDrive}
-                    className="flex items-center gap-2 px-8 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm"
+                    onClick={() => void handleNext()}
+                    disabled={isSaving || isSubmitting || isPlanLocked}
+                    className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                   >
-                    確定送出
+                    下一步
+                    <ChevronRight size={16} />
                   </button>
                 </>
               )}
-              {activeTab !== 8 && (
+              {activeTab !== 8 && activeTab !== 9 && (
                 <button
-                  onClick={handleNext}
-                  className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm"
+                  onClick={() => void handleNext()}
+                  disabled={isSaving || isSubmitting || isPlanLocked}
+                  className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                 >
                   儲存並前往下一步
                   <ChevronRight size={16} />
                 </button>
               )}
+              {activeTab === 9 && (
+                <button
+                  onClick={() => void handleSubmitToDrive()}
+                  disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked || isPlanLocked}
+                  className="flex items-center gap-2 px-8 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  {isSubmitting ? "送出中..." : "確認完成送出計畫書"}
+                </button>
+              )}
             </div>
+          </div>
+
+          <div className="px-6 pb-4 text-center text-sm text-gray-500">
+            Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
           </div>
 
         </main>
       </div>
+
+      {statusToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-lg">
+          {statusToast}
+        </div>
+      )}
+
+      <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
+        <p>
+          Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+        </p>
+      </footer>
 
       <style dangerouslySetInnerHTML={{__html: `
         .form-input {
@@ -896,7 +1501,7 @@ function InputGroup({
         {label}
         {required && <span className="text-red-500 ml-1">*</span>}
       </label>
-      {hint && <div className="text-xs text-slate-500 font-light leading-relaxed">{hint}</div>}
+      {hint && <div className="text-xs text-slate-500 font-light leading-relaxed whitespace-pre-wrap break-words">{hint}</div>}
       {children}
     </div>
   );
@@ -906,72 +1511,188 @@ function InputGroup({
 function FileUploadUI({
   formData,
   setFormData,
+  projectName,
+  locked,
 }: {
   formData: ApplicationFormData;
   setFormData: React.Dispatch<React.SetStateAction<ApplicationFormData>>;
+  projectName: string;
+  locked: boolean;
 }) {
-  const [isDragging, setIsDragging] = useState(false);
+  type AttachmentKey = "a1" | "a2" | "a3" | "a4" | "a5";
   const [uploadingIds, setUploadingIds] = useState(() => new Set<string>());
+  const MAX_BYTES = 10 * 1024 * 1024;
+  const attachmentDescriptions: Record<1 | 2 | 3 | 4 | 5, string> = {
+    1: "附件一、委外或技術合作/引進合約書",
+    2: "附件二、聘任顧問及國內外專家背景說明/合約書/原任職單位同意函",
+    3: "附件三、與本案相關專利證書或申請中專利文件",
+    4: "附件四、其他參考資料(如：相關產品型錄或國外技轉公司背景資料等)",
+    5: "附件五、申請本計畫相關登記證件、切結書及其他相關附件",
+  };
 
   const uploadOne = async (file: File, localId: string) => {
+    if (locked) return false;
     const fd = new FormData();
-    fd.append('file', file);
-    fd.append('filename', file.name);
+    fd.append("file", file);
+    fd.append("filename", file.name);
+    fd.append("projectName", projectName || "未命名計畫");
 
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.ok) {
-      const err = data?.error || 'Upload failed';
-      const hint = data?.hint ? `（${data.hint}）` : '';
-      setFormData(prev => ({
+      const err = data?.error || "Upload failed";
+      const hint = data?.hint ? `（${data.hint}）` : "";
+      setFormData((prev) => ({
         ...prev,
-        files: prev.files.map(f => (f.id === localId ? { ...f, status: 'error', error: `${err}${hint}` } : f))
+        files: prev.files.map((f) => (f.id === localId ? { ...f, status: "error", error: `${err}${hint}` } : f)),
       }));
+      return false;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      files: prev.files.map((f) => (f.id === localId ? { ...f, status: "uploaded", drive: data.file } : f)),
+    }));
+    return true;
+  };
+
+  const getSlotFiles = (slot: 1 | 2 | 3 | 4 | 5) => formData.files.filter((f) => f.attachmentIndex === slot);
+
+  const toggleChecked = (slot: 1 | 2 | 3 | 4 | 5, checked: boolean) => {
+    const key = `a${slot}` as AttachmentKey;
+    setFormData((prev) => ({ ...prev, attachmentChecks: { ...prev.attachmentChecks, [key]: checked } }));
+  };
+
+  const setSlotFiles = async (slot: 1 | 2 | 3 | 4 | 5, files: FileList | null) => {
+    if (locked) return;
+    if (!files || files.length === 0) {
       return;
     }
-    setFormData(prev => ({
-      ...prev,
-      files: prev.files.map(f => (f.id === localId ? { ...f, status: 'uploaded', drive: data.file } : f))
-    }));
-  };
-
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
     const list = Array.from(files);
+    for (const file of list) {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (!isPdf || file.size > MAX_BYTES) {
+        const id = Math.random().toString(36).slice(2, 10);
+        const reason = !isPdf ? "檔案格式限定為 PDF。" : "單一檔案大小請勿超過 10MB。";
+        setFormData((prev) => ({
+          ...prev,
+          files: [
+            ...prev.files,
+            {
+              id,
+              name: file.name,
+              size: (file.size / 1024 / 1024).toFixed(2) + " MB",
+              status: "error",
+              drive: null,
+              error: reason,
+              attachmentIndex: slot,
+            },
+          ],
+        }));
+        continue;
+      }
 
-    const newItems: ApplicationFormData["files"] = list.map((file) => {
-      const id = Math.random().toString(36).slice(2, 10);
-      return {
-        id,
-        name: file.name,
-        size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        status: 'uploading',
-        drive: null,
-        error: null,
-      };
-    });
-
-    setFormData(prev => ({ ...prev, files: [...prev.files, ...newItems] }));
-    setUploadingIds(prev => new Set([...Array.from(prev), ...newItems.map(i => i.id)]));
-
-    await Promise.all(
-      newItems.map((item, idx) => uploadOne(list[idx], item.id))
-    );
-
-    setUploadingIds(prev => {
-      const next = new Set(prev);
-      newItems.forEach(i => next.delete(i.id));
-      return next;
-    });
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    void handleFiles(e.target.files);
-    e.target.value = '';
+      const localId = Math.random().toString(36).slice(2, 10);
+      setFormData((prev) => ({
+        ...prev,
+        files: [
+          ...prev.files,
+          {
+            id: localId,
+            name: file.name,
+            size: (file.size / 1024 / 1024).toFixed(2) + " MB",
+            status: "uploading",
+            drive: null,
+            error: null,
+            attachmentIndex: slot,
+          },
+        ],
+      }));
+      setUploadingIds((prev) => new Set([...Array.from(prev), localId]));
+      await uploadOne(file, localId);
+      setUploadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(localId);
+        return next;
+      });
+    }
   };
 
   const removeFile = (id: string) => {
-    setFormData(prev => ({ ...prev, files: prev.files.filter(f => f.id !== id) }));
+    if (locked) return;
+    setFormData((prev) => ({ ...prev, files: prev.files.filter((f) => f.id !== id) }));
+  };
+
+  const renderSlot = (slot: 1 | 2 | 3 | 4 | 5) => {
+    const key = `a${slot}` as AttachmentKey;
+    const checked = formData.attachmentChecks[key];
+    const slotFiles = getSlotFiles(slot);
+    const slotDesc = attachmentDescriptions[slot];
+
+    return (
+      <div key={slot} className="p-4 bg-white border border-gray-200 rounded-xl space-y-3">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={locked}
+            onChange={(e) => toggleChecked(slot, e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500"
+          />
+          <span className="text-sm font-medium text-slate-700">{slotDesc}</span>
+        </label>
+
+        <div className="relative w-full p-6 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/50">
+          <UploadCloud size={36} className="mb-2 text-slate-400" />
+          <p className="text-sm text-slate-700 font-medium">附件{slot}（PDF）上傳</p>
+          <p className="text-xs text-slate-400">檔案格式：PDF；大小限制：10MB</p>
+          <input
+            type="file"
+            accept="application/pdf"
+            multiple
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            disabled={locked}
+            onChange={(e) => {
+              void setSlotFiles(slot, e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+
+        {slotFiles.length > 0 && (
+          <div className="space-y-2 pt-1">
+            {slotFiles.map((slotFile) => (
+              <div key={slotFile.id} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 truncate">{slotFile.name}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {slotFile.size}
+                    {slotFile.status === "uploading" && <span className="ml-2 text-blue-600">上傳中...</span>}
+                    {slotFile.status === "uploaded" && slotFile.drive?.webViewLink && (
+                      <a className="ml-2 text-blue-600 hover:underline" href={slotFile.drive.webViewLink} target="_blank" rel="noreferrer">
+                        Drive 連結
+                      </a>
+                    )}
+                    {slotFile.status === "error" && <span className="ml-2 text-red-600">上傳失敗</span>}
+                  </p>
+                  {slotFile.status === "error" && slotFile.error && (
+                    <p className="text-[11px] text-red-600 mt-1">{String(slotFile.error)}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeFile(slotFile.id)}
+                  disabled={locked || (slotFile.status === "uploading" && uploadingIds.has(slotFile.id))}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -979,76 +1700,21 @@ function FileUploadUI({
       <div className="flex items-start gap-3 p-4 bg-amber-50 rounded-xl border border-amber-100">
         <AlertCircle size={20} className="text-amber-500 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800 font-light leading-relaxed">
-          <p className="font-medium mb-1">上傳提醒：</p>
+          <p className="font-medium mb-1">附件填寫提醒：</p>
           <ul className="list-disc pl-4 space-y-1">
-            <li>請依申請須知備妥相關文件，如：公司登記證明、無欠稅證明、會計師報表等。</li>
-            <li>若為聯合申請，請務必上傳<strong className="font-medium">聯合合作協議書</strong>。</li>
-            <li>檔案格式限定為 PDF, JPG, PNG，單一檔案大小請勿超過 10MB。</li>
+            <li>若確實要檢附該附件，請先勾選後再上傳 PDF。</li>
+            <li>每個附件檔案僅限 PDF，且單一檔案大小請勿超過 10MB。</li>
           </ul>
         </div>
       </div>
 
-      <div 
-        className={`relative w-full p-10 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all duration-200 bg-slate-50/50 ${
-          isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'
-        }`}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setIsDragging(false); void handleFiles(e.dataTransfer.files); }}
-      >
-        <UploadCloud size={48} className={`mb-4 ${isDragging ? 'text-blue-500' : 'text-slate-400'}`} />
-        <p className="text-slate-700 font-medium mb-1">拖曳檔案至此，或點擊選擇檔案</p>
-        <p className="text-xs text-slate-400 font-light">支援 PDF, DOCX, JPG, PNG 格式</p>
-        
-        <input 
-          type="file" 
-          multiple 
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-          onChange={handleFileSelect}
-        />
+      <div className="space-y-4">
+        {renderSlot(1)}
+        {renderSlot(2)}
+        {renderSlot(3)}
+        {renderSlot(4)}
+        {renderSlot(5)}
       </div>
-
-      {formData.files.length > 0 && (
-        <div className="mt-8">
-          <h4 className="text-sm font-medium text-slate-700 mb-4 tracking-wide">已上傳之附件清單</h4>
-          <div className="space-y-3">
-            {formData.files.map(file => (
-              <div key={file.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-slate-300 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center text-blue-500 border border-slate-100">
-                    <File size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">{file.name}</p>
-                    <p className="text-xs text-slate-400 font-light mt-0.5">
-                      {file.size}
-                      {file.status === 'uploading' && <span className="ml-2 text-blue-600">上傳中...</span>}
-                      {file.status === 'uploaded' && file.drive?.webViewLink && (
-                        <a className="ml-2 text-blue-600 hover:underline" href={file.drive.webViewLink} target="_blank" rel="noreferrer">
-                          Drive 連結
-                        </a>
-                      )}
-                      {file.status === 'error' && <span className="ml-2 text-red-600">上傳失敗</span>}
-                    </p>
-                    {file.status === 'error' && file.error && (
-                      <p className="text-[11px] text-red-600 mt-1">
-                        {String(file.error)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeFile(file.id)}
-                  disabled={uploadingIds.has(file.id)}
-                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

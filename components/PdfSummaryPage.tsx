@@ -1,0 +1,387 @@
+import path from "node:path";
+import { Document, Font, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
+
+export type PdfSummaryPageData = {
+  companyName: string;
+  /** 顯示用（建議民國年月日） */
+  foundingDate: string;
+  leaderName: string;
+  mainBusinessItems: string;
+  /** 例：（民國114年12月31日結案前可產出之效益） */
+  quantBenefitDeadlineLine?: string;
+  summary: string;
+  innovationFocus: string;
+  executionAdvantage: string;
+  qualitativeBenefits: string;
+  benefitValue: string;
+  benefitNewProduct: string;
+  benefitDerivedProduct: string;
+  benefitAdditionalRnD: string;
+  benefitInvestment: string;
+  benefitCostReduction: string;
+  benefitEmployment: string;
+  benefitNewCompany: string;
+  benefitInventionPatent: string;
+  benefitUtilityPatent: string;
+};
+
+let fontRegistered = false;
+const wrapCJK = (text: string) => text.split("").join("\u200B");
+
+function ensureFontRegistered() {
+  if (fontRegistered) return;
+  const regularPath = path.join(process.cwd(), "assets", "fonts", "NotoSansTC-Regular.ttf");
+  const boldPath = path.join(process.cwd(), "assets", "fonts", "NotoSansTC-Bold.otf");
+  Font.register({
+    family: "NotoSansTC",
+    fonts: [
+      { src: regularPath, fontWeight: "normal" },
+      { src: boldPath, fontWeight: "bold" },
+    ],
+  });
+  Font.registerHyphenationCallback((word) => Array.from(word));
+  fontRegistered = true;
+}
+
+const styles = StyleSheet.create({
+  page: {
+    fontFamily: "NotoSansTC",
+    fontSize: 10.5,
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    lineHeight: 1.32,
+  },
+  topSmallTitle: {
+    textAlign: "center",
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  title: {
+    textAlign: "center",
+    fontSize: 19,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  outer: {
+    border: "1 solid #000",
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 8,
+  },
+  companySectionTitle: {
+    fontWeight: "bold",
+    marginBottom: 3,
+  },
+  companyRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+    alignItems: "flex-start",
+  },
+  companyLabel: {
+    width: 138,
+  },
+  companyValue: {
+    flex: 1,
+  },
+  sectionBlock: {
+    marginTop: 6,
+  },
+  secTitle: {
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  subTitle: {
+    marginTop: 2,
+    marginLeft: 10,
+    fontWeight: "bold",
+  },
+  content: {
+    marginLeft: 24,
+    marginTop: 2,
+  },
+  quantWrap: {
+    marginTop: 2,
+    marginLeft: 10,
+    width: "100%",
+  },
+  quantSubTitle: {
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  quantTable: {
+    border: "1 solid #000",
+    width: "100%",
+  },
+  quantRow: {
+    flexDirection: "row",
+    borderBottom: "1 solid #000",
+    minHeight: 24,
+  },
+  quantRowLast: {
+    flexDirection: "row",
+    minHeight: 24,
+  },
+  quantCell: {
+    flex: 1,
+    borderRight: "1 solid #000",
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    justifyContent: "space-between",
+  },
+  quantCellLast: {
+    flex: 1,
+    paddingHorizontal: 3,
+    paddingVertical: 2,
+    justifyContent: "space-between",
+  },
+  quantLabel: {
+    fontSize: 8.8,
+  },
+  quantValue: {
+    textAlign: "right",
+    fontSize: 8.8,
+    fontWeight: "bold",
+  },
+  noteWrap: {
+    width: "100%",
+    marginTop: 4,
+    paddingBottom: 4,
+    marginLeft: 10,
+    paddingRight: 10,
+    flexDirection: "row",
+  },
+  noteMark: {
+    fontSize: 10,
+    marginRight: 2,
+  },
+  noteText: {
+    fontSize: 10,
+    flex: 1,
+    lineHeight: 1.3,
+    flexWrap: "wrap",
+  },
+  footerHelp: {
+    marginTop: 8,
+    width: "100%",
+    fontSize: 8.6,
+    lineHeight: 1.35,
+    flexWrap: "wrap" as const,
+  },
+});
+
+function n(v: string) {
+  const s = String(v || "").trim();
+  return s || "0";
+}
+
+function SummaryPage({ data }: { data: PdfSummaryPageData }) {
+  const quantRows = [
+    [
+      { label: "1. 增加產值（千元）", value: data.benefitValue },
+      { label: "2. 產出新產品或服務共（項）", value: data.benefitNewProduct },
+      { label: "3. 衍生商品或服務數共（項）", value: data.benefitDerivedProduct },
+    ],
+    [
+      { label: "4. 額外投入研發費用（千元）", value: data.benefitAdditionalRnD },
+      { label: "5. 促成投資額（千元）", value: data.benefitInvestment },
+      { label: "6. 降低成本（千元）", value: data.benefitCostReduction },
+    ],
+    [
+      { label: "7. 增加就業人數（人）", value: data.benefitEmployment },
+      { label: "8. 成立新公司（家）", value: data.benefitNewCompany },
+      { label: "9. 發明專利共（件）", value: data.benefitInventionPatent },
+    ],
+    [
+      { label: "10. 新型/新式樣專利共（件）", value: data.benefitUtilityPatent },
+      { label: "", value: "" },
+      { label: "", value: "" },
+    ],
+  ];
+
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.topSmallTitle}>115年度基隆市政府地方產業創新研發推動計畫（地方型 SBIR）</Text>
+      <Text style={styles.title}>計畫書摘要表</Text>
+      <View style={styles.outer}>
+        <Text style={styles.companySectionTitle}>一、公司簡介</Text>
+        <View style={styles.companyRow}>
+          <Text style={styles.companyLabel}>（一）公司名稱：</Text>
+          <Text style={styles.companyValue}>{data.companyName}</Text>
+        </View>
+        <View style={styles.companyRow}>
+          <Text style={styles.companyLabel}>（二）設立日期：</Text>
+          <Text style={styles.companyValue}>{data.foundingDate}</Text>
+        </View>
+        <View style={styles.companyRow}>
+          <Text style={styles.companyLabel}>（三）負責人：</Text>
+          <Text style={styles.companyValue}>{data.leaderName}</Text>
+        </View>
+        <View style={styles.companyRow}>
+          <Text style={styles.companyLabel}>（四）主要營業項目：</Text>
+          <Text style={styles.companyValue}>{data.mainBusinessItems}</Text>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.secTitle}>二、計畫摘要（此摘要內容屬可公開部份）</Text>
+          <Text style={styles.subTitle}>（一）計畫內容摘要（110字以內）</Text>
+          <Text style={styles.content}>{data.summary}</Text>
+          <Text style={styles.subTitle}>（二）計畫創新重點（110字以內）</Text>
+          <Text style={styles.content}>{data.innovationFocus}</Text>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.secTitle}>三、執行優勢（請說明公司執行本計畫優勢為何？）</Text>
+          <Text style={styles.content}>{data.executionAdvantage}</Text>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.secTitle}>四、預期效益（結案三年內產出）</Text>
+          <View style={styles.quantWrap}>
+            <Text style={styles.quantSubTitle}>（一）量化效益</Text>
+            {data.quantBenefitDeadlineLine ? (
+              <Text style={{ marginLeft: 10, fontSize: 9.2, marginBottom: 2, lineHeight: 1.35, flexWrap: "wrap" }}>
+                {wrapCJK(data.quantBenefitDeadlineLine)}
+              </Text>
+            ) : null}
+            <View style={styles.quantTable}>
+              {quantRows.map((row, idx) => (
+                <View key={idx} style={idx === quantRows.length - 1 ? styles.quantRowLast : styles.quantRow}>
+                  {row.map((cell, ci) => (
+                    <View key={`${idx}-${ci}`} style={ci === row.length - 1 ? styles.quantCellLast : styles.quantCell}>
+                      <Text style={styles.quantLabel}>{cell.label}</Text>
+                      <Text style={styles.quantValue}>{cell.label ? n(cell.value) : ""}</Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <View style={styles.noteWrap}>
+              <Text style={styles.noteMark}>※</Text>
+              <Text style={styles.noteText}>
+                {wrapCJK(
+                  "增加產值(因本計畫產生之營業額)、額外投入研發費用(不含政府補助款與自籌款)、促成投資額(自行增資或吸引外在投資)、增加就業人數(需加保勞保，若其為計畫編列之待聘人員需聘用超過3個月)"
+                )}
+              </Text>
+            </View>
+            <Text style={styles.subTitle}>
+              {wrapCJK("（二）非量化效益（請以敘述性方式說明，例如對公司的影響等）")}
+            </Text>
+            <Text style={styles.content}>{data.qualitativeBenefits}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ width: "100%", marginTop: 8, flexDirection: "row", flexWrap: "wrap" }}>
+        <Text style={styles.footerHelp}>
+          {wrapCJK(
+            "填表說明：\n1. 本摘要得於政府相關網站上公開發佈。\n2. 請重點條列說明，並以1頁為原則。\n3. 本摘要所有格式不得刪減、調整。\n4. 量化效益應客觀評估，並作為本計畫驗收成果之參考，若無請填「0」。"
+          )}
+        </Text>
+      </View>
+    </Page>
+  );
+}
+
+export async function renderSummaryPageBuffer(data: PdfSummaryPageData) {
+  ensureFontRegistered();
+  const doc = (
+    <Document>
+      <SummaryPage data={data} />
+    </Document>
+  );
+  return await renderToBuffer(doc);
+}
+
+export type PdfTreeNodeData = {
+  name: string;
+  unit: string;
+  weight: string;
+  children?: PdfTreeNodeData[];
+};
+
+const TreeBranch = ({
+  node,
+  isRoot = true,
+  isFirst = false,
+  isLast = false,
+}: {
+  node: PdfTreeNodeData | null | undefined;
+  isRoot?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
+}) => {
+  if (!node) return null;
+  const hasChildren = node.children && node.children.length > 0;
+  const labelName = String(node.name || "").trim() || "未命名項目";
+  const labelWeight = node.weight || 0;
+  const labelUnit = String(node.unit || "").trim();
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+      {!isRoot && (
+        <View style={{ width: 24, flexDirection: "column" }}>
+          <View style={{ flex: 1, borderLeftWidth: isFirst ? 0 : 2, borderColor: "#333" }} />
+          <View style={{ width: 24, height: 2, backgroundColor: "#333" }} />
+          <View style={{ flex: 1, borderLeftWidth: isLast ? 0 : 2, borderColor: "#333" }} />
+        </View>
+      )}
+
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            width: 120,
+            marginVertical: 18,
+            padding: 10,
+            borderWidth: 1.5,
+            borderColor: "#444",
+            borderRadius: 6,
+            backgroundColor: "#fff",
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: "bold", marginBottom: 6, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: 10, color: "#555", lineHeight: 1.2 }}>
+            {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
+          </Text>
+        </View>
+
+        {hasChildren && (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <View style={{ width: 20, height: 2, backgroundColor: "#333" }} />
+            <View style={{ flexDirection: "column" }}>
+              {node.children!.map((child, index) => (
+                <TreeBranch
+                  key={`${index}-${child.name}-${child.weight}`}
+                  node={child}
+                  isRoot={false}
+                  isFirst={index === 0}
+                  isLast={index === node.children!.length - 1}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+function TreePage({ treeData }: { treeData: PdfTreeNodeData }) {
+  return (
+    <Page size="A4" orientation="portrait" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 16, paddingVertical: 12 }}>
+      <View style={{ padding: 20, flexDirection: "column" }}>
+        <TreeBranch node={treeData} isRoot={true} />
+      </View>
+    </Page>
+  );
+}
+
+export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
+  ensureFontRegistered();
+  const doc = (
+    <Document>
+      <TreePage treeData={treeData} />
+    </Document>
+  );
+  return await renderToBuffer(doc);
+}
+

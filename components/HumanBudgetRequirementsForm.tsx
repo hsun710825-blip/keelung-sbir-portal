@@ -1,6 +1,21 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import {
+  BUDGET_SUMMARY_TABLE_NOTE,
+  CONSUMABLES_TABLE_NOTE,
+  EQUIPMENT_USE_TABLE_NOTE,
+  HUMAN_TEAM_TABLE_NOTE,
+  PERSONNEL_FEE_TABLE_NOTE,
+} from "../lib/sbirAppendixNotes";
+
+function AppendixNote({ text }: { text: string }) {
+  return (
+    <div className="mt-4 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-4 whitespace-pre-wrap leading-relaxed">
+      {text}
+    </div>
+  );
+}
 
 // --- 共用小元件（沿用公司概況視覺風格） ---
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -98,7 +113,7 @@ export type HumanBudgetDraft = {
   govAllocPct: Record<string, string>;
   piProfile: typeof piProfileInit;
   piEducation: Array<{ school: string; time: string; degree: string; dept: string }>;
-  piExperience: Array<{ org: string; time: string; dept: string; title: string }>;
+  piExperience: Array<{ org: string; time: string; dept: string; title: string; timeStartYear?: string; timeStartMonth?: string; timeEndYear?: string; timeEndMonth?: string }>;
   piProjects: Array<{ org: string; time: string; name: string; task: string }>;
   team: TeamRow[];
   manpowerStats: ManpowerStatRow[];
@@ -122,12 +137,34 @@ const piProfileInit = {
   achievements: "",
 };
 
+type ExperienceRow = { org: string; time: string; dept: string; title: string; timeStartYear?: string; timeStartMonth?: string; timeEndYear?: string; timeEndMonth?: string };
+function buildExperienceTime(r: ExperienceRow, sy?: string, sm?: string, ey?: string, em?: string): string {
+  const a = sy ?? r.timeStartYear;
+  const b = sm ?? r.timeStartMonth;
+  const c = ey ?? r.timeEndYear;
+  const d = em ?? r.timeEndMonth;
+  if (a && b && c && d) return `${b}/${a}-${d}/${c}`;
+  return r.time || "";
+}
+function normalizeExperienceRow(row: ExperienceRow): ExperienceRow {
+  if (row.timeStartYear != null) return row;
+  const m = row.time.match(/^(\d+)\/(\d+)-(\d+)\/(\d+)$/);
+  if (m) return { ...row, timeStartMonth: m[1], timeStartYear: m[2], timeEndMonth: m[3], timeEndYear: m[4] };
+  return row;
+}
+
 export default function HumanBudgetRequirementsForm({
   companyName,
+  leaderName = "",
+  birthDate = "",
+  taxId = "",
   value,
   onChange,
 }: {
   companyName: string;
+  leaderName?: string;
+  birthDate?: string;
+  taxId?: string;
   value?: HumanBudgetDraft;
   onChange?: (next: HumanBudgetDraft) => void;
 }) {
@@ -148,7 +185,9 @@ export default function HumanBudgetRequirementsForm({
   const [piProfile, setPiProfile] = useState(piProfileInit);
 
   const [piEducation, setPiEducation] = useState([{ school: "", time: "", degree: "", dept: "" }]);
-  const [piExperience, setPiExperience] = useState([{ org: "", time: "", dept: "", title: "" }]);
+  const ROC_YEARS_80_115 = useMemo(() => Array.from({ length: 115 - 80 + 1 }, (_, i) => 80 + i), []);
+  const CONSUMABLE_UNITS = [{ value: "式", label: "式" }, { value: "組", label: "組" }, { value: "隻", label: "隻" }, { value: "個", label: "個" }, { value: "其他", label: "其他" }] as const;
+  const [piExperience, setPiExperience] = useState<ExperienceRow[]>([{ org: "", time: "", dept: "", title: "" }]);
   const [piProjects, setPiProjects] = useState([{ org: "", time: "", name: "", task: "" }]);
 
   const [team, setTeam] = useState<TeamRow[]>(
@@ -216,12 +255,13 @@ export default function HumanBudgetRequirementsForm({
     new: [{ name: "二、計畫新增設備", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
   });
 
+  const didInitFromValue = React.useRef(false);
   useEffect(() => {
-    if (!value) return;
+    if (!value || didInitFromValue.current) return;
     setGovAllocPct(value.govAllocPct);
     setPiProfile(value.piProfile);
     setPiEducation(value.piEducation);
-    setPiExperience(value.piExperience);
+    setPiExperience(value.piExperience.map(normalizeExperienceRow));
     setPiProjects(value.piProjects);
     setTeam(value.team);
     setManpowerStats(value.manpowerStats);
@@ -230,8 +270,19 @@ export default function HumanBudgetRequirementsForm({
     setConsultantCosts(value.consultantCosts);
     setConsumables(value.consumables);
     setEquipments(value.equipments);
+    didInitFromValue.current = true;
+  }, [value]);
+
+  /** 由封面/公司概況自動帶入：負責人、生日、申請人名稱（僅在該欄位為空時帶入） */
+  useEffect(() => {
+    setPiProfile((p) => ({
+      ...p,
+      name: p.name || leaderName || "",
+      applicant: p.applicant || companyName || "",
+      birth: p.birth || birthDate || "",
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [companyName, leaderName, birthDate]);
 
   useEffect(() => {
     if (!onChange) return;
@@ -404,7 +455,7 @@ export default function HumanBudgetRequirementsForm({
       if (key === "gov") return grandTotal > 0 ? fmtPct((grandGov / grandTotal) * 100) : "0.0";
       if (key === "self") return grandTotal > 0 ? fmtPct((grandSelf / grandTotal) * 100) : "0.0";
       if (key === "total") return "100.0";
-      return "100%";
+      return `${fmtPct(100)}`;
     }
 
     if (isSubtotalRow(row)) {
@@ -455,15 +506,28 @@ export default function HumanBudgetRequirementsForm({
         <div className="p-8">
           <section className="mb-12">
             <SectionTitle>一、計畫人員簡歷表</SectionTitle>
-            <div className="mb-6">
-              <Label>公司名稱</Label>
-              <Hint>由封面自動帶入（唯讀）。若封面公司名稱有誤，請回到第 1 章節修正。</Hint>
-              <input
-                className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
-                value={companyName}
-                readOnly
-                placeholder="（由封面自動帶入）"
-              />
+            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>公司名稱</Label>
+                <Hint>由封面自動帶入（唯讀）。若封面公司名稱有誤，請回到第 1 章節修正。</Hint>
+                <input
+                  className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
+                  value={companyName}
+                  readOnly
+                  placeholder="（由封面自動帶入）"
+                />
+              </div>
+              {taxId && (
+                <div>
+                  <Label>統一編號</Label>
+                  <Hint>由公司概況自動帶入（唯讀）。</Hint>
+                  <input
+                    className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-gray-50 text-gray-700"
+                    value={taxId}
+                    readOnly
+                  />
+                </div>
+              )}
             </div>
 
             <SubTitle>（一）計畫主持人資歷說明</SubTitle>
@@ -681,16 +745,67 @@ export default function HumanBudgetRequirementsForm({
                         />
                       </td>
                       <td className="p-2 border-r border-gray-200">
-                        <input
-                          className="w-full bg-transparent outline-none px-2 py-1 text-center"
-                          value={r.time}
-                          onChange={(e) => {
-                            const next = [...piExperience];
-                            next[idx] = { ...next[idx], time: e.target.value };
-                            setPiExperience(next);
-                          }}
-                          placeholder="YY/MM"
-                        />
+                        <div className="flex flex-wrap items-center gap-1 justify-center">
+                          <select
+                            className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
+                            value={r.timeStartYear ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = piExperience.map((x, i) => i === idx ? { ...x, timeStartYear: v, time: buildExperienceTime(x, v, x.timeStartMonth, x.timeEndYear, x.timeEndMonth) } : x);
+                              setPiExperience(next);
+                            }}
+                          >
+                            <option value="">年</option>
+                            {ROC_YEARS_80_115.map((y) => (
+                              <option key={y} value={String(y)}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">/</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
+                            value={r.timeStartMonth ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = piExperience.map((x, i) => i === idx ? { ...x, timeStartMonth: v, time: buildExperienceTime(x, x.timeStartYear, v, x.timeEndYear, x.timeEndMonth) } : x);
+                              setPiExperience(next);
+                            }}
+                          >
+                            <option value="">月</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <option key={m} value={String(m)}>{m}</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">~</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
+                            value={r.timeEndYear ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = piExperience.map((x, i) => i === idx ? { ...x, timeEndYear: v, time: buildExperienceTime(x, x.timeStartYear, x.timeStartMonth, v, x.timeEndMonth) } : x);
+                              setPiExperience(next);
+                            }}
+                          >
+                            <option value="">年</option>
+                            {ROC_YEARS_80_115.map((y) => (
+                              <option key={y} value={String(y)}>{y}</option>
+                            ))}
+                          </select>
+                          <span className="text-gray-400">/</span>
+                          <select
+                            className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
+                            value={r.timeEndMonth ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = piExperience.map((x, i) => i === idx ? { ...x, timeEndMonth: v, time: buildExperienceTime(x, x.timeStartYear, x.timeStartMonth, x.timeEndYear, v) } : x);
+                              setPiExperience(next);
+                            }}
+                          >
+                            <option value="">月</option>
+                            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                              <option key={m} value={String(m)}>{m}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td className="p-2 border-r border-gray-200">
                         <input
@@ -812,19 +927,28 @@ export default function HumanBudgetRequirementsForm({
 
             <SubTitle>（二）參與計畫研究發展人員資歷說明</SubTitle>
             <Hint>請將人員投入工作項目（A1/A2…）與「預定進度表/查核點」對齊，避免後續審查時不一致。</Hint>
+            <div className="mb-3">
+              <Label>公司名稱：</Label>
+              <input
+                readOnly
+                className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
+                value={companyName}
+              />
+            </div>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-16">編號</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">姓名</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">姓名（必填）</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-28">職稱</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">最高學歷（學校系所）</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">主要經歷（公司名稱/時間）</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">主要重要成就</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">本業年資</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">參與分項計畫及工作項目</th>
-                    <th className="px-4 py-3 border-b border-gray-200 w-24">投入月數</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -856,6 +980,19 @@ export default function HumanBudgetRequirementsForm({
                           />
                         </td>
                       ))}
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={team.length <= 1}
+                          onClick={() => {
+                            if (team.length <= 1) return;
+                            setTeam((prev) => prev.filter((_, i) => i !== idx).map((row, i) => ({ ...row, no: String(i + 1) })));
+                          }}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-gray-50 font-medium">
@@ -863,9 +1000,10 @@ export default function HumanBudgetRequirementsForm({
                     <td className="px-4 py-3 border-r border-gray-200 text-gray-500" colSpan={7}>
                       （可依需要新增列）
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">
                       {team.reduce((acc, r) => acc + (Number(r.months) || 0), 0).toFixed(1)}
                     </td>
+                    <td className="px-4 py-3 border-gray-200" />
                   </tr>
                 </tbody>
               </table>
@@ -893,10 +1031,11 @@ export default function HumanBudgetRequirementsForm({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
-              新增一列
+              + 新增列
             </button>
+            <AppendixNote text={HUMAN_TEAM_TABLE_NOTE} />
 
-            <SubTitle>（四）計畫人力統計（不含兼職顧問）</SubTitle>
+            <SubTitle>（三）計畫人力統計（不含兼職顧問）</SubTitle>
             <Hint>待聘人數建議控制在投入計畫人力的 30% 以內（依申請須知原則）。</Hint>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
@@ -911,7 +1050,8 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200">女性</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">平均年齡</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">平均年資</th>
-                    <th className="px-4 py-3 border-b border-gray-200">待聘人數</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200">待聘人數</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -931,7 +1071,7 @@ export default function HumanBudgetRequirementsForm({
                           ["toHire", "0"],
                         ] as const
                       ).map(([k, ph], cIdx) => (
-                        <td key={k} className={`p-2 ${cIdx < 9 ? "border-r border-gray-200" : ""}`}>
+                        <td key={k} className={`p-2 ${cIdx < 10 ? "border-r border-gray-200" : ""}`}>
                           <input
                             className={`w-full bg-transparent outline-none px-2 py-1 ${k !== "company" ? "text-right" : ""}`}
                             value={r[k]}
@@ -944,6 +1084,16 @@ export default function HumanBudgetRequirementsForm({
                           />
                         </td>
                       ))}
+                      <td className="p-2 border-gray-200">
+                        <button
+                          type="button"
+                          disabled={manpowerStats.length <= 1}
+                          onClick={() => manpowerStats.length > 1 && setManpowerStats((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-gray-50 font-medium">
@@ -956,7 +1106,8 @@ export default function HumanBudgetRequirementsForm({
                     <td className="px-4 py-3 border-r border-gray-200 text-right">{manpowerStats.reduce((a, r) => a + (Number(r.female) || 0), 0)}</td>
                     <td className="px-4 py-3 border-r border-gray-200 text-right text-gray-500">—</td>
                     <td className="px-4 py-3 border-r border-gray-200 text-right text-gray-500">—</td>
-                    <td className="px-4 py-3 text-right">{manpowerStats.reduce((a, r) => a + (Number(r.toHire) || 0), 0)}</td>
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">{manpowerStats.reduce((a, r) => a + (Number(r.toHire) || 0), 0)}</td>
+                    <td className="px-4 py-3 border-gray-200" />
                   </tr>
                 </tbody>
               </table>
@@ -974,7 +1125,7 @@ export default function HumanBudgetRequirementsForm({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
               </svg>
-              新增一列
+              + 新增列
             </button>
           </section>
 
@@ -1072,6 +1223,7 @@ export default function HumanBudgetRequirementsForm({
                 </tbody>
               </table>
             </div>
+            <AppendixNote text={BUDGET_SUMMARY_TABLE_NOTE} />
 
             <SubTitle>（二）人事費明細（計畫人員 / 顧問）</SubTitle>
             <Hint>只需填「平均月薪（A）」與「人月數（B）」，系統會自動計算（A×B）與小計/合計。</Hint>
@@ -1082,12 +1234,13 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-56">姓名</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">平均月薪（A）</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">人月數（B）</th>
-                    <th className="px-4 py-3 border-b border-gray-200">全程費用概算（A×B）</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200">全程費用概算（A×B）</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr className="bg-gray-50 font-medium">
-                    <td className="px-4 py-3 border-r border-gray-200 text-left" colSpan={4}>
+                    <td className="px-4 py-3 border-r border-gray-200 text-left" colSpan={5}>
                       一、計畫人員
                     </td>
                   </tr>
@@ -1116,6 +1269,16 @@ export default function HumanBudgetRequirementsForm({
                         </td>
                         );
                       })}
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={personnelCosts.length <= 1}
+                          onClick={() => personnelCosts.length > 1 && setPersonnelCosts((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1131,6 +1294,7 @@ export default function HumanBudgetRequirementsForm({
                     </td>
                     <td className="p-2 border-r border-gray-200" />
                     <td className="p-2 border-r border-gray-200" />
+                    <td className="p-2 border-r border-gray-200" />
                     <td className="p-2" />
                   </tr>
                   <tr className="bg-gray-50 font-medium">
@@ -1139,13 +1303,14 @@ export default function HumanBudgetRequirementsForm({
                     <td className="px-4 py-3 border-r border-gray-200 text-right">
                       {personnelManMonthsSum.toFixed(1)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">
                       {Math.round(personnelCostSum).toLocaleString()}
                     </td>
+                    <td className="px-4 py-3 border-gray-200" />
                   </tr>
 
                   <tr className="bg-gray-50 font-medium">
-                    <td className="px-4 py-3 border-r border-gray-200 text-left" colSpan={4}>
+                    <td className="px-4 py-3 border-r border-gray-200 text-left" colSpan={5}>
                       二、顧問
                     </td>
                   </tr>
@@ -1174,6 +1339,16 @@ export default function HumanBudgetRequirementsForm({
                         </td>
                         );
                       })}
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={consultantCosts.length <= 1}
+                          onClick={() => consultantCosts.length > 1 && setConsultantCosts((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1189,6 +1364,7 @@ export default function HumanBudgetRequirementsForm({
                     </td>
                     <td className="p-2 border-r border-gray-200" />
                     <td className="p-2 border-r border-gray-200" />
+                    <td className="p-2 border-r border-gray-200" />
                     <td className="p-2" />
                   </tr>
                   <tr className="bg-gray-50 font-medium">
@@ -1197,13 +1373,15 @@ export default function HumanBudgetRequirementsForm({
                     <td className="px-4 py-3 border-r border-gray-200 text-right">
                       {consultantManMonthsSum.toFixed(1)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">
                       {Math.round(consultantCostSum).toLocaleString()}
                     </td>
+                    <td className="px-4 py-3 border-gray-200" />
                   </tr>
                 </tbody>
               </table>
             </div>
+            <AppendixNote text={PERSONNEL_FEE_TABLE_NOTE} />
 
             <SubTitle>（三）消耗性器材及原材料費</SubTitle>
             <Hint>只需填「數量」與「單價」，系統會自動計算全程費用概算與合計。</Hint>
@@ -1215,7 +1393,8 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">單位</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-28">預估數量</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-28">預估單價</th>
-                    <th className="px-4 py-3 border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1223,27 +1402,90 @@ export default function HumanBudgetRequirementsForm({
                     const computedTotal = fmtInt(consumablesComputed[idx]?.totalNum ?? 0);
                     return (
                     <tr key={idx} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                      {(["item", "unit", "qty", "price", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "total";
-                        return (
-                        <td key={k} className={`p-2 ${cIdx < 4 ? "border-r border-gray-200" : ""}`}>
-                          <input
-                            className={`w-full bg-transparent outline-none px-2 py-1 ${k === "item" ? "text-left" : "text-right"} ${
-                              isComputed ? "bg-gray-100/60 cursor-not-allowed text-gray-700" : ""
-                            }`}
-                            value={isComputed ? computedTotal : r[k]}
-                            readOnly={isComputed}
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-left"
+                          value={r.item}
+                          onChange={(e) => {
+                            const next = [...consumables];
+                            next[idx] = { ...next[idx], item: e.target.value };
+                            setConsumables(next);
+                          }}
+                          placeholder="例如：感測器/材料/雲端資源"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <div className="flex items-center gap-1">
+                          <select
+                            className="border border-gray-200 rounded bg-white text-sm py-1 outline-none flex-1"
+                            value={CONSUMABLE_UNITS.some((u) => u.value === r.unit) ? r.unit : (r.unit ? "其他" : "")}
                             onChange={(e) => {
-                              if (isComputed) return;
+                              const v = e.target.value;
                               const next = [...consumables];
-                              next[idx] = { ...next[idx], [k]: e.target.value } as ConsumableRow;
+                              next[idx] = { ...next[idx], unit: v };
                               setConsumables(next);
                             }}
-                            placeholder={k === "item" ? "例如：感測器/材料/雲端資源" : "0"}
-                          />
-                        </td>
-                        );
-                      })}
+                          >
+                            <option value="">請選擇</option>
+                            {CONSUMABLE_UNITS.map((u) => (
+                              <option key={u.value} value={u.value}>{u.label}</option>
+                            ))}
+                          </select>
+                          {(r.unit === "其他" || (r.unit && !CONSUMABLE_UNITS.some((u) => u.value === r.unit))) && (
+                            <input
+                              className="w-20 border border-gray-200 rounded px-1 py-1 text-sm outline-none"
+                              placeholder="請填單位"
+                              value={r.unit && r.unit !== "其他" ? r.unit : ""}
+                              onChange={(e) => {
+                                const next = [...consumables];
+                                next[idx] = { ...next[idx], unit: e.target.value.trim() || "其他" };
+                                setConsumables(next);
+                              }}
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                          value={r.qty}
+                          onChange={(e) => {
+                            const next = [...consumables];
+                            next[idx] = { ...next[idx], qty: e.target.value };
+                            setConsumables(next);
+                          }}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                          value={r.price}
+                          onChange={(e) => {
+                            const next = [...consumables];
+                            next[idx] = { ...next[idx], price: e.target.value };
+                            setConsumables(next);
+                          }}
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-gray-100/60 cursor-not-allowed text-gray-700 outline-none px-2 py-1 text-right"
+                          value={computedTotal}
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={consumables.length <= 1}
+                          onClick={() => consumables.length > 1 && setConsumables((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1260,13 +1502,15 @@ export default function HumanBudgetRequirementsForm({
                     <td className="p-2 border-r border-gray-200" />
                     <td className="p-2 border-r border-gray-200" />
                     <td className="p-2 border-r border-gray-200" />
-                    <td className="p-2 text-right font-medium">
+                    <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(consumablesSum).toLocaleString()}
                     </td>
+                    <td className="p-2" />
                   </tr>
                 </tbody>
               </table>
             </div>
+            <AppendixNote text={CONSUMABLES_TABLE_NOTE} />
 
             <SubTitle>（四）研發設備使用費</SubTitle>
             <Hint>已有設備：需填剩餘使用年限與投入月數；新增設備：填購置金額與投入月數；系統會自動計算月使用費與全程費用概算。</Hint>
@@ -1281,7 +1525,8 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">月使用費</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
-                    <th className="px-4 py-3 border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1314,6 +1559,19 @@ export default function HumanBudgetRequirementsForm({
                         </td>
                         );
                       })}
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={equipments.existing.length <= 1}
+                          onClick={() =>
+                            equipments.existing.length > 1 &&
+                            setEquipments((p) => ({ ...p, existing: p.existing.filter((_, i) => i !== idx) }))
+                          }
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1333,9 +1591,10 @@ export default function HumanBudgetRequirementsForm({
                       </button>
                     </td>
                     <td className="p-2 border-r border-gray-200" colSpan={6} />
-                    <td className="p-2 text-right font-medium">
+                    <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(equipmentsExistingSum).toLocaleString()}
                     </td>
+                    <td className="p-2" />
                   </tr>
                 </tbody>
               </table>
@@ -1352,7 +1611,8 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-32">（可填）剩餘使用年限</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">月使用費</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
-                    <th className="px-4 py-3 border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-24">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1385,6 +1645,19 @@ export default function HumanBudgetRequirementsForm({
                         </td>
                         );
                       })}
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={equipments.new.length <= 1}
+                          onClick={() =>
+                            equipments.new.length > 1 &&
+                            setEquipments((p) => ({ ...p, new: p.new.filter((_, i) => i !== idx) }))
+                          }
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
                     </tr>
                     );
                   })}
@@ -1404,13 +1677,15 @@ export default function HumanBudgetRequirementsForm({
                       </button>
                     </td>
                     <td className="p-2 border-r border-gray-200" colSpan={6} />
-                    <td className="p-2 text-right font-medium">
+                    <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(equipmentsNewSum).toLocaleString()}
                     </td>
+                    <td className="p-2" />
                   </tr>
                 </tbody>
               </table>
             </div>
+            <AppendixNote text={EQUIPMENT_USE_TABLE_NOTE} />
           </section>
         </div>
       </div>

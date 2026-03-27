@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { checkTaiwanNationalId, MOBILE_TW_PATTERN } from "@/lib/taiwanId";
+import { hasLeadingZip } from "@/lib/twPostalMap";
 
 // --- 共用小元件 ---
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -17,7 +19,7 @@ const SubTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 const Hint = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-xs text-gray-500 leading-relaxed -mt-2 mb-3">
+  <div className="text-xs text-gray-500 leading-relaxed -mt-2 mb-3 whitespace-pre-wrap break-words max-w-full">
     {children}
   </div>
 );
@@ -72,7 +74,7 @@ function ImageDropzone({
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const next = [...value];
-    const accepted = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const accepted = Array.from(files).filter((f) => ["image/png", "image/jpeg", "image/jpg"].includes((f.type || "").toLowerCase()));
     const dataUrls = await Promise.all(
       accepted.map(async (f) => {
         try {
@@ -121,7 +123,7 @@ function ImageDropzone({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/jpg"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -164,14 +166,20 @@ export default function CompanyProfileForm({
   onChange,
 }: {
   embedded?: boolean;
-  shared?: { companyName: string; establishDate: string; representative: string };
-  onSharedChange?: (next: { companyName: string; establishDate: string; representative: string }) => void;
+  shared?: { companyName: string; establishDate: string; representative: string; mainBusiness: string };
+  onSharedChange?: (next: {
+    companyName: string;
+    establishDate: string;
+    representative: string;
+    mainBusiness: string;
+  }) => void;
   value?: {
     formData: {
       companyName: string;
       establishDate: string;
       taxId: string;
       phone: string;
+      mobilePhone: string;
       fax: string;
       representative: string;
       idNumber: string;
@@ -194,9 +202,9 @@ export default function CompanyProfileForm({
     opYears: string[];
     opData: Array<{
       product: string;
-      y1: { volume: string; sales: string; share: string };
-      y2: { volume: string; sales: string; share: string };
-      y3: { volume: string; sales: string; share: string };
+      y1: { volume: string; volumeUnit?: string; volumeUnitOther?: string; sales: string; share: string };
+      y2: { volume: string; volumeUnit?: string; volumeUnitOther?: string; sales: string; share: string };
+      y3: { volume: string; volumeUnit?: string; volumeUnitOther?: string; sales: string; share: string };
     }>;
     pastProjects: Array<{
       date: string;
@@ -225,7 +233,7 @@ export default function CompanyProfileForm({
   // 基礎表單狀態
   const [formData, setFormData] = useState({
     companyName: "", establishDate: "",
-    taxId: "", phone: "", fax: "",
+    taxId: "", phone: "", mobilePhone: "", fax: "",
     representative: "", idNumber: "", birthDate: "",
     capital: "", mainBusiness: "",
     stockStatus: "", lastYearRevenue: "", employeeCount: "",
@@ -238,27 +246,34 @@ export default function CompanyProfileForm({
     // 二、(一)(二)
     targetAudience: "",
     salesChannels: "",
+    // (三) 經營狀況表下方：年度研發費用(B) 三年度
+    rndExpenseY1: "",
+    rndExpenseY2: "",
+    rndExpenseY3: "",
   });
 
-  // (二) 主要股東狀態 (預設5筆)
-  const [shareholders, setShareholders] = useState(
-    Array(5).fill({ name: "", shares: "", ratio: "" })
+  const [idNumberError, setIdNumberError] = useState<string | null>(null);
+
+  // (二) 主要股東狀態 (預設5筆，每筆獨立物件避免共用參考)
+  const [shareholders, setShareholders] = useState(() =>
+    Array.from({ length: 5 }, () => ({ name: "", shares: "", ratio: "" }))
   );
 
-  // 經營狀況年份狀態
-  const [opYears, setOpYears] = useState(["110", "111", "112"]);
+  /** 表頭年度固定：近年至遠 114、113、112 */
+  const OP_YEARS_FIXED = ["114", "113", "112"] as const;
   
-  // 經營狀況資料狀態 (預設3列產品)
+  // 經營狀況資料狀態 (預設3列產品)；產量單位：萬、隻、組、其他
   type YearKey = "y1" | "y2" | "y3";
-  type YearData = { volume: string; sales: string; share: string };
+  type YearData = { volume: string; volumeUnit: string; volumeUnitOther?: string; sales: string; share: string };
   type OpRow = { product: string } & Record<YearKey, YearData>;
+  const VOLUME_UNITS = [{ value: "萬", label: "萬" }, { value: "隻", label: "隻" }, { value: "組", label: "組" }, { value: "其他", label: "其他" }];
 
   const [opData, setOpData] = useState<OpRow[]>(
     Array.from({ length: 3 }).map(() => ({
       product: "",
-      y1: { volume: "", sales: "", share: "" },
-      y2: { volume: "", sales: "", share: "" },
-      y3: { volume: "", sales: "", share: "" },
+      y1: { volume: "", volumeUnit: "萬", volumeUnitOther: "", sales: "", share: "" },
+      y2: { volume: "", volumeUnit: "萬", volumeUnitOther: "", sales: "", share: "" },
+      y3: { volume: "", volumeUnit: "萬", volumeUnitOther: "", sales: "", share: "" },
     }))
   );
 
@@ -278,18 +293,44 @@ export default function CompanyProfileForm({
     salesChannels: [],
   });
 
-  // Initialize from controlled value (when embedded in app/page.tsx)
+  // Initialize from controlled value (when embedded in app/page.tsx).
+  // Draft is loaded async; initialize only once when value first appears.
+  const didInitFromValue = useRef(false);
   useEffect(() => {
-    if (!value) return;
-    setFormData(value.formData);
+    if (!value || didInitFromValue.current) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFormData((prev) => ({
+      ...prev,
+      ...value.formData,
+      mobilePhone: (value.formData as typeof prev & { mobilePhone?: string }).mobilePhone ?? prev.mobilePhone,
+      rndExpenseY1: (value.formData as typeof prev & { rndExpenseY1?: string }).rndExpenseY1 ?? prev.rndExpenseY1,
+      rndExpenseY2: (value.formData as typeof prev & { rndExpenseY2?: string }).rndExpenseY2 ?? prev.rndExpenseY2,
+      rndExpenseY3: (value.formData as typeof prev & { rndExpenseY3?: string }).rndExpenseY3 ?? prev.rndExpenseY3,
+    }));
     setShareholders(value.shareholders);
-    setOpYears(value.opYears);
-    setOpData(value.opData as unknown as OpRow[]);
+    setOpData((value.opData as unknown as OpRow[]).map(row => ({
+      ...row,
+      y1: { volume: row.y1?.volume ?? "", volumeUnit: row.y1?.volumeUnit ?? "萬", volumeUnitOther: row.y1?.volumeUnitOther ?? "", sales: row.y1?.sales ?? "", share: row.y1?.share ?? "" },
+      y2: { volume: row.y2?.volume ?? "", volumeUnit: row.y2?.volumeUnit ?? "萬", volumeUnitOther: row.y2?.volumeUnitOther ?? "", sales: row.y2?.sales ?? "", share: row.y2?.share ?? "" },
+      y3: { volume: row.y3?.volume ?? "", volumeUnit: row.y3?.volumeUnit ?? "萬", volumeUnitOther: row.y3?.volumeUnitOther ?? "", sales: row.y3?.sales ?? "", share: row.y3?.share ?? "" },
+    })));
     setPastProjects(value.pastProjects);
     setFutureProjects(value.futureProjects);
     setImages(value.images);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    didInitFromValue.current = true;
+  }, [value]);
+
+  // 與封面／摘要表欄位同步（唯讀顯示時仍寫入 companyProfile 草稿結構）
+  useEffect(() => {
+    if (!shared) return;
+    setFormData((prev) => ({
+      ...prev,
+      companyName: shared.companyName,
+      establishDate: shared.establishDate,
+      representative: shared.representative,
+      mainBusiness: shared.mainBusiness,
+    }));
+  }, [shared?.companyName, shared?.establishDate, shared?.representative, shared?.mainBusiness]);
 
   // Emit changes upward for draft/PDF integration.
   useEffect(() => {
@@ -297,18 +338,36 @@ export default function CompanyProfileForm({
     onChange({
       formData,
       shareholders,
-      opYears,
+      opYears: [...OP_YEARS_FIXED],
       opData: opData as unknown as NonNullable<typeof value>["opData"],
       pastProjects,
       futureProjects,
       images,
     });
-  }, [formData, shareholders, opYears, opData, pastProjects, futureProjects, images, onChange]);
+  }, [formData, shareholders, opData, pastProjects, futureProjects, images, onChange]);
 
   // sharedOrLocal removed (unused)
 
+  const tryPrefixPostal = async (field: "registeredAddress" | "mailingAddress", rawAddr: string) => {
+    const raw = String(rawAddr || "").trim();
+    if (!raw || hasLeadingZip(raw)) return;
+    try {
+      const res = await fetch(`/api/postal?q=${encodeURIComponent(raw)}`);
+      const data = (await res.json()) as { zip?: string | null };
+      if (data?.zip) {
+        setFormData((prev) => ({
+          ...prev,
+          [field]: `${data.zip} ${raw}`.trim(),
+        }));
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    if (name === "idNumber") setIdNumberError(null);
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -332,39 +391,65 @@ export default function CompanyProfileForm({
             
             {/* (一) 公司簡介 */}
             <SubTitle>(一) 公司簡介</SubTitle>
-            <Hint>請依公司登記與實際營運填寫；若涉及個資/敏感資訊，請以必要且可驗證為原則。</Hint>
+            <Hint>
+              {`註:1.員工人數請與加勞保人數(最近一期「勞保繳費清單之投保人數資料」相符。2.請填妥通訊地址，該址即為日後本府公文寄送地址。`}
+            </Hint>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 bg-gray-50/50 p-6 rounded-lg border border-gray-100">
               <div>
                 <Label>公司名稱</Label>
-                <Input
-                  name="companyName"
-                  value={shared ? shared.companyName : formData.companyName}
-                  onChange={(e) => {
-                    handleInputChange(e);
-                    if (shared && onSharedChange) onSharedChange({ ...shared, companyName: e.target.value });
-                  }}
-                />
+                {shared ? (
+                  <input
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
+                    value={shared.companyName}
+                  />
+                ) : (
+                  <Input
+                    name="companyName"
+                    value={formData.companyName}
+                    onChange={handleInputChange}
+                  />
+                )}
               </div>
               <div>
                 <Label>設立日期</Label>
-                <Input
-                  type="date"
-                  name="establishDate"
-                  value={shared ? shared.establishDate : formData.establishDate}
-                  onChange={(e) => {
-                    handleInputChange(e);
-                    if (shared && onSharedChange) onSharedChange({ ...shared, establishDate: e.target.value });
-                  }}
-                />
+                {shared ? (
+                  <input
+                    type="date"
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
+                    value={shared.establishDate}
+                  />
+                ) : (
+                  <Input type="date" name="establishDate" value={formData.establishDate} onChange={handleInputChange} />
+                )}
               </div>
               <div>
                 <Label>統一編號</Label>
                 <Input name="taxId" value={formData.taxId} onChange={handleInputChange} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:col-span-2">
                 <div>
                   <Label>聯絡電話含分機</Label>
                   <Input name="phone" value={formData.phone} onChange={handleInputChange} />
+                </div>
+                <div>
+                  <Label>聯絡電話（手機）</Label>
+                  <Input
+                    name="mobilePhone"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="09xxxxxxxx"
+                    maxLength={10}
+                    value={formData.mobilePhone}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                      setFormData((p) => ({ ...p, mobilePhone: v }));
+                    }}
+                  />
+                  {formData.mobilePhone.length > 0 && !MOBILE_TW_PATTERN.test(formData.mobilePhone) ? (
+                    <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">手機須為 09 開頭之 10 碼數字。</p>
+                  ) : null}
                 </div>
                 <div>
                   <Label>傳真號碼</Label>
@@ -373,19 +458,40 @@ export default function CompanyProfileForm({
               </div>
               <div>
                 <Label>負責人</Label>
-                <Input
-                  name="representative"
-                  value={shared ? shared.representative : formData.representative}
-                  onChange={(e) => {
-                    handleInputChange(e);
-                    if (shared && onSharedChange) onSharedChange({ ...shared, representative: e.target.value });
-                  }}
-                />
+                {shared ? (
+                  <input
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
+                    value={shared.representative}
+                  />
+                ) : (
+                  <Input name="representative" value={formData.representative} onChange={handleInputChange} />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>身分證字號</Label>
-                  <Input name="idNumber" value={formData.idNumber} onChange={handleInputChange} />
+                  <Input
+                    name="idNumber"
+                    value={formData.idNumber}
+                    onChange={handleInputChange}
+                    onBlur={(e) => {
+                      const id = e.target.value.trim();
+                      if (!id) {
+                        setIdNumberError(null);
+                        return;
+                      }
+                      setIdNumberError(checkTaiwanNationalId(id) ? null : "身分證字號格式或檢核碼不正確。");
+                    }}
+                    className={
+                      idNumberError
+                        ? "w-full border border-red-400 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+                        : undefined
+                    }
+                  />
+                  {idNumberError ? (
+                    <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap break-words">{idNumberError}</p>
+                  ) : null}
                 </div>
                 <div>
                   <Label>出生年月日</Label>
@@ -398,7 +504,15 @@ export default function CompanyProfileForm({
               </div>
               <div>
                 <Label>主要營業項目</Label>
-                <Input name="mainBusiness" value={formData.mainBusiness} onChange={handleInputChange} />
+                {shared ? (
+                  <input
+                    readOnly
+                    className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
+                    value={shared.mainBusiness}
+                  />
+                ) : (
+                  <Input name="mainBusiness" value={formData.mainBusiness} onChange={handleInputChange} />
+                )}
               </div>
               
               <div className="md:col-span-2">
@@ -431,11 +545,24 @@ export default function CompanyProfileForm({
 
               <div className="md:col-span-2">
                 <Label>公司登記地址</Label>
-                <Input name="registeredAddress" value={formData.registeredAddress} onChange={handleInputChange} />
+                <Input
+                  name="registeredAddress"
+                  value={formData.registeredAddress}
+                  onChange={handleInputChange}
+                  onBlur={(e) => void tryPrefixPostal("registeredAddress", e.target.value)}
+                />
+                <p className="text-[11px] text-gray-400 mt-1 whitespace-pre-wrap break-words">
+                  離開欄位時，系統將依地址關鍵字嘗試於字首補上 6 碼郵遞區號（若已有郵遞區號則略過）。
+                </p>
               </div>
               <div className="md:col-span-2">
                 <Label>通訊地址</Label>
-                <Input name="mailingAddress" value={formData.mailingAddress} onChange={handleInputChange} />
+                <Input
+                  name="mailingAddress"
+                  value={formData.mailingAddress}
+                  onChange={handleInputChange}
+                  onBlur={(e) => void tryPrefixPostal("mailingAddress", e.target.value)}
+                />
               </div>
 
               <div className="md:col-span-2 border-t border-gray-200 pt-6 mt-2">
@@ -489,22 +616,19 @@ export default function CompanyProfileForm({
                     <tr key={idx} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2 border-r border-gray-200">
                         <input type="text" className="w-full bg-transparent outline-none px-2 py-1" placeholder={`股東 ${idx + 1}`} value={row.name} onChange={(e) => {
-                          const newRows = [...shareholders];
-                          newRows[idx].name = e.target.value;
+                          const newRows = shareholders.map((r, i) => i === idx ? { ...r, name: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
                       </td>
                       <td className="px-4 py-2 border-r border-gray-200">
                         <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0" value={row.shares} onChange={(e) => {
-                          const newRows = [...shareholders];
-                          newRows[idx].shares = e.target.value;
+                          const newRows = shareholders.map((r, i) => i === idx ? { ...r, shares: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
                       </td>
                       <td className="px-4 py-2">
                         <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0.00" value={row.ratio} onChange={(e) => {
-                          const newRows = [...shareholders];
-                          newRows[idx].ratio = e.target.value;
+                          const newRows = shareholders.map((r, i) => i === idx ? { ...r, ratio: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
                       </td>
@@ -574,20 +698,21 @@ export default function CompanyProfileForm({
               />
             </div>
 
-            <SubTitle>（三）經營狀況：(請說明公司主要經營之產品項目、銷售業績及市場佔有率。) 金額單位：千元</SubTitle>
+            <SubTitle>（三）經營狀況：(請說明公司主要經營之產品項目、銷售業績及市場佔有率。)</SubTitle>
             <Hint>請填近三年資料，年度由近到遠；若市場占有率為估算，請於備註說明估算依據。</Hint>
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <div className="relative overflow-x-auto border border-gray-200 rounded-lg">
+              <div className="absolute top-1 right-2 text-xs text-gray-600 font-medium z-10 bg-gray-50/95 px-2 py-0.5 rounded">
+                金額單位：千元
+              </div>
               <table className="w-full text-sm text-center text-gray-600 min-w-[900px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
                   <tr>
                     <th rowSpan={2} className="px-4 py-3 border-r border-b border-gray-200 w-1/4">
                       申請人主要產品/服務項目
                     </th>
-                    {[0, 1, 2].map((idx) => (
-                      <th key={idx} colSpan={3} className="px-4 py-3 border-b border-r border-gray-200 last:border-r-0">
-                        民國 <input type="text" className="w-12 text-center border-b border-gray-400 bg-transparent focus:outline-none focus:border-gray-600" value={opYears[idx]} onChange={(e) => {
-                          const newY = [...opYears]; newY[idx] = e.target.value; setOpYears(newY);
-                        }} /> 年
+                    {OP_YEARS_FIXED.map((y) => (
+                      <th key={y} colSpan={3} className="px-4 py-3 border-b border-r border-gray-200 last:border-r-0">
+                        民國 {y} 年
                       </th>
                     ))}
                   </tr>
@@ -595,7 +720,7 @@ export default function CompanyProfileForm({
                     {[0, 1, 2].map((idx) => (
                       <React.Fragment key={`sub-${idx}`}>
                         <th className="px-2 py-2 border-r border-b border-gray-200 font-medium">產量</th>
-                        <th className="px-2 py-2 border-r border-b border-gray-200 font-medium">銷售額</th>
+                        <th className="px-2 py-2 border-r border-b border-gray-200 font-medium">銷售額(仟元)</th>
                         <th className="px-2 py-2 border-r border-b border-gray-200 last:border-r-0 font-medium">市場占有率</th>
                       </React.Fragment>
                     ))}
@@ -606,37 +731,55 @@ export default function CompanyProfileForm({
                     <tr key={rIdx} className="bg-white border-b border-gray-100">
                       <td className="p-2 border-r border-gray-200">
                         <textarea className="w-full text-sm outline-none resize-none bg-transparent" rows={3} placeholder="產品名稱..." value={row.product} onChange={(e) => {
-                          const newD = [...opData]; newD[rIdx].product = e.target.value; setOpData(newD);
+                          const newD = opData.map((r, i) => i === rIdx ? { ...r, product: e.target.value } : r);
+                          setOpData(newD);
                         }} />
                       </td>
                       {(["y1", "y2", "y3"] as const).map((yearKey) => (
                         <React.Fragment key={`${rIdx}-${yearKey}`}>
                           <td className="p-2 border-r border-gray-200">
-                            <input
-                              type="text"
-                              className="w-full text-center outline-none bg-transparent"
-                              value={row[yearKey].volume}
-                              onChange={(e) => {
-                                const newD = [...opData];
-                                newD[rIdx] = {
-                                  ...newD[rIdx],
-                                  [yearKey]: { ...newD[rIdx][yearKey], volume: e.target.value },
-                                };
-                                setOpData(newD);
-                              }}
-                            />
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <input
+                                type="text"
+                                className="flex-1 min-w-[3rem] text-center outline-none bg-transparent"
+                                value={row[yearKey].volume}
+                                onChange={(e) => {
+                                  const newD = opData.map((r, i) => i === rIdx ? { ...r, [yearKey]: { ...r[yearKey], volume: e.target.value } } : r);
+                                  setOpData(newD);
+                                }}
+                              />
+                              <select
+                                className="text-xs border border-gray-200 rounded bg-white outline-none"
+                                value={row[yearKey].volumeUnit || "萬"}
+                                onChange={(e) => {
+                                  const newD = opData.map((r, i) => i === rIdx ? { ...r, [yearKey]: { ...r[yearKey], volumeUnit: e.target.value } } : r);
+                                  setOpData(newD);
+                                }}
+                              >
+                                {VOLUME_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                              </select>
+                              {(row[yearKey].volumeUnit || "萬") === "其他" && (
+                                <input
+                                  type="text"
+                                  className="w-16 text-xs outline-none border-b border-gray-300 bg-transparent"
+                                  placeholder="單位"
+                                  value={row[yearKey].volumeUnitOther || ""}
+                                  onChange={(e) => {
+                                    const newD = opData.map((r, i) => i === rIdx ? { ...r, [yearKey]: { ...r[yearKey], volumeUnitOther: e.target.value } } : r);
+                                    setOpData(newD);
+                                  }}
+                                />
+                              )}
+                            </div>
                           </td>
                           <td className="p-2 border-r border-gray-200">
                             <input
                               type="number"
-                              className="w-full text-right outline-none bg-transparent"
+                              className="w-full min-w-[4.5rem] text-right outline-none bg-transparent"
                               value={row[yearKey].sales}
+                              placeholder="銷售額"
                               onChange={(e) => {
-                                const newD = [...opData];
-                                newD[rIdx] = {
-                                  ...newD[rIdx],
-                                  [yearKey]: { ...newD[rIdx][yearKey], sales: e.target.value },
-                                };
+                                const newD = opData.map((r, i) => i === rIdx ? { ...r, [yearKey]: { ...r[yearKey], sales: e.target.value } } : r);
                                 setOpData(newD);
                               }}
                             />
@@ -644,15 +787,14 @@ export default function CompanyProfileForm({
                           <td className="p-2 border-r border-gray-200 last:border-r-0">
                             <div className="flex items-center">
                               <input
-                                type="number"
-                                className="w-full text-right outline-none bg-transparent"
+                                type="text"
+                                inputMode="decimal"
+                                className="w-full min-w-[4.5rem] text-right outline-none bg-transparent"
                                 value={row[yearKey].share}
+                                placeholder="市佔率"
                                 onChange={(e) => {
-                                  const newD = [...opData];
-                                  newD[rIdx] = {
-                                    ...newD[rIdx],
-                                    [yearKey]: { ...newD[rIdx][yearKey], share: e.target.value },
-                                  };
+                                  const clean = e.target.value.replace(/[^0-9.]/g, "");
+                                  const newD = opData.map((r, i) => i === rIdx ? { ...r, [yearKey]: { ...r[yearKey], share: clean } } : r);
                                   setOpData(newD);
                                 }}
                               />
@@ -663,29 +805,68 @@ export default function CompanyProfileForm({
                       ))}
                     </tr>
                   ))}
-                  {/* Footer Stats Rows */}
-                  {[
-                    { label: "合 計", key: "total" },
-                    { label: "年度營業額(A)", key: "revA" },
-                    { label: "年度研發費用(B)", key: "rndB" },
-                    { label: "(B)/(A)%", key: "ratio" }
-                  ].map((stat, sIdx) => (
-                    <tr key={sIdx} className="bg-gray-50 border-b border-gray-200 last:border-0 font-medium">
-                      <td className="px-4 py-3 border-r border-gray-200 text-right">{stat.label}</td>
-                      {[0, 1, 2].map(idx => (
-                        <React.Fragment key={`${sIdx}-${idx}`}>
-                          <td className="border-r border-gray-200 bg-gray-100"></td>
-                          <td className="p-2 border-r border-gray-200">
-                            <input type="text" className="w-full text-right bg-transparent outline-none" placeholder="0" />
-                          </td>
-                          <td className="border-r border-gray-200 last:border-r-0 bg-gray-100"></td>
-                        </React.Fragment>
-                      ))}
-                    </tr>
-                  ))}
+                  {/* Footer Stats Rows：合計與年度營業額(A)由上方資料自動計算；年度研發費用(B)手動輸入；(B)/(A)% 自動計算 */}
+                  {(() => {
+                    const totalY1 = opData.reduce((s, r) => s + (Number(r.y1.sales) || 0), 0);
+                    const totalY2 = opData.reduce((s, r) => s + (Number(r.y2.sales) || 0), 0);
+                    const totalY3 = opData.reduce((s, r) => s + (Number(r.y3.sales) || 0), 0);
+                    const b1 = Number(formData.rndExpenseY1) || 0, b2 = Number(formData.rndExpenseY2) || 0, b3 = Number(formData.rndExpenseY3) || 0;
+                    const ratio1 = totalY1 > 0 ? ((b1 / totalY1) * 100).toFixed(2) : "0";
+                    const ratio2 = totalY2 > 0 ? ((b2 / totalY2) * 100).toFixed(2) : "0";
+                    const ratio3 = totalY3 > 0 ? ((b3 / totalY3) * 100).toFixed(2) : "0";
+                    return (
+                      <>
+                        <tr className="bg-gray-50 border-b border-gray-200 font-medium">
+                          <td className="px-4 py-3 border-r border-gray-200 text-right">合 計</td>
+                          {[totalY1, totalY2, totalY3].map((tot, idx) => (
+                            <React.Fragment key={idx}>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                              <td className="p-2 border-r border-gray-200 text-right">{tot.toLocaleString()}</td>
+                              <td className={"border-r border-gray-200 last:border-r-0 bg-gray-100".replace("last:border-r-0", idx === 2 ? "" : "")}>—</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                        <tr className="bg-gray-50 border-b border-gray-200 font-medium">
+                          <td className="px-4 py-3 border-r border-gray-200 text-right">年度營業額(A)</td>
+                          {[totalY1, totalY2, totalY3].map((tot, idx) => (
+                            <React.Fragment key={idx}>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                              <td className="p-2 border-r border-gray-200 text-right">{tot.toLocaleString()}</td>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                        <tr className="bg-gray-50 border-b border-gray-200 font-medium">
+                          <td className="px-4 py-3 border-r border-gray-200 text-right">年度研發費用(B)</td>
+                          {(["rndExpenseY1", "rndExpenseY2", "rndExpenseY3"] as const).map((name) => (
+                            <React.Fragment key={name}>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                              <td className="p-2 border-r border-gray-200">
+                                <input type="number" name={name} className="w-full text-right bg-white border border-gray-200 rounded px-2 py-1 outline-none" value={formData[name]} onChange={handleInputChange} placeholder="0" />
+                              </td>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                        <tr className="bg-gray-50 border-b border-gray-200 last:border-0 font-medium">
+                          <td className="px-4 py-3 border-r border-gray-200 text-right">(B)/(A)%</td>
+                          {[ratio1, ratio2, ratio3].map((ratio, idx) => (
+                            <React.Fragment key={idx}>
+                              <td className="border-r border-gray-200 bg-gray-100">—</td>
+                              <td className="p-2 border-r border-gray-200 text-right">{ratio}%</td>
+                              <td className="border-r border-gray-200 last:border-r-0 bg-gray-100">—</td>
+                            </React.Fragment>
+                          ))}
+                        </tr>
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
+            <p className="text-xs text-gray-500 mt-2 whitespace-pre-wrap break-words max-w-full">
+              註：1.請填寫近三年資料。2.請將年度由近至遠，並自左向右序列。
+            </p>
           </section>
 
           {/* ======================= 三、曾經參與政府相關研發計畫之實績 ======================= */}
@@ -714,18 +895,98 @@ export default function CompanyProfileForm({
                 <tbody>
                   {pastProjects.map((row, idx) => (
                     <tr key={idx} className="bg-white border-b border-gray-100">
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" placeholder="YY/MM/DD" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" placeholder="YY/MM~YY/MM" /></td>
                       <td className="p-2 border-r border-gray-200">
-                        <select className="w-full outline-none bg-transparent text-center">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          placeholder="YY/MM/DD"
+                          value={row.date}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, date: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          value={row.category}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, category: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full outline-none bg-transparent"
+                          value={row.name}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          placeholder="YY/MM~YY/MM"
+                          value={row.duration}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, duration: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <select
+                          className="w-full outline-none bg-transparent text-center"
+                          value={row.year}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, year: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        >
                           <option value="">選擇</option><option value="114">114年</option><option value="113">113年</option><option value="112">112年</option>
                         </select>
                       </td>
-                      <td className="p-2 border-r border-gray-200"><input type="number" className="w-full text-right outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="number" className="w-full text-right outline-none bg-transparent" /></td>
-                      <td className="p-2"><input type="number" step="0.1" className="w-full text-center outline-none bg-transparent" /></td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="number"
+                          className="w-full text-right outline-none bg-transparent"
+                          value={row.grant}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, grant: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="number"
+                          className="w-full text-right outline-none bg-transparent"
+                          value={row.totalBudget}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, totalBudget: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="w-full text-center outline-none bg-transparent"
+                          value={row.manYears}
+                          onChange={(e) => {
+                            const next = pastProjects.map((r, i) => (i === idx ? { ...r, manYears: e.target.value } : r));
+                            setPastProjects(next);
+                          }}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -758,19 +1019,94 @@ export default function CompanyProfileForm({
                 <tbody>
                   {futureProjects.map((row, idx) => (
                     <tr key={idx} className="bg-white border-b border-gray-100">
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="text" className="w-full text-center outline-none bg-transparent" placeholder="YY/MM~YY/MM" /></td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          value={row.organizer}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, organizer: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          value={row.category}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, category: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full outline-none bg-transparent"
+                          value={row.name}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="text"
+                          className="w-full text-center outline-none bg-transparent"
+                          placeholder="YY/MM~YY/MM"
+                          value={row.duration}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, duration: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
                       <td className="p-2 border-r border-gray-200 text-center text-gray-500">115</td>
-                      <td className="p-2 border-r border-gray-200"><input type="number" className="w-full text-right outline-none bg-transparent" /></td>
-                      <td className="p-2 border-r border-gray-200"><input type="number" className="w-full text-right outline-none bg-transparent" /></td>
-                      <td className="p-2"><input type="number" step="0.1" className="w-full text-center outline-none bg-transparent" /></td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="number"
+                          className="w-full text-right outline-none bg-transparent"
+                          value={row.grant}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, grant: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          type="number"
+                          className="w-full text-right outline-none bg-transparent"
+                          value={row.totalBudget}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, totalBudget: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="w-full text-center outline-none bg-transparent"
+                          value={row.manYears}
+                          onChange={(e) => {
+                            const next = futureProjects.map((r, i) => (i === idx ? { ...r, manYears: e.target.value } : r));
+                            setFutureProjects(next);
+                          }}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="text-xs text-gray-500 mt-2 mb-2 whitespace-pre-wrap break-words max-w-full">
+              註：請確實填寫曾參與政府相關研發計畫及補助經費。
+            </p>
             <button type="button" onClick={() => setFutureProjects([...futureProjects, { organizer: "", category: "", name: "", duration: "", year: "115", grant: "", totalBudget: "", manYears: "" }])} className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
               新增一列
