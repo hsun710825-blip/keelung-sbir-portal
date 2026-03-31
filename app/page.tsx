@@ -108,15 +108,6 @@ export default function App() {
           <span className="w-2 h-2 rounded-full bg-blue-400" aria-hidden />
           基隆市政府
         </div>
-        <button 
-          type="button"
-          onClick={() => setShowAdminLogin(!showAdminLogin)}
-          className="text-xs opacity-50 hover:opacity-100 transition-opacity border border-white/30 px-2 py-1 rounded"
-          aria-expanded={showAdminLogin}
-          aria-controls="admin-login-section"
-        >
-          切換管理員登入顯示 (開發測試)
-        </button>
       </nav>
 
       <div className="relative w-full h-[65vh] flex items-center justify-center overflow-hidden">
