@@ -98,6 +98,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#fafafa] font-sans text-slate-800 selection:bg-blue-100">
+      <header role="banner" aria-label="基隆 SBIR 首頁頁首">
+        <h1 className="sr-only">基隆市地方型 SBIR 申請系統首頁</h1>
       <nav
         className="absolute top-0 w-full z-50 px-6 py-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent text-white"
         aria-label="頁首：單位識別與開發用選項"
@@ -149,6 +151,7 @@ export default function App() {
           </h1>
         </div>
       </div>
+      </header>
 
       <main id="main-content" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24 relative z-20 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -312,17 +315,19 @@ function Dashboard({ user, onLogout }: { user: UserContext | null; onLogout: () 
 
   if (authGate === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
+      <main className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6" aria-busy="true">
+        <h1 className="sr-only">基隆市地方型 SBIR 申請系統</h1>
         <p className="text-slate-600 text-center">正在完成登入驗證，請稍候...</p>
-      </div>
+      </main>
     );
   }
 
   if (authGate === "failed") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
+      <main className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
+        <h1 className="sr-only">基隆市地方型 SBIR 申請系統</h1>
         <p className="text-red-600 text-center">登入資料寫入失敗，請重新整理後再試。</p>
-      </div>
+      </main>
     );
   }
 
