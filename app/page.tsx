@@ -11,6 +11,7 @@ import ExpectedBenefitsForm from '@/components/ExpectedBenefitsForm';
 import ScheduleCheckpointsForm from '@/components/ScheduleCheckpointsForm';
 import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsForm';
 import { signIn, signOut, useSession } from "next-auth/react";
+import Link from "next/link";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
 import { isSubmitLockScheduleActiveNow } from "@/lib/planLockSchedule";
 import {
@@ -256,6 +257,10 @@ export default function App() {
       <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
         <p>
           Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+          <span className="mx-2">|</span>
+          <Link href="/privacy" className="hover:text-slate-700 underline-offset-2 hover:underline">隱私權政策</Link>
+          <span className="mx-2">|</span>
+          <Link href="/terms" className="hover:text-slate-700 underline-offset-2 hover:underline">服務條款</Link>
         </p>
       </footer>
     </div>
@@ -1514,6 +1519,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
           <div className="px-6 pb-4 text-center text-sm text-gray-500">
             Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+            <span className="mx-2">|</span>
+            <Link href="/privacy" className="hover:text-slate-700 underline-offset-2 hover:underline">隱私權政策</Link>
+            <span className="mx-2">|</span>
+            <Link href="/terms" className="hover:text-slate-700 underline-offset-2 hover:underline">服務條款</Link>
           </div>
 
         </main>
@@ -1528,6 +1537,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
         <p>
           Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+          <span className="mx-2">|</span>
+          <Link href="/privacy" className="hover:text-slate-700 underline-offset-2 hover:underline">隱私權政策</Link>
+          <span className="mx-2">|</span>
+          <Link href="/terms" className="hover:text-slate-700 underline-offset-2 hover:underline">服務條款</Link>
         </p>
       </footer>
 
