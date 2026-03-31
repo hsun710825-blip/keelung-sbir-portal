@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { 
   Calendar, CircleDollarSign, ShieldCheck, ArrowRight, User, 
   LogOut, Phone, Building2, FileText, CheckSquare, 
@@ -98,14 +98,20 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#fafafa] font-sans text-slate-800 selection:bg-blue-100">
-      <nav className="absolute top-0 w-full z-50 px-6 py-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent text-white">
+      <nav
+        className="absolute top-0 w-full z-50 px-6 py-4 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent text-white"
+        aria-label="頁首：單位識別與開發用選項"
+      >
         <div className="text-sm tracking-wider font-light flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+          <span className="w-2 h-2 rounded-full bg-blue-400" aria-hidden />
           基隆市政府
         </div>
         <button 
+          type="button"
           onClick={() => setShowAdminLogin(!showAdminLogin)}
           className="text-xs opacity-50 hover:opacity-100 transition-opacity border border-white/30 px-2 py-1 rounded"
+          aria-expanded={showAdminLogin}
+          aria-controls="admin-login-section"
         >
           切換管理員登入顯示 (開發測試)
         </button>
@@ -115,8 +121,9 @@ export default function App() {
         <div 
           className="absolute inset-0 bg-cover bg-top bg-slate-800"
           style={{ backgroundImage: "url('/images/hero-bg.jpg')" }}
+          aria-hidden
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/40 to-[#fafafa]"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/60 via-slate-900/40 to-[#fafafa]" aria-hidden />
         </div>
 
         <div className="relative z-10 text-center px-4 flex flex-col items-center mt-12">
@@ -143,7 +150,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24 relative z-20 pb-20">
+      <main id="main-content" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24 relative z-20 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-7 flex flex-col gap-4">
             <div className="bg-white/80 backdrop-blur-md rounded-2xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
@@ -191,6 +198,7 @@ export default function App() {
               </div>
               <div className="space-y-4">
                 <button 
+                  type="button"
                   onClick={() => handleGoogleLogin('applicant')}
                   disabled={isSimulatingLogin}
                   className="w-full group relative flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-700 px-6 py-4 rounded-xl hover:bg-slate-50 hover:border-slate-300 hover:shadow-sm transition-all duration-200 disabled:opacity-50"
@@ -203,20 +211,21 @@ export default function App() {
                   <div className="text-center text-xs text-blue-500 animate-pulse py-2">正在驗證並同步資料至系統...</div>
                 )}
                 {showAdminLogin && (
-                  <div className="relative py-4">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
-                    <div className="relative flex justify-center text-xs"><span className="bg-white px-4 text-slate-400 font-light tracking-widest">內部人員</span></div>
+                  <div id="admin-login-section" className="space-y-0">
+                    <div className="relative py-4">
+                      <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+                      <div className="relative flex justify-center text-xs"><span className="bg-white px-4 text-slate-400 font-light tracking-widest">內部人員</span></div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => handleGoogleLogin('reviewer')}
+                      disabled={isSimulatingLogin}
+                      className="w-full group relative flex items-center justify-center gap-3 bg-slate-50 border border-slate-200 text-slate-600 px-6 py-3.5 rounded-xl hover:bg-slate-100 transition-all duration-200 disabled:opacity-50"
+                    >
+                      <ShieldCheck size={18} className="text-slate-400" aria-hidden />
+                      <span className="font-medium tracking-wide text-sm">管理員 / 審查委員 登入</span>
+                    </button>
                   </div>
-                )}
-                {showAdminLogin && (
-                  <button 
-                    onClick={() => handleGoogleLogin('reviewer')}
-                    disabled={isSimulatingLogin}
-                    className="w-full group relative flex items-center justify-center gap-3 bg-slate-50 border border-slate-200 text-slate-600 px-6 py-3.5 rounded-xl hover:bg-slate-100 transition-all duration-200 disabled:opacity-50"
-                  >
-                    <ShieldCheck size={18} className="text-slate-400" />
-                    <span className="font-medium tracking-wide text-sm">管理員 / 審查委員 登入</span>
-                  </button>
                 )}
               </div>
               <div className="mt-8 text-center">
@@ -248,7 +257,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
       <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
         <p>
@@ -319,9 +328,14 @@ function Dashboard({ user, onLogout }: { user: UserContext | null; onLogout: () 
 
   if (authGate === "dialog") {
     return (
-      <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center px-4">
-        <div className="max-w-xl w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-6">
-          <p className="text-slate-800 leading-relaxed break-all">
+      <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center px-4" role="presentation">
+        <div
+          className="max-w-xl w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="registry-email-confirm-title"
+        >
+          <p id="registry-email-confirm-title" className="text-slate-800 leading-relaxed break-all">
             系統寫入帳號為 {user?.email || ""}
           </p>
           <button
@@ -352,6 +366,7 @@ function Dashboard({ user, onLogout }: { user: UserContext | null; onLogout: () 
 
 function ConsentView({ onAgree, onLogout }: { onAgree: () => void; onLogout: () => void }) {
   const [isChecked, setIsChecked] = useState(false);
+  const consentCheckId = useId();
 
   return (
     <div className="min-h-screen bg-[#fafafa] font-sans text-slate-800 flex flex-col items-center py-12 px-4">
@@ -361,7 +376,7 @@ function ConsentView({ onAgree, onLogout }: { onAgree: () => void; onLogout: () 
             <h2 className="text-xl font-medium tracking-wide text-slate-800">計畫申請規範與同意書</h2>
             <p className="text-sm text-slate-500 font-light mt-1">開始撰寫前，請務必詳閱以下須知與規範</p>
           </div>
-          <button onClick={onLogout} className="text-sm text-slate-400 hover:text-slate-600 transition-colors">取消並登出</button>
+          <button type="button" onClick={onLogout} className="text-sm text-slate-400 hover:text-slate-600 transition-colors">取消並登出</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 space-y-10 bg-slate-50/50">
@@ -391,20 +406,30 @@ function ConsentView({ onAgree, onLogout }: { onAgree: () => void; onLogout: () 
         </div>
 
         <div className="px-8 py-6 border-t border-slate-100 bg-white">
-          <label className="flex items-center gap-3 cursor-pointer group mb-6">
-            <input type="checkbox" className="hidden" checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} />
-            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-300 group-hover:border-blue-400'}`}>
+          <label htmlFor={consentCheckId} className="flex items-center gap-3 cursor-pointer group mb-6">
+            <input
+              id={consentCheckId}
+              type="checkbox"
+              className="sr-only"
+              checked={isChecked}
+              onChange={(e) => setIsChecked(e.target.checked)}
+            />
+            <span
+              className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${isChecked ? 'bg-blue-500 border-blue-500 overflow-hidden' : 'bg-white border-slate-300 group-hover:border-blue-400'}`}
+              aria-hidden
+            >
               {isChecked && <CheckSquare size={14} className="text-white" />}
-            </div>
+            </span>
             <span className="text-sm font-medium text-slate-700">我已詳閱並同意上述申請規範與個人資料蒐集條款，且聲明本企業無違反環保、勞工等相關法令之重大情事。</span>
           </label>
           <div className="flex justify-end">
             <button 
+              type="button"
               onClick={onAgree}
               disabled={!isChecked}
               className="flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-lg font-medium tracking-wide transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 shadow-sm"
             >
-              開始撰寫計畫 <ArrowRight size={18} />
+              開始撰寫計畫 <ArrowRight size={18} className="shrink-0" aria-hidden />
             </button>
           </div>
         </div>
@@ -416,9 +441,11 @@ function ConsentView({ onAgree, onLogout }: { onAgree: () => void; onLogout: () 
 function FoundingRocSelectors({
   value,
   onChange,
+  labelledBy,
 }: {
   value: string;
   onChange: (iso: string) => void;
+  labelledBy?: string;
 }) {
   const parts = isoDateToRocParts(value);
   const years = rocYearOptions();
@@ -427,9 +454,14 @@ function FoundingRocSelectors({
   const day = parts?.day;
 
   return (
-    <div className="flex flex-wrap gap-2 items-center">
+    <div
+      className="flex flex-wrap gap-2 items-center"
+      role={labelledBy ? "group" : undefined}
+      aria-labelledby={labelledBy}
+    >
       <select
         className="form-input min-w-[9rem]"
+        aria-label="設立日期：民國年"
         value={rocY ? String(rocY) : ""}
         onChange={(e) => {
           const y = parseInt(e.target.value || "0", 10);
@@ -447,6 +479,7 @@ function FoundingRocSelectors({
       <select
         className="form-input w-[6.5rem]"
         disabled={!rocY}
+        aria-label="設立日期：月"
         value={month ? String(month) : ""}
         onChange={(e) => {
           if (!rocY) return;
@@ -463,6 +496,7 @@ function FoundingRocSelectors({
       <select
         className="form-input w-[6.5rem]"
         disabled={!rocY}
+        aria-label="設立日期：日"
         value={day ? String(day) : ""}
         onChange={(e) => {
           if (!rocY) return;
@@ -648,6 +682,11 @@ function formatApiErrorForAlert(prefix: string, err: unknown): string {
 }
 
 function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () => void }) {
+  const coverFieldUid = useId();
+  const benefitFieldUid = useId();
+  const coverId = (suffix: string) => `${coverFieldUid}-${suffix}`;
+  const benefitId = (suffix: string) => `${benefitFieldUid}-${suffix}`;
+
   const [activeTab, setActiveTab] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1006,6 +1045,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         </div>
         <div className="flex items-center gap-6">
           <button
+            type="button"
             onClick={onLogout}
             className="text-sm text-slate-500 hover:text-slate-800 transition-colors border border-slate-200 bg-white px-3 py-1.5 rounded-lg shadow-sm"
           >
@@ -1021,25 +1061,28 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
             </span>
           )}
           <div className="text-sm text-slate-500 flex items-center gap-2 border-l border-slate-100 pl-6"><User size={16} />{user.name}</div>
-          <button onClick={onLogout} className="flex items-center gap-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><LogOut size={16} />離開</button>
+          <button type="button" onClick={onLogout} className="flex items-center gap-2 text-sm text-slate-400 hover:text-red-500 transition-colors"><LogOut size={16} aria-hidden />離開</button>
         </div>
       </header>
 
       <div className="flex flex-1 max-w-[1400px] w-full mx-auto p-6 gap-6 items-start">
         <aside className="w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] overflow-hidden sticky top-24">
           <div className="p-5 border-b border-slate-50"><h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">計畫書章節</h3></div>
-          <nav className="p-2 space-y-1">
+          <nav className="p-2 space-y-1" aria-label="計畫書章節導覽">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => void handleTabChange(tab.id)}
+                aria-current={activeTab === tab.id ? "page" : undefined}
+                aria-label={`第 ${tab.id} 章：${tab.title}`}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl transition-all duration-200 ${
                   activeTab === tab.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 font-light'
                 }`}
               >
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${
                   activeTab === tab.id ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'
-                }`}>{tab.id}</div>
+                }`} aria-hidden>{tab.id}</div>
                 {tab.title}
               </button>
             ))}
@@ -1094,7 +1137,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
                   {/* 計畫名稱 */}
                   <div className="max-w-2xl mx-auto space-y-4 mb-16 text-center w-full">
-                    <p className="text-slate-500 font-medium tracking-[0.5em] text-xl">＜申請計畫名稱＞</p>
+                    <p id={coverId("project-name-label")} className="text-slate-500 font-medium tracking-[0.5em] text-xl">＜申請計畫名稱＞</p>
                     <input 
                       type="text" 
                       name="projectName" 
@@ -1102,6 +1145,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       onChange={handleInputChange} 
                       className="w-full text-center text-2xl md:text-3xl py-4 font-bold border-b-2 border-t-0 border-l-0 border-r-0 border-slate-300 rounded-none bg-transparent focus:ring-0 focus:border-blue-500 px-0 transition-colors placeholder:font-light placeholder:text-slate-300" 
                       placeholder="請填寫計畫名稱" 
+                      aria-labelledby={coverId("project-name-label")}
                     />
                     <p className="text-slate-400 text-base tracking-[0.5em] mt-4">(草 案)</p>
                     <p className="text-xs text-slate-500 font-light leading-relaxed">
@@ -1113,14 +1157,14 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   <div className="max-w-2xl mx-auto space-y-10 w-full">
                     
                     {/* 【優化更新】計畫期間 (日曆與自動計算) */}
-                    <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-4 text-slate-700 text-lg tracking-wide w-full">
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-4 text-slate-700 text-lg tracking-wide w-full" role="group" aria-label="計畫執行期間">
                        <div className="flex items-center gap-2">
-                         <span className="font-medium whitespace-nowrap">計畫期間：自</span>
-                         <input type="date" name="projectStartDate" value={formData.projectStartDate} onChange={handleInputChange} className="form-input py-1.5 text-center text-base w-[150px] cursor-pointer text-slate-600" />
+                         <span id={coverId("period-start-label")} className="font-medium whitespace-nowrap">計畫期間：自</span>
+                         <input type="date" name="projectStartDate" value={formData.projectStartDate} onChange={handleInputChange} className="form-input py-1.5 text-center text-base w-[150px] cursor-pointer text-slate-600" aria-labelledby={coverId("period-start-label")} />
                        </div>
                        <div className="flex items-center gap-2">
-                         <span className="font-medium whitespace-nowrap">至</span>
-                         <input type="date" name="projectEndDate" value={formData.projectEndDate} onChange={handleInputChange} className="form-input py-1.5 text-center text-base w-[150px] cursor-pointer text-slate-600" />
+                         <span id={coverId("period-end-label")} className="font-medium whitespace-nowrap">至</span>
+                         <input type="date" name="projectEndDate" value={formData.projectEndDate} onChange={handleInputChange} className="form-input py-1.5 text-center text-base w-[150px] cursor-pointer text-slate-600" aria-labelledby={coverId("period-end-label")} />
                          <span className="font-medium whitespace-nowrap">止</span>
                          {formData.projectMonths ? (
                           <span className="text-slate-600 text-base font-semibold whitespace-nowrap">共 {formData.projectMonths} 個月</span>
@@ -1128,7 +1172,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                        </div>
                        <div className="flex items-center gap-2 mt-2 md:mt-0">
                          <span className="font-medium whitespace-nowrap">(共</span>
-                         <input type="number" name="projectMonths" value={formData.projectMonths} className="form-input w-20 py-1.5 text-center text-base bg-slate-100 text-slate-500 cursor-not-allowed font-semibold" readOnly placeholder="0" />
+                         <input type="number" name="projectMonths" value={formData.projectMonths} className="form-input w-20 py-1.5 text-center text-base bg-slate-100 text-slate-500 cursor-not-allowed font-semibold" readOnly placeholder="0" aria-label="計畫總月數（自動計算）" />
                          <span className="font-medium whitespace-nowrap">個月)</span>
                        </div>
                     </div>
@@ -1147,12 +1191,12 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                     {/* 公司名稱與負責人 */}
                     <div className="space-y-6 pt-8 border-t border-slate-100">
                       <div className="flex items-center justify-center gap-4 text-lg">
-                        <span className="text-slate-700 font-medium tracking-widest w-32 text-right">公司名稱：</span>
-                        <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="form-input w-80 py-2 text-center text-base" placeholder="申請公司全名" />
+                        <span id={coverId("company-name-label")} className="text-slate-700 font-medium tracking-widest w-32 text-right">公司名稱：</span>
+                        <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="form-input w-80 py-2 text-center text-base" placeholder="申請公司全名" aria-labelledby={coverId("company-name-label")} />
                       </div>
                       <div className="flex items-center justify-center gap-4 text-lg">
-                        <span className="text-slate-700 font-medium tracking-widest w-32 text-right">負責人：</span>
-                        <input type="text" name="leaderName" value={formData.leaderName} onChange={handleInputChange} className="form-input w-80 py-2 text-center text-base" placeholder="請填寫負責人姓名" />
+                        <span id={coverId("leader-name-label")} className="text-slate-700 font-medium tracking-widest w-32 text-right">負責人：</span>
+                        <input type="text" name="leaderName" value={formData.leaderName} onChange={handleInputChange} className="form-input w-80 py-2 text-center text-base" placeholder="請填寫負責人姓名" aria-labelledby={coverId("leader-name-label")} />
                       </div>
                     </div>
                     <div className="text-center text-xs text-slate-500 font-light leading-relaxed">
@@ -1160,11 +1204,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                     </div>
 
                     {/* 填寫日期 */}
-                    <div className="mt-16 pt-12 text-center text-slate-700 font-medium text-xl tracking-[0.2em] flex items-center justify-center gap-2">
+                    <div className="mt-16 pt-12 text-center text-slate-700 font-medium text-xl tracking-[0.2em] flex items-center justify-center gap-2 flex-wrap" role="group" aria-label="計畫書填寫日期（民國）">
                        中華民國 
-                       <input type="text" name="submitYear" value={formData.submitYear} onChange={handleInputChange} className="form-input inline-block w-20 py-1 text-center text-lg mx-2" /> 
+                       <input type="text" name="submitYear" value={formData.submitYear} onChange={handleInputChange} className="form-input inline-block w-20 py-1 text-center text-lg mx-2" aria-label="填表日期：民國年" /> 
                        年 
-                       <input type="text" name="submitMonth" value={formData.submitMonth} onChange={handleInputChange} className="form-input inline-block w-16 py-1 text-center text-lg mx-2" placeholder="O" /> 
+                       <input type="text" name="submitMonth" value={formData.submitMonth} onChange={handleInputChange} className="form-input inline-block w-16 py-1 text-center text-lg mx-2" placeholder="O" aria-label="填表日期：月" /> 
                        月
                     </div>
                     <div className="text-center text-xs text-slate-500 font-light leading-relaxed">
@@ -1187,7 +1231,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       <InputGroup label="(一) 公司名稱" required hint="會從封面自動帶入；請確認與公司登記全名一致。">
                         <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="form-input" />
                       </InputGroup>
-                      <InputGroup label="(二) 設立日期（民國）" required hint="請以民國日期填寫（支援民國 50 年起）；後續公司概況也會同步帶入。">
+                      <InputGroup label="(二) 設立日期（民國）" required associate="founding" hint="請以民國日期填寫（支援民國 50 年起）；後續公司概況也會同步帶入。">
                         <FoundingRocSelectors
                           value={formData.foundingDate}
                           onChange={(iso) => setFormData((prev) => ({ ...prev, foundingDate: iso }))}
@@ -1241,54 +1285,54 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                     
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 bg-slate-50 p-6 rounded-xl border border-slate-100">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">1. 增加產值</span>
-                        <input type="number" name="benefitValue" value={formData.benefitValue} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
+                        <span id={benefitId("l1")} className="text-sm text-slate-700 w-40 flex-shrink-0">1. 增加產值</span>
+                        <input type="number" name="benefitValue" value={formData.benefitValue} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l1")} ${benefitId("u1")}`} />
+                        <span id={benefitId("u1")} className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">2. 產出新產品或服務共</span>
-                        <input type="number" name="benefitNewProduct" value={formData.benefitNewProduct} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">項</span>
+                        <span id={benefitId("l2")} className="text-sm text-slate-700 w-40 flex-shrink-0">2. 產出新產品或服務共</span>
+                        <input type="number" name="benefitNewProduct" value={formData.benefitNewProduct} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l2")} ${benefitId("u2")}`} />
+                        <span id={benefitId("u2")} className="text-sm text-slate-500 w-10 flex-shrink-0">項</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">3. 衍生商品或服務數共</span>
-                        <input type="number" name="benefitDerivedProduct" value={formData.benefitDerivedProduct} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">項</span>
+                        <span id={benefitId("l3")} className="text-sm text-slate-700 w-40 flex-shrink-0">3. 衍生商品或服務數共</span>
+                        <input type="number" name="benefitDerivedProduct" value={formData.benefitDerivedProduct} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l3")} ${benefitId("u3")}`} />
+                        <span id={benefitId("u3")} className="text-sm text-slate-500 w-10 flex-shrink-0">項</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">4. 額外投入研發費用</span>
-                        <input type="number" name="benefitAdditionalRnD" value={formData.benefitAdditionalRnD} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
+                        <span id={benefitId("l4")} className="text-sm text-slate-700 w-40 flex-shrink-0">4. 額外投入研發費用</span>
+                        <input type="number" name="benefitAdditionalRnD" value={formData.benefitAdditionalRnD} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l4")} ${benefitId("u4")}`} />
+                        <span id={benefitId("u4")} className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">5. 促成投資額</span>
-                        <input type="number" name="benefitInvestment" value={formData.benefitInvestment} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
+                        <span id={benefitId("l5")} className="text-sm text-slate-700 w-40 flex-shrink-0">5. 促成投資額</span>
+                        <input type="number" name="benefitInvestment" value={formData.benefitInvestment} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l5")} ${benefitId("u5")}`} />
+                        <span id={benefitId("u5")} className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">6. 降低成本</span>
-                        <input type="number" name="benefitCostReduction" value={formData.benefitCostReduction} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
+                        <span id={benefitId("l6")} className="text-sm text-slate-700 w-40 flex-shrink-0">6. 降低成本</span>
+                        <input type="number" name="benefitCostReduction" value={formData.benefitCostReduction} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l6")} ${benefitId("u6")}`} />
+                        <span id={benefitId("u6")} className="text-sm text-slate-500 w-10 flex-shrink-0">千元</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">7. 增加就業人數</span>
-                        <input type="number" name="benefitEmployment" value={formData.benefitEmployment} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">人</span>
+                        <span id={benefitId("l7")} className="text-sm text-slate-700 w-40 flex-shrink-0">7. 增加就業人數</span>
+                        <input type="number" name="benefitEmployment" value={formData.benefitEmployment} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l7")} ${benefitId("u7")}`} />
+                        <span id={benefitId("u7")} className="text-sm text-slate-500 w-10 flex-shrink-0">人</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">8. 成立新公司</span>
-                        <input type="number" name="benefitNewCompany" value={formData.benefitNewCompany} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">家</span>
+                        <span id={benefitId("l8")} className="text-sm text-slate-700 w-40 flex-shrink-0">8. 成立新公司</span>
+                        <input type="number" name="benefitNewCompany" value={formData.benefitNewCompany} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l8")} ${benefitId("u8")}`} />
+                        <span id={benefitId("u8")} className="text-sm text-slate-500 w-10 flex-shrink-0">家</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">9. 發明專利共</span>
-                        <input type="number" name="benefitInventionPatent" value={formData.benefitInventionPatent} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">件</span>
+                        <span id={benefitId("l9")} className="text-sm text-slate-700 w-40 flex-shrink-0">9. 發明專利共</span>
+                        <input type="number" name="benefitInventionPatent" value={formData.benefitInventionPatent} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l9")} ${benefitId("u9")}`} />
+                        <span id={benefitId("u9")} className="text-sm text-slate-500 w-10 flex-shrink-0">件</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-slate-700 w-40 flex-shrink-0">10. 新型/新式樣專利共</span>
-                        <input type="number" name="benefitUtilityPatent" value={formData.benefitUtilityPatent} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" />
-                        <span className="text-sm text-slate-500 w-10 flex-shrink-0">件</span>
+                        <span id={benefitId("l10")} className="text-sm text-slate-700 w-40 flex-shrink-0">10. 新型/新式樣專利共</span>
+                        <input type="number" name="benefitUtilityPatent" value={formData.benefitUtilityPatent} onChange={handleInputChange} className="form-input py-1.5 text-right w-full" placeholder="0" aria-labelledby={`${benefitId("l10")} ${benefitId("u10")}`} />
+                        <span id={benefitId("u10")} className="text-sm text-slate-500 w-10 flex-shrink-0">件</span>
                       </div>
                     </div>
                     <div className="text-[11px] text-slate-400 mt-2 font-light leading-relaxed whitespace-pre-wrap break-words">
@@ -1417,11 +1461,12 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
           <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center rounded-b-2xl">
             <button 
+              type="button"
               onClick={() => void handleSaveDraft({ autoDownload: true })}
               disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked || isPlanLocked}
               className="flex items-center gap-2 px-6 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
             >
-              <Save size={16} className={isSaving ? 'animate-pulse' : ''} />
+              <Save size={16} className={isSaving ? 'animate-pulse' : ''} aria-hidden />
               {isSaving ? '儲存中...' : '儲存草稿'}
             </button>
             
@@ -1429,6 +1474,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               {activeTab === 8 && (
                 <>
                   <button
+                    type="button"
                     onClick={() => setActiveTab((prev) => Math.max(1, prev - 1))}
                     disabled={isSaving || isSubmitting || isPlanLocked}
                     className="flex items-center gap-2 px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
@@ -1436,27 +1482,30 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                     上一步
                   </button>
                   <button
+                    type="button"
                     onClick={() => void handleNext()}
                     disabled={isSaving || isSubmitting || isPlanLocked}
                     className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                   >
                     下一步
-                    <ChevronRight size={16} />
+                    <ChevronRight size={16} aria-hidden />
                   </button>
                 </>
               )}
               {activeTab !== 8 && activeTab !== 9 && (
                 <button
+                  type="button"
                   onClick={() => void handleNext()}
                   disabled={isSaving || isSubmitting || isPlanLocked}
                   className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                 >
                   儲存並前往下一步
-                  <ChevronRight size={16} />
+                  <ChevronRight size={16} aria-hidden />
                 </button>
               )}
               {activeTab === 9 && (
                 <button
+                  type="button"
                   onClick={() => void handleSubmitToDrive()}
                   disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked || isPlanLocked}
                   className="flex items-center gap-2 px-8 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
@@ -1475,7 +1524,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       </div>
 
       {statusToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-lg">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-lg" role="status" aria-live="polite">
           {statusToast}
         </div>
       )}
@@ -1515,26 +1564,52 @@ function makeSafeFilenameBase(input: unknown) {
   return cleaned.replace(/[\\.\\s]+$/g, '').slice(0, 80);
 }
 
-// 輔助表單元件：欄位群組
+// 輔助表單元件：欄位群組（label 與第一個可填控制項以 htmlFor/id 或 group labelledby 關聯）
 function InputGroup({
   label,
   required,
   hint,
   children,
+  associate,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
   children: React.ReactNode;
+  associate?: "founding";
 }) {
+  const controlId = React.useId();
+  const foundingLabelId = React.useId();
+
+  const body = React.Children.map(children, (child, index) => {
+    if (index !== 0 || !React.isValidElement(child)) return child;
+    if (associate === "founding") {
+      return React.cloneElement(child as React.ReactElement<{ labelledBy?: string }>, {
+        labelledBy: foundingLabelId,
+      });
+    }
+    const el = child as React.ReactElement<{ id?: string }>;
+    if (typeof el.type === "string" && ["input", "textarea", "select"].includes(el.type)) {
+      return React.cloneElement(el, { id: controlId });
+    }
+    return child;
+  });
+
   return (
     <div className="space-y-2">
-      <label className="block text-sm font-medium text-slate-700 tracking-wide">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
+      {associate === "founding" ? (
+        <div id={foundingLabelId} className="block text-sm font-medium text-slate-700 tracking-wide">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </div>
+      ) : (
+        <label htmlFor={controlId} className="block text-sm font-medium text-slate-700 tracking-wide">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+      )}
       {hint && <div className="text-xs text-slate-500 font-light leading-relaxed whitespace-pre-wrap break-words">{hint}</div>}
-      {children}
+      {body}
     </div>
   );
 }
@@ -1684,6 +1759,7 @@ function FileUploadUI({
             multiple
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             disabled={locked}
+            aria-label={`${slotDesc}：上傳 PDF（可多檔）`}
             onChange={(e) => {
               void setSlotFiles(slot, e.target.files);
               e.target.value = "";
@@ -1716,8 +1792,9 @@ function FileUploadUI({
                   onClick={() => removeFile(slotFile.id)}
                   disabled={locked || (slotFile.status === "uploading" && uploadingIds.has(slotFile.id))}
                   className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                  aria-label={`移除附件檔案：${slotFile.name}`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} aria-hidden />
                 </button>
               </div>
             ))}

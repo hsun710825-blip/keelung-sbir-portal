@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   SCHEDULE_KPI_TABLE_NOTE,
   SCHEDULE_PROGRESS_TABLE_NOTE,
@@ -34,11 +34,13 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
 const Label = ({
   children,
   required = false,
+  htmlFor,
 }: {
   children: React.ReactNode;
   required?: boolean;
+  htmlFor?: string;
 }) => (
-  <label className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -103,7 +105,13 @@ function TestReportImageUpload({
         role="button"
         tabIndex={0}
         onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        aria-label="點擊或拖曳圖檔上傳測試報告與佐證照片"
         className="w-full border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-gray-500 hover:bg-gray-50 cursor-pointer"
       >
         <p className="text-sm font-medium">點擊或拖曳圖檔至此上傳（測試報告、照片等）</p>
@@ -181,6 +189,9 @@ export default function ScheduleCheckpointsForm({
   value?: ScheduleCheckpointsDraft;
   onChange?: (next: ScheduleCheckpointsDraft) => void;
 }) {
+  const fid = useId();
+  const f = (key: string) => `${fid}-${key}`;
+
   const monthLabels = useMemo(
     () => getMonthLabelsFromRange(projectStartDate, projectEndDate),
     [projectStartDate, projectEndDate]
@@ -546,9 +557,10 @@ export default function ScheduleCheckpointsForm({
             </div>
 
             <div className="mt-6">
-              <Label>補充說明</Label>
+              <Label htmlFor={f("progressNote")}>補充說明</Label>
               <Hint>可補充每月產出物、驗證方式、是否需外部資源（設備/場域/合作單位）。</Hint>
               <textarea
+                id={f("progressNote")}
                 className="w-full border border-gray-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white min-h-[120px] resize-y"
                 value={notes.progressNote}
                 onChange={(e) => setNotes((p) => ({ ...p, progressNote: e.target.value }))}
@@ -732,18 +744,23 @@ export default function ScheduleCheckpointsForm({
             </div>
 
             <div className="mt-6">
-              <Label>補充說明（期末結案指標/佐證資料/變更機制）</Label>
+              <Label htmlFor={f("kpiNote")}>補充說明（期末結案指標/佐證資料/變更機制）</Label>
               <Hint>可列出需提供的佐證（測試報告、照片、合約、上線證明等）以及若需變更的申請流程。</Hint>
               <textarea
+                id={f("kpiNote")}
                 className="w-full border border-gray-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white min-h-[120px] resize-y"
                 value={notes.kpiNote}
                 onChange={(e) => setNotes((p) => ({ ...p, kpiNote: e.target.value }))}
                 placeholder="例如：期末結案指標（試營運KPI/訂單或MOU/營業額）、需提供的佐證資料（測試報告、照片、合約、上線證明等）、若需變更之申請機制。"
               />
               <div className="mt-4">
-                <Label>測試報告／佐證圖檔上傳</Label>
+                <p id={f("test-upload-legend")} className="block text-sm font-medium text-gray-700 mb-1">
+                  測試報告／佐證圖檔上傳
+                </p>
               </div>
-              <TestReportImageUpload value={testReportImages} onChange={setTestReportImages} />
+              <div role="group" aria-labelledby={f("test-upload-legend")}>
+                <TestReportImageUpload value={testReportImages} onChange={setTestReportImages} />
+              </div>
             </div>
           </section>
         </div>

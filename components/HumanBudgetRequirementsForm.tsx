@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import {
   BUDGET_SUMMARY_TABLE_NOTE,
   CONSUMABLES_TABLE_NOTE,
@@ -40,11 +40,13 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
 const Label = ({
   children,
   required = false,
+  htmlFor,
 }: {
   children: React.ReactNode;
   required?: boolean;
+  htmlFor?: string;
 }) => (
-  <label className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -168,6 +170,9 @@ export default function HumanBudgetRequirementsForm({
   value?: HumanBudgetDraft;
   onChange?: (next: HumanBudgetDraft) => void;
 }) {
+  const fid = useId();
+  const f = (key: string) => `${fid}-${key}`;
+
   const toNum = (v: string) => {
     const n = Number(String(v ?? "").replace(/,/g, "").trim());
     return Number.isFinite(n) ? n : 0;
@@ -508,9 +513,10 @@ export default function HumanBudgetRequirementsForm({
             <SectionTitle>一、計畫人員簡歷表</SectionTitle>
             <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label>公司名稱</Label>
+                <Label htmlFor={f("companyName")}>公司名稱</Label>
                 <Hint>由封面自動帶入（唯讀）。若封面公司名稱有誤，請回到第 1 章節修正。</Hint>
                 <input
+                  id={f("companyName")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={companyName}
                   readOnly
@@ -519,9 +525,10 @@ export default function HumanBudgetRequirementsForm({
               </div>
               {taxId && (
                 <div>
-                  <Label>統一編號</Label>
+                  <Label htmlFor={f("taxId")}>統一編號</Label>
                   <Hint>由公司概況自動帶入（唯讀）。</Hint>
                   <input
+                    id={f("taxId")}
                     className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-gray-50 text-gray-700"
                     value={taxId}
                     readOnly
@@ -534,8 +541,9 @@ export default function HumanBudgetRequirementsForm({
             <Hint>請填計畫主持人（通常為負責人或計畫負責主管）。建議條列可驗證的代表成就與相關領域經驗。</Hint>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 bg-gray-50/50 p-6 rounded-lg border border-gray-100">
               <div>
-                <Label required>姓名</Label>
+                <Label required htmlFor={f("piName")}>姓名</Label>
                 <input
+                  id={f("piName")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.name}
                   onChange={(e) => setPiProfile((p) => ({ ...p, name: e.target.value }))}
@@ -543,8 +551,10 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>稱謂</Label>
-                <div className="flex gap-6 items-center mt-2">
+                <p id={f("piSalutation-legend")} className="block text-sm font-medium text-gray-700 mb-1">
+                  稱謂
+                </p>
+                <div className="flex gap-6 items-center mt-2" role="group" aria-labelledby={f("piSalutation-legend")}>
                   {["先生", "女士", "其他"].map((v) => (
                     <label key={v} className="flex items-center space-x-2 cursor-pointer">
                       <input
@@ -561,8 +571,9 @@ export default function HumanBudgetRequirementsForm({
                 </div>
               </div>
               <div>
-                <Label>身分證字號</Label>
+                <Label htmlFor={f("piId")}>身分證字號</Label>
                 <input
+                  id={f("piId")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.id}
                   onChange={(e) => setPiProfile((p) => ({ ...p, id: e.target.value }))}
@@ -570,8 +581,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>出生年月日</Label>
+                <Label htmlFor={f("piBirth")}>出生年月日</Label>
                 <input
+                  id={f("piBirth")}
                   type="date"
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.birth}
@@ -579,8 +591,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>申請人名稱</Label>
+                <Label htmlFor={f("piApplicant")}>申請人名稱</Label>
                 <input
+                  id={f("piApplicant")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.applicant}
                   onChange={(e) => setPiProfile((p) => ({ ...p, applicant: e.target.value }))}
@@ -588,8 +601,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>職稱</Label>
+                <Label htmlFor={f("piTitle")}>職稱</Label>
                 <input
+                  id={f("piTitle")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.title}
                   onChange={(e) => setPiProfile((p) => ({ ...p, title: e.target.value }))}
@@ -597,8 +611,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>單位外年資（年）</Label>
+                <Label htmlFor={f("piOutsideYears")}>單位外年資（年）</Label>
                 <input
+                  id={f("piOutsideYears")}
                   type="number"
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.outsideYears}
@@ -607,8 +622,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div>
-                <Label>單位年資（年）</Label>
+                <Label htmlFor={f("piInsideYears")}>單位年資（年）</Label>
                 <input
+                  id={f("piInsideYears")}
                   type="number"
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.insideYears}
@@ -617,8 +633,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>專業領域</Label>
+                <Label htmlFor={f("piField")}>專業領域</Label>
                 <input
+                  id={f("piField")}
                   className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white"
                   value={piProfile.field}
                   onChange={(e) => setPiProfile((p) => ({ ...p, field: e.target.value }))}
@@ -626,8 +643,9 @@ export default function HumanBudgetRequirementsForm({
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>重要成就</Label>
+                <Label htmlFor={f("piAchievements")}>重要成就</Label>
                 <textarea
+                  id={f("piAchievements")}
                   className="w-full border border-gray-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-colors bg-white min-h-[120px] resize-y"
                   value={piProfile.achievements}
                   onChange={(e) => setPiProfile((p) => ({ ...p, achievements: e.target.value }))}
@@ -928,8 +946,9 @@ export default function HumanBudgetRequirementsForm({
             <SubTitle>（二）參與計畫研究發展人員資歷說明</SubTitle>
             <Hint>請將人員投入工作項目（A1/A2…）與「預定進度表/查核點」對齊，避免後續審查時不一致。</Hint>
             <div className="mb-3">
-              <Label>公司名稱：</Label>
+              <Label htmlFor={f("teamSectionCompanyName")}>公司名稱：</Label>
               <input
+                id={f("teamSectionCompanyName")}
                 readOnly
                 className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
                 value={companyName}
@@ -1147,8 +1166,9 @@ export default function HumanBudgetRequirementsForm({
                 { key: "equipUse", label: "（ㄧ）研發設備使用費：政府補助分攤比例（%）" },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <Label>{label}</Label>
+                  <Label htmlFor={f(`govAlloc-${key}`)}>{label}</Label>
                   <input
+                    id={f(`govAlloc-${key}`)}
                     type="number"
                     min={0}
                     max={100}

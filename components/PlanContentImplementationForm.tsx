@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 
 // --- 共用小元件（沿用公司概況視覺風格） ---
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
@@ -25,11 +25,13 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
 const Label = ({
   children,
   required = false,
+  htmlFor,
 }: {
   children: React.ReactNode;
   required?: boolean;
+  htmlFor?: string;
 }) => (
-  <label className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -52,11 +54,14 @@ type UploadedImage = {
 function ImageDropzone({
   value,
   onChange,
+  label = "點擊或拖曳圖片至此上傳",
 }: {
   value: UploadedImage[];
   onChange: (next: UploadedImage[]) => void;
+  label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const pickFiles = () => inputRef.current?.click();
 
   const fileToDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -101,7 +106,13 @@ function ImageDropzone({
     <div className="mt-3">
       <div
         className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-400 transition-all cursor-pointer bg-white"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => pickFiles()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            pickFiles();
+          }
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -109,11 +120,12 @@ function ImageDropzone({
         }}
         role="button"
         tabIndex={0}
+        aria-label={label}
       >
-        <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
         </svg>
-        <p className="text-sm font-medium">點擊或拖曳圖片至此上傳</p>
+        <p className="text-sm font-medium">{label}</p>
         <p className="text-xs text-gray-400 mt-1">支援 JPG, PNG, GIF 格式（可多選）</p>
         <input
           ref={inputRef}
@@ -134,7 +146,7 @@ function ImageDropzone({
             <div key={img.id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-md border border-gray-200 bg-gray-50 overflow-hidden flex-shrink-0">
-                  <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                  <img src={img.url} alt={`已上傳圖片：${img.name}`} className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-gray-700 truncate">{img.name}</div>
@@ -403,6 +415,9 @@ export default function PlanContentImplementationForm({
   value?: PlanContentDraft;
   onChange?: (next: PlanContentDraft) => void;
 }) {
+  const fid = useId();
+  const f = (key: string) => `${fid}-${key}`;
+
   const [formData, setFormData] = useState({
     background: "",
     industryStatus: "",
@@ -506,9 +521,10 @@ export default function PlanContentImplementationForm({
             <SectionTitle>
               一、背景與說明 (請說明計畫背景、面臨的問題、市場、環境及使用者之需求、未來對客戶層、使用者產生之效益等計畫發展願景)
             </SectionTitle>
-            <Label required>計畫背景、面臨的問題、市場/環境與使用者需求、發展願景</Label>
+            <Label required htmlFor={f("background")}>計畫背景、面臨的問題、市場/環境與使用者需求、發展願景</Label>
             <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；避免只描述產品功能，請說清楚為何需要做這個計畫。</Hint>
             <Textarea
+              id={f("background")}
               name="background"
               value={formData.background}
               onChange={handleChange}
@@ -523,9 +539,10 @@ export default function PlanContentImplementationForm({
             </SectionTitle>
 
             <SubTitle>（一）國內外產業現況與發展方向</SubTitle>
-            <Label required>產業現況與趨勢（請註明資料來源）</Label>
+            <Label required htmlFor={f("industryStatus")}>產業現況與趨勢（請註明資料來源）</Label>
             <Hint>請至少引用 1–3 個可信來源（政府統計/研究報告/論文/產業報告），並說明與本案關聯。</Hint>
             <Textarea
+              id={f("industryStatus")}
               name="industryStatus"
               value={formData.industryStatus}
               onChange={handleChange}
@@ -534,9 +551,10 @@ export default function PlanContentImplementationForm({
             <ImageDropzone value={images.industryStatus} onChange={(next) => setImages((p) => ({ ...p, industryStatus: next }))} />
 
             <div className="mt-6">
-              <Label>補充：趨勢與規格/功能/成本比較</Label>
+              <Label htmlFor={f("industryTrends")}>補充：趨勢與規格/功能/成本比較</Label>
               <Hint>建議列出比較表：本案 vs 既有方案（規格、效能、成本、導入門檻、維運）。</Hint>
               <Textarea
+                id={f("industryTrends")}
                 name="industryTrends"
                 value={formData.industryTrends}
                 onChange={handleChange}
@@ -597,6 +615,7 @@ export default function PlanContentImplementationForm({
                                   setCompetitors(next);
                                 }}
                                 placeholder={"請逐點條列（可按 Enter 換行）"}
+                                aria-label={`競爭力分析 ${rowItem.label}（${competitors[companyIdx]?.name ?? `公司欄位 ${companyIdx + 1}`}）`}
                               />
                             ) : (
                               <input
@@ -613,6 +632,7 @@ export default function PlanContentImplementationForm({
                                   setCompetitors(next);
                                 }}
                                 placeholder={rowItem.placeholder}
+                                aria-label={`競爭力分析 ${rowItem.label}（${competitors[companyIdx]?.name ?? `公司欄位 ${companyIdx + 1}`}）`}
                               />
                             )}
                           </td>
@@ -627,9 +647,10 @@ export default function PlanContentImplementationForm({
             <SubTitle>
               （三）計畫可行性分析 (依計畫屬性與內容，客觀評估分析本案整體之可行性程度，如市場商機、營運模式、系統 技術、商品化 應用或其他優勢等說明。)
             </SubTitle>
-            <Label required>市場商機、營運模式、系統/技術、商品化/應用或其他優勢</Label>
+            <Label required htmlFor={f("feasibility")}>市場商機、營運模式、系統/技術、商品化/應用或其他優勢</Label>
             <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策。</Hint>
             <Textarea
+              id={f("feasibility")}
               name="feasibility"
               value={formData.feasibility}
               onChange={handleChange}
@@ -640,9 +661,10 @@ export default function PlanContentImplementationForm({
 
           <section className="mb-12 pt-8 border-t border-gray-200">
             <SectionTitle>三、創新性說明</SectionTitle>
-            <Label required>本計畫創意、構想、研發或服務標的之創新性</Label>
+            <Label required htmlFor={f("innovation")}>本計畫創意、構想、研發或服務標的之創新性</Label>
             <Hint>建議聚焦 1–3 個創新點，並用可量測指標描述（例如：成本降低%、效率提升%、準確率）。</Hint>
             <Textarea
+              id={f("innovation")}
               name="innovation"
               value={formData.innovation}
               onChange={handleChange}
@@ -655,14 +677,18 @@ export default function PlanContentImplementationForm({
             <SectionTitle>四、計畫架構與實施方式</SectionTitle>
 
             <SubTitle>（一）計畫架構（請以樹枝圖撰寫）</SubTitle>
-            <Label required>分項計畫/開發技術、占比、執行單位、委託研究/技術引進</Label>
+            <p id={f("architecture-legend")} className="block text-sm font-medium text-gray-700 mb-1">
+              分項計畫/開發技術、占比、執行單位、委託研究/技術引進 <span className="text-red-500">*</span>
+            </p>
             <Hint>請先建立主幹（整體架構），再往下拆分分項計畫（A/B）與工作項目（A1/A2…）；建議與後續進度表、KPI 編號一致。</Hint>
+            <div role="group" aria-labelledby={f("architecture-legend")}>
             <HorizontalTreeEditor
               value={architectureTree}
               onChange={(next) => {
                 setArchitectureTree(next);
               }}
             />
+            </div>
             <div className="text-xs text-gray-500 leading-relaxed -mt-2 mb-3 whitespace-pre-wrap break-words">
               請註明下列資料：
               {"\n"}1.開發計畫中各分項計畫及所開發技術依開發經費占總開發費用之百分比。
@@ -671,9 +697,10 @@ export default function PlanContentImplementationForm({
             </div>
 
             <SubTitle>（二）執行步驟及方法</SubTitle>
-            <Label required>流程、驗證/測試、修正流程與預期結果</Label>
+            <Label required htmlFor={f("stepsMethod")}>流程、驗證/測試、修正流程與預期結果</Label>
             <Hint>請以步驟條列：輸入→處理→輸出→驗證；並說明每步驟的產出物（文件/原型/測試報告）。</Hint>
             <Textarea
+              id={f("stepsMethod")}
               name="stepsMethod"
               value={formData.stepsMethod}
               onChange={handleChange}
@@ -687,9 +714,10 @@ export default function PlanContentImplementationForm({
             <ImageDropzone value={images.stepsMethod} onChange={(next) => setImages((p) => ({ ...p, stepsMethod: next }))} />
 
             <SubTitle>（三）技術移轉來源分析：擬與業界、學術界及其他研究機構合作計畫</SubTitle>
-            <Label>合作/引進/委外來源背景與合作方式</Label>
+            <Label htmlFor={f("techTransferAnalysis")}>合作/引進/委外來源背景與合作方式</Label>
             <Hint>若有委外/引進，請說明對象背景、合作範圍、交付物與驗收方式；並於表格填入起迄期間與預算。</Hint>
             <Textarea
+              id={f("techTransferAnalysis")}
               name="techTransferAnalysis"
               value={formData.techTransferAnalysis}
               onChange={handleChange}
@@ -825,9 +853,10 @@ export default function PlanContentImplementationForm({
             </div>
 
             <div className="mt-6">
-              <Label>專利/智慧財產權風險與對策（含檢索分析）</Label>
+              <Label htmlFor={f("ipRisk")}>專利/智慧財產權風險與對策（含檢索分析）</Label>
               <Hint>請說明是否做專利檢索、是否可能侵權、關鍵智財布局（申請/授權/規避策略）。</Hint>
               <Textarea
+                id={f("ipRisk")}
                 name="ipRisk"
                 value={formData.ipRisk}
                 onChange={handleChange}

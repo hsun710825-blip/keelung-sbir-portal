@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { EXPECTED_BENEFITS_HINT } from "../lib/sbirAppendixNotes";
 
 // --- 共用小元件（沿用公司概況視覺風格） ---
@@ -26,11 +26,13 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
 const Label = ({
   children,
   required = false,
+  htmlFor,
 }: {
   children: React.ReactNode;
   required?: boolean;
+  htmlFor?: string;
 }) => (
-  <label className="block text-sm font-medium text-gray-700 mb-1">
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -77,6 +79,9 @@ export default function ExpectedBenefitsForm({
   value?: ExpectedBenefitsDraft;
   onChange?: (next: ExpectedBenefitsDraft) => void;
 }) {
+  const fid = useId();
+  const f = (key: string) => `${fid}-${key}`;
+
   const [formData, setFormData] = useState({
     valueAdded: "",
     newProducts: "",
@@ -143,55 +148,55 @@ export default function ExpectedBenefitsForm({
             <Hint>若為估算值，請在下方「量化效益分析」說明估算依據（例如：單價×數量、轉換率、產能、客戶數）。</Hint>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-gray-50/50 p-6 rounded-lg border border-gray-100 mt-4">
               <div>
-                <Label>增加產值（千元）</Label>
-                <Input type="number" name="valueAdded" value={formData.valueAdded} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("valueAdded")}>增加產值（千元）</Label>
+                <Input id={f("valueAdded")} type="number" name="valueAdded" value={formData.valueAdded} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>產出新產品或服務（項）</Label>
-                <Input type="number" name="newProducts" value={formData.newProducts} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("newProducts")}>產出新產品或服務（項）</Label>
+                <Input id={f("newProducts")} type="number" name="newProducts" value={formData.newProducts} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>衍生商品或服務（項）</Label>
-                <Input type="number" name="derivedProducts" value={formData.derivedProducts} onChange={handleChange} placeholder="0" />
-              </div>
-
-              <div>
-                <Label>投入研發費用（千元）</Label>
-                <Input type="number" name="rndInvestment" value={formData.rndInvestment} onChange={handleChange} placeholder="0" />
-              </div>
-              <div>
-                <Label>促成投資額（千元）</Label>
-                <Input type="number" name="inducedInvestment" value={formData.inducedInvestment} onChange={handleChange} placeholder="0" />
-              </div>
-              <div>
-                <Label>降低成本（千元）</Label>
-                <Input type="number" name="costReduction" value={formData.costReduction} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("derivedProducts")}>衍生商品或服務（項）</Label>
+                <Input id={f("derivedProducts")} type="number" name="derivedProducts" value={formData.derivedProducts} onChange={handleChange} placeholder="0" />
               </div>
 
               <div>
-                <Label>增加就業人數（人）</Label>
-                <Input type="number" name="employment" value={formData.employment} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("rndInvestment")}>投入研發費用（千元）</Label>
+                <Input id={f("rndInvestment")} type="number" name="rndInvestment" value={formData.rndInvestment} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>成立新公司（家）</Label>
-                <Input type="number" name="newCompany" value={formData.newCompany} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("inducedInvestment")}>促成投資額（千元）</Label>
+                <Input id={f("inducedInvestment")} type="number" name="inducedInvestment" value={formData.inducedInvestment} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>發明專利（件）</Label>
-                <Input type="number" name="inventionPatent" value={formData.inventionPatent} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("costReduction")}>降低成本（千元）</Label>
+                <Input id={f("costReduction")} type="number" name="costReduction" value={formData.costReduction} onChange={handleChange} placeholder="0" />
               </div>
 
               <div>
-                <Label>新型/新式樣專利（件）</Label>
-                <Input type="number" name="utilityPatent" value={formData.utilityPatent} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("employment")}>增加就業人數（人）</Label>
+                <Input id={f("employment")} type="number" name="employment" value={formData.employment} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>期刊論文（篇）</Label>
-                <Input type="number" name="journalPapers" value={formData.journalPapers} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("newCompany")}>成立新公司（家）</Label>
+                <Input id={f("newCompany")} type="number" name="newCompany" value={formData.newCompany} onChange={handleChange} placeholder="0" />
               </div>
               <div>
-                <Label>研討會論文（篇）</Label>
-                <Input type="number" name="conferencePapers" value={formData.conferencePapers} onChange={handleChange} placeholder="0" />
+                <Label htmlFor={f("inventionPatent")}>發明專利（件）</Label>
+                <Input id={f("inventionPatent")} type="number" name="inventionPatent" value={formData.inventionPatent} onChange={handleChange} placeholder="0" />
+              </div>
+
+              <div>
+                <Label htmlFor={f("utilityPatent")}>新型/新式樣專利（件）</Label>
+                <Input id={f("utilityPatent")} type="number" name="utilityPatent" value={formData.utilityPatent} onChange={handleChange} placeholder="0" />
+              </div>
+              <div>
+                <Label htmlFor={f("journalPapers")}>期刊論文（篇）</Label>
+                <Input id={f("journalPapers")} type="number" name="journalPapers" value={formData.journalPapers} onChange={handleChange} placeholder="0" />
+              </div>
+              <div>
+                <Label htmlFor={f("conferencePapers")}>研討會論文（篇）</Label>
+                <Input id={f("conferencePapers")} type="number" name="conferencePapers" value={formData.conferencePapers} onChange={handleChange} placeholder="0" />
               </div>
             </div>
 
@@ -199,9 +204,10 @@ export default function ExpectedBenefitsForm({
 
           <section className="mb-12 pt-8 border-t border-gray-200">
             <SectionTitle>二、非量化效益</SectionTitle>
-            <Label required>請以敘述性方式說明，例如對公司的影響．．．等。</Label>
+            <Label required htmlFor={f("qualitativeBenefits")}>請以敘述性方式說明，例如對公司的影響．．．等。</Label>
             <Hint>建議條列 3–7 點，聚焦可被審查理解的改變：能力建立、制度流程、品質/交付、品牌信任、合作關係等。</Hint>
             <Textarea
+              id={f("qualitativeBenefits")}
               name="qualitativeBenefits"
               value={formData.qualitativeBenefits}
               onChange={handleChange}
@@ -215,9 +221,10 @@ export default function ExpectedBenefitsForm({
               以下兩項為長文本欄位，請具體說明結案當年與後兩年可完成之效益；可搭配條列與可驗證描述。
             </div>
 
-            <Label required>（一）對公司之影響：</Label>
+            <Label required htmlFor={f("impactOnCompany")}>（一）對公司之影響：</Label>
             <Hint>如研發能量建立、研發人員質／量提升、研發制度建立、跨高科技領域、技術升級、國際化或企業轉型等。</Hint>
             <Textarea
+              id={f("impactOnCompany")}
               name="impactOnCompany"
               value={formData.impactOnCompany}
               onChange={handleChange}
@@ -225,9 +232,10 @@ export default function ExpectedBenefitsForm({
             />
 
             <div className="mt-8">
-              <Label required>（二）對產業、產業技術所具有之創造、加值、或流通之效益：</Label>
+              <Label required htmlFor={f("impactOnIndustry")}>（二）對產業、產業技術所具有之創造、加值、或流通之效益：</Label>
               <Hint>如產值貢獻、對產業技術研發水準之提昇、服務範圍家數之擴大、對產業技術研究機構研發服務之競合、研發服務業之興起、技術商品化時程之縮短、系統化之研究方法、吸引就業人數或引導投資數量等。</Hint>
               <Textarea
+                id={f("impactOnIndustry")}
                 name="impactOnIndustry"
                 value={formData.impactOnIndustry}
                 onChange={handleChange}

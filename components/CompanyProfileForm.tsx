@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { checkTaiwanNationalId, MOBILE_TW_PATTERN } from "@/lib/taiwanId";
 import { hasLeadingZip } from "@/lib/twPostalMap";
 
@@ -24,8 +24,16 @@ const Hint = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-const Label = ({ children, required = false }: { children: React.ReactNode; required?: boolean }) => (
-  <label className="block text-sm font-medium text-gray-700 mb-1">
+const Label = ({
+  children,
+  required = false,
+  htmlFor,
+}: {
+  children: React.ReactNode;
+  required?: boolean;
+  htmlFor?: string;
+}) => (
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -62,6 +70,7 @@ function ImageDropzone({
   label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const pickFiles = () => inputRef.current?.click();
 
   const fileToDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -106,7 +115,13 @@ function ImageDropzone({
     <div className="mt-3">
       <div
         className="w-full border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-400 transition-all cursor-pointer bg-white"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => pickFiles()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            pickFiles();
+          }
+        }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -114,8 +129,9 @@ function ImageDropzone({
         }}
         role="button"
         tabIndex={0}
+        aria-label={label}
       >
-        <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
         </svg>
         <p className="text-sm font-medium">{label}</p>
@@ -139,7 +155,7 @@ function ImageDropzone({
             <div key={img.id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-md border border-gray-200 bg-gray-50 overflow-hidden flex-shrink-0">
-                  <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                  <img src={img.url} alt={`已上傳圖片：${img.name}`} className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-gray-700 truncate">{img.name}</div>
@@ -230,6 +246,9 @@ export default function CompanyProfileForm({
   };
   onChange?: (next: NonNullable<typeof value>) => void;
 }) {
+  const fid = useId();
+  const f = (key: string) => `${fid}-${key}`;
+
   // 基礎表單狀態
   const [formData, setFormData] = useState({
     companyName: "", establishDate: "",
@@ -396,15 +415,17 @@ export default function CompanyProfileForm({
             </Hint>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 bg-gray-50/50 p-6 rounded-lg border border-gray-100">
               <div>
-                <Label>公司名稱</Label>
+                <Label htmlFor={f("companyName")}>公司名稱</Label>
                 {shared ? (
                   <input
+                    id={f("companyName")}
                     readOnly
                     className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
                     value={shared.companyName}
                   />
                 ) : (
                   <Input
+                    id={f("companyName")}
                     name="companyName"
                     value={formData.companyName}
                     onChange={handleInputChange}
@@ -412,30 +433,32 @@ export default function CompanyProfileForm({
                 )}
               </div>
               <div>
-                <Label>設立日期</Label>
+                <Label htmlFor={f("establishDate")}>設立日期</Label>
                 {shared ? (
                   <input
+                    id={f("establishDate")}
                     type="date"
                     readOnly
                     className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
                     value={shared.establishDate}
                   />
                 ) : (
-                  <Input type="date" name="establishDate" value={formData.establishDate} onChange={handleInputChange} />
+                  <Input id={f("establishDate")} type="date" name="establishDate" value={formData.establishDate} onChange={handleInputChange} />
                 )}
               </div>
               <div>
-                <Label>統一編號</Label>
-                <Input name="taxId" value={formData.taxId} onChange={handleInputChange} />
+                <Label htmlFor={f("taxId")}>統一編號</Label>
+                <Input id={f("taxId")} name="taxId" value={formData.taxId} onChange={handleInputChange} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:col-span-2">
                 <div>
-                  <Label>聯絡電話含分機</Label>
-                  <Input name="phone" value={formData.phone} onChange={handleInputChange} />
+                  <Label htmlFor={f("phone")}>聯絡電話含分機</Label>
+                  <Input id={f("phone")} name="phone" value={formData.phone} onChange={handleInputChange} />
                 </div>
                 <div>
-                  <Label>聯絡電話（手機）</Label>
+                  <Label htmlFor={f("mobilePhone")}>聯絡電話（手機）</Label>
                   <Input
+                    id={f("mobilePhone")}
                     name="mobilePhone"
                     inputMode="numeric"
                     autoComplete="tel"
@@ -452,26 +475,28 @@ export default function CompanyProfileForm({
                   ) : null}
                 </div>
                 <div>
-                  <Label>傳真號碼</Label>
-                  <Input name="fax" value={formData.fax} onChange={handleInputChange} />
+                  <Label htmlFor={f("fax")}>傳真號碼</Label>
+                  <Input id={f("fax")} name="fax" value={formData.fax} onChange={handleInputChange} />
                 </div>
               </div>
               <div>
-                <Label>負責人</Label>
+                <Label htmlFor={f("representative")}>負責人</Label>
                 {shared ? (
                   <input
+                    id={f("representative")}
                     readOnly
                     className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
                     value={shared.representative}
                   />
                 ) : (
-                  <Input name="representative" value={formData.representative} onChange={handleInputChange} />
+                  <Input id={f("representative")} name="representative" value={formData.representative} onChange={handleInputChange} />
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>身分證字號</Label>
+                  <Label htmlFor={f("idNumber")}>身分證字號</Label>
                   <Input
+                    id={f("idNumber")}
                     name="idNumber"
                     value={formData.idNumber}
                     onChange={handleInputChange}
@@ -494,30 +519,33 @@ export default function CompanyProfileForm({
                   ) : null}
                 </div>
                 <div>
-                  <Label>出生年月日</Label>
-                  <Input type="date" name="birthDate" value={formData.birthDate} onChange={handleInputChange} />
+                  <Label htmlFor={f("birthDate")}>出生年月日</Label>
+                  <Input id={f("birthDate")} type="date" name="birthDate" value={formData.birthDate} onChange={handleInputChange} />
                 </div>
               </div>
               <div>
-                <Label>實收資本額 (千元)</Label>
-                <Input type="number" name="capital" value={formData.capital} onChange={handleInputChange} />
+                <Label htmlFor={f("capital")}>實收資本額 (千元)</Label>
+                <Input id={f("capital")} type="number" name="capital" value={formData.capital} onChange={handleInputChange} />
               </div>
               <div>
-                <Label>主要營業項目</Label>
+                <Label htmlFor={f("mainBusiness")}>主要營業項目</Label>
                 {shared ? (
                   <input
+                    id={f("mainBusiness")}
                     readOnly
                     className="w-full border border-gray-300 rounded-md px-4 py-2 text-sm bg-slate-100 text-slate-700 cursor-not-allowed"
                     value={shared.mainBusiness}
                   />
                 ) : (
-                  <Input name="mainBusiness" value={formData.mainBusiness} onChange={handleInputChange} />
+                  <Input id={f("mainBusiness")} name="mainBusiness" value={formData.mainBusiness} onChange={handleInputChange} />
                 )}
               </div>
               
               <div className="md:col-span-2">
-                <Label>股票上市狀況</Label>
-                <div className="flex flex-wrap gap-6 mt-2">
+                <p id={f("stockStatus-legend")} className="block text-sm font-medium text-gray-700 mb-1">
+                  股票上市狀況
+                </p>
+                <div className="flex flex-wrap gap-6 mt-2" role="group" aria-labelledby={f("stockStatus-legend")}>
                   {["上市", "上櫃", "公開發行", "未公開發行"].map(status => (
                     <label key={status} className="flex items-center space-x-2 cursor-pointer">
                       <input 
@@ -535,17 +563,18 @@ export default function CompanyProfileForm({
               </div>
 
               <div>
-                <Label>前一年度營業額 (千元)</Label>
-                <Input type="number" name="lastYearRevenue" value={formData.lastYearRevenue} onChange={handleInputChange} />
+                <Label htmlFor={f("lastYearRevenue")}>前一年度營業額 (千元)</Label>
+                <Input id={f("lastYearRevenue")} type="number" name="lastYearRevenue" value={formData.lastYearRevenue} onChange={handleInputChange} />
               </div>
               <div>
-                <Label>員工人數 (人)</Label>
-                <Input type="number" name="employeeCount" value={formData.employeeCount} onChange={handleInputChange} />
+                <Label htmlFor={f("employeeCount")}>員工人數 (人)</Label>
+                <Input id={f("employeeCount")} type="number" name="employeeCount" value={formData.employeeCount} onChange={handleInputChange} />
               </div>
 
               <div className="md:col-span-2">
-                <Label>公司登記地址</Label>
+                <Label htmlFor={f("registeredAddress")}>公司登記地址</Label>
                 <Input
+                  id={f("registeredAddress")}
                   name="registeredAddress"
                   value={formData.registeredAddress}
                   onChange={handleInputChange}
@@ -556,8 +585,9 @@ export default function CompanyProfileForm({
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>通訊地址</Label>
+                <Label htmlFor={f("mailingAddress")}>通訊地址</Label>
                 <Input
+                  id={f("mailingAddress")}
                   name="mailingAddress"
                   value={formData.mailingAddress}
                   onChange={handleInputChange}
@@ -566,8 +596,10 @@ export default function CompanyProfileForm({
               </div>
 
               <div className="md:col-span-2 border-t border-gray-200 pt-6 mt-2">
-                <Label>研發成果獲得獎項</Label>
-                <div className="mt-3 space-y-3">
+                <p id={f("awards-legend")} className="block text-sm font-medium text-gray-700 mb-1">
+                  研發成果獲得獎項
+                </p>
+                <div className="mt-3 space-y-3" role="group" aria-labelledby={f("awards-legend")}>
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <input type="checkbox" checked={formData.awards.includes("年度通過研發管理制度評鑑")} onChange={() => handleCheckboxChange("年度通過研發管理制度評鑑")} className="w-4 h-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" />
                     <span className="text-sm text-gray-700">年度通過研發管理制度評鑑</span>
@@ -575,7 +607,7 @@ export default function CompanyProfileForm({
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <input type="checkbox" checked={formData.awards.includes("年度產業科技發展獎")} onChange={() => handleCheckboxChange("年度產業科技發展獎")} className="w-4 h-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" />
                     <span className="text-sm text-gray-700 whitespace-nowrap">年度產業科技發展獎(</span>
-                    <input type="text" name="awardTechDetails" value={formData.awardTechDetails} onChange={handleInputChange} disabled={!formData.awards.includes("年度產業科技發展獎")} className="border-b border-gray-400 focus:border-gray-600 outline-none px-2 w-24 text-sm bg-transparent disabled:opacity-50" />
+                    <input type="text" name="awardTechDetails" value={formData.awardTechDetails} onChange={handleInputChange} disabled={!formData.awards.includes("年度產業科技發展獎")} className="border-b border-gray-400 focus:border-gray-600 outline-none px-2 w-24 text-sm bg-transparent disabled:opacity-50" aria-label="年度產業科技發展獎：得獎年度或說明" />
                     <span className="text-sm text-gray-700">獎)</span>
                   </label>
                   <label className="flex items-center space-x-3 cursor-pointer">
@@ -589,7 +621,7 @@ export default function CompanyProfileForm({
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <input type="checkbox" checked={formData.awards.includes("其他殊榮")} onChange={() => handleCheckboxChange("其他殊榮")} className="w-4 h-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" />
                     <span className="text-sm text-gray-700 whitespace-nowrap">其他殊榮：</span>
-                    <input type="text" name="awardOtherDetails" value={formData.awardOtherDetails} onChange={handleInputChange} disabled={!formData.awards.includes("其他殊榮")} className="border-b border-gray-400 focus:border-gray-600 outline-none px-2 flex-1 text-sm bg-transparent disabled:opacity-50" />
+                    <input type="text" name="awardOtherDetails" value={formData.awardOtherDetails} onChange={handleInputChange} disabled={!formData.awards.includes("其他殊榮")} className="border-b border-gray-400 focus:border-gray-600 outline-none px-2 flex-1 text-sm bg-transparent disabled:opacity-50" aria-label="其他殊榮說明" />
                   </label>
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <input type="checkbox" checked={formData.awards.includes("無")} onChange={() => handleCheckboxChange("無")} className="w-4 h-4 rounded border-gray-300 text-gray-600 focus:ring-gray-500" />
@@ -615,19 +647,19 @@ export default function CompanyProfileForm({
                   {shareholders.map((row, idx) => (
                     <tr key={idx} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2 border-r border-gray-200">
-                        <input type="text" className="w-full bg-transparent outline-none px-2 py-1" placeholder={`股東 ${idx + 1}`} value={row.name} onChange={(e) => {
+                        <input type="text" className="w-full bg-transparent outline-none px-2 py-1" placeholder={`股東 ${idx + 1}`} aria-label={`主要股東名稱 第 ${idx + 1} 列`} value={row.name} onChange={(e) => {
                           const newRows = shareholders.map((r, i) => i === idx ? { ...r, name: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
                       </td>
                       <td className="px-4 py-2 border-r border-gray-200">
-                        <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0" value={row.shares} onChange={(e) => {
+                        <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0" aria-label={`持有股份千股 第 ${idx + 1} 列`} value={row.shares} onChange={(e) => {
                           const newRows = shareholders.map((r, i) => i === idx ? { ...r, shares: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
                       </td>
                       <td className="px-4 py-2">
-                        <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0.00" value={row.ratio} onChange={(e) => {
+                        <input type="number" className="w-full bg-transparent outline-none px-2 py-1 text-right" placeholder="0.00" aria-label={`持股比例 第 ${idx + 1} 列`} value={row.ratio} onChange={(e) => {
                           const newRows = shareholders.map((r, i) => i === idx ? { ...r, ratio: e.target.value } : r);
                           setShareholders(newRows);
                         }} />
@@ -652,10 +684,12 @@ export default function CompanyProfileForm({
             <Hint>建議用時間軸條列：成立→重要里程碑→代表產品/服務→獎項/認證→近年成長重點；可上傳佐證圖片。</Hint>
             <div className="bg-white">
               <Textarea 
+                id={f("companyHistory")}
                 name="companyHistory" 
                 value={formData.companyHistory} 
                 onChange={handleInputChange} 
                 placeholder="請描述公司沿革、經營理念等..."
+                aria-label="公司沿革說明"
               />
               <ImageDropzone
                 value={images.companyHistory}
@@ -672,10 +706,12 @@ export default function CompanyProfileForm({
             <Hint>請描述「誰」會買/用、使用情境與痛點；可補充客群規模、分眾與典型客戶輪廓。</Hint>
             <div className="mb-8">
               <Textarea 
+                id={f("targetAudience")}
                 name="targetAudience" 
                 value={formData.targetAudience} 
                 onChange={handleInputChange} 
                 placeholder="請說明目標客群..."
+                aria-label="主要服務或產品目標客群"
               />
               <ImageDropzone
                 value={images.targetAudience}
@@ -687,10 +723,12 @@ export default function CompanyProfileForm({
             <Hint>請說明通路型態（直銷/代理/平台/門市）、區域分佈、轉換流程；可上傳示意圖或通路地圖。</Hint>
             <div className="mb-8">
               <Textarea 
+                id={f("salesChannels")}
                 name="salesChannels" 
                 value={formData.salesChannels} 
                 onChange={handleInputChange} 
                 placeholder="請說明銷售通路分佈..."
+                aria-label="銷售通路說明"
               />
               <ImageDropzone
                 value={images.salesChannels}
