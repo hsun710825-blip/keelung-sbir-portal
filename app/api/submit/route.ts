@@ -8,7 +8,7 @@ import { getDriveSaClient } from "../_driveSa";
 import { markRegistrySubmitted } from "../_registrySheet";
 import { withGoogleApiRetry } from "../_googleApiRetry";
 import {
-  buildSafeUploadFilename,
+  buildSafeDisplayPdfName,
   ensureAllowedUploadMime,
   ensureFileSizeLimit,
   sanitizeDeepInput,
@@ -16,11 +16,11 @@ import {
 } from "../../../lib/serverSecurity";
 import { assertDraftUnlocked, findDraftFileIdInFolder, readDraftJsonByFileId } from "../../../lib/projectSecurity";
 import { writeAuditLog } from "../../../lib/audit";
+import { sendSubmitSuccessEmail } from "../../../lib/mailer";
 
 type AnyRecord = Record<string, unknown>;
 
 type ParsedPayload = {
-  filename: string;
   projectName: string;
   pdfBytes: Buffer;
   /** 若有帶入，用於寫回專案總表（Google Sheets） */
@@ -56,7 +56,6 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
         throw new Error(String(err?.error || "PDF 產製失敗"));
       }
       return {
-        filename: buildSafeUploadFilename("application/pdf"),
         projectName,
         pdfBytes: Buffer.from(await pdfRes.arrayBuffer()),
         formData: cleanFormData,
@@ -70,7 +69,6 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     const sizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
     if (!sizeCheck.ok) throw new Error(sizeCheck.error);
     return {
-      filename: buildSafeUploadFilename("application/pdf"),
       projectName,
       pdfBytes,
     };
@@ -91,14 +89,14 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     }
     const sizeCheck = ensureFileSizeLimit(file.size);
     if (!sizeCheck.ok) throw new Error(sizeCheck.error);
-    const filename = buildSafeUploadFilename("application/pdf");
     const projectNameField = form.get("projectName");
     const projectName = sanitizeProjectNameForFolder(
-      typeof projectNameField === "string" && projectNameField.trim() ? projectNameField : filename.replace(/\.pdf$/i, "")
+      typeof projectNameField === "string" && projectNameField.trim()
+        ? projectNameField
+        : "未命名計畫"
     );
 
     return {
-      filename,
       projectName,
       pdfBytes: Buffer.from(await file.arrayBuffer()),
     };
@@ -118,7 +116,8 @@ async function getDriveWithFallback() {
 
 export async function POST(req: Request) {
   try {
-    const { filename, projectName, pdfBytes, formData: registryFormData } = await parseSubmitPayload(req);
+    const { projectName, pdfBytes, formData: registryFormData } = await parseSubmitPayload(req);
+    const displayPdfName = buildSafeDisplayPdfName(projectName);
     const payloadSizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
     if (!payloadSizeCheck.ok) {
       return NextResponse.json({ ok: false, error: payloadSizeCheck.error, maxBytes: payloadSizeCheck.maxBytes }, { status: 413 });
@@ -130,6 +129,7 @@ export async function POST(req: Request) {
     }
 
     const { drive, mode } = await getDriveWithFallback();
+    const nowIso = new Date().toISOString();
     const { userFolder, projectFolder, file, draftFileId } = await withGoogleApiRetry("submit.driveUpload", async () => {
       const userFolder = await ensureUserFolder(drive, session);
       const projectFolder = await ensureProjectFolder({ drive, userFolderId: userFolder.folderId, projectName });
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
 
       const res = await drive.files.create({
         requestBody: {
-          name: filename,
+          name: displayPdfName,
           parents: [projectFolder.folderId],
         },
         media: {
@@ -156,7 +156,6 @@ export async function POST(req: Request) {
     if (draftFileId) {
       // 送件成功後回寫草稿狀態為 submitted，形成後端不可逆鎖定。
       const draft = await readDraftJsonByFileId(drive, draftFileId);
-      const nowIso = new Date().toISOString();
       const nextDraft = {
         ...draft,
         formData: {
@@ -189,6 +188,20 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
       detail: { projectFolderId: projectFolder.folderId, uploadMode: mode },
     });
+
+    // 必須 await 寄信後再回傳 JSON：在 Vercel Serverless 若用 void 背景寄信，回應送出後程序會被凍結，Promise 常無法跑完（故日誌無 [submit.mail]、信也寄不出）。
+    if (email) {
+      try {
+        await sendSubmitSuccessEmail({
+          to: email,
+          projectName,
+          submittedAtIso: nowIso,
+        });
+        console.log("[submit.mail] ok", { to: email });
+      } catch (err) {
+        console.warn("[submit.mail] failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
 
     return NextResponse.json({
       ok: true,

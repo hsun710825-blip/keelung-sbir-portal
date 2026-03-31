@@ -12,6 +12,13 @@ import ScheduleCheckpointsForm from '@/components/ScheduleCheckpointsForm';
 import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsForm';
 import { signIn, signOut, useSession } from "next-auth/react";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
+import { isSubmitLockScheduleActiveNow } from "@/lib/planLockSchedule";
+import {
+  formatSubmittedAtForDisplay,
+  formatTaipeiDateTime,
+  formatTaipeiTimeOnly,
+  getTaipeiFullYear,
+} from "@/lib/taipeiTime";
 
 type UserRole = "applicant" | "reviewer";
 type UserContext = { name: string; role: UserRole; email: string };
@@ -29,11 +36,41 @@ export default function App() {
   const [isSimulatingLogin, setIsSimulatingLogin] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(true);
   const [userRole, setUserRole] = useState<UserRole>("applicant");
+  const [authNotice, setAuthNotice] = useState<string>("");
+  const [enterApplicantMode, setEnterApplicantMode] = useState(false);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("auth") === "forbidden") {
+        setAuthNotice("權限不足：此帳號無法進入管理員後台。");
+      }
+      if (params.get("enter") === "applicant") {
+        setEnterApplicantMode(true);
+        params.delete("enter");
+        params.delete("auth");
+        const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", next);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const handleGoogleLogin = (role: UserRole) => {
     setUserRole(role);
+    // 智慧按鈕：已登入則直接進對應區塊；未登入才觸發 OAuth。
+    if (status === "authenticated" && session?.user?.email) {
+      if (role === "reviewer") {
+        window.location.href = "/admin";
+      } else {
+        setEnterApplicantMode(true);
+      }
+      return;
+    }
     setIsSimulatingLogin(true);
-    void signIn("google", { callbackUrl: "/" }).finally(() => setIsSimulatingLogin(false));
+    const callbackUrl = role === "reviewer" ? "/admin" : "/?enter=applicant";
+    void signIn("google", { callbackUrl }).finally(() => setIsSimulatingLogin(false));
   };
 
   const handleLogout = () => {
@@ -55,15 +92,7 @@ export default function App() {
         }
       : null;
 
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
-        <p className="text-slate-500">載入中...</p>
-      </div>
-    );
-  }
-
-  if (userContext) {
+  if (enterApplicantMode && userContext) {
     return <Dashboard user={userContext} onLogout={handleLogout} />;
   }
 
@@ -158,6 +187,7 @@ export default function App() {
               <div className="text-center mb-8">
                 <h3 className="text-xl font-medium tracking-wide text-slate-800 mb-2">系統登入</h3>
                 <p className="text-sm text-slate-500 font-light">請使用 Google 帳號進行身分驗證</p>
+                {authNotice && <p className="mt-3 text-xs text-rose-600">{authNotice}</p>}
               </div>
               <div className="space-y-4">
                 <button 
@@ -222,7 +252,7 @@ export default function App() {
 
       <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
         <p>
-          Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+          Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
         </p>
       </footer>
     </div>
@@ -274,7 +304,7 @@ function Dashboard({ user, onLogout }: { user: UserContext | null; onLogout: () 
   if (authGate === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafafa] px-6">
-        <p className="text-slate-600 text-center">系統正將登入資料寫入後台中...</p>
+        <p className="text-slate-600 text-center">正在完成登入驗證，請稍候...</p>
       </div>
     );
   }
@@ -504,8 +534,9 @@ function getPlanLockState(formData: Partial<ApplicationFormData>) {
   const deleted = Boolean(formData.isDeleted || formData.deletedAt);
   const expiresAtTs = formData.expiresAt ? Date.parse(String(formData.expiresAt)) : NaN;
   const expired = Number.isFinite(expiresAtTs) && expiresAtTs < Date.now();
-  const locked = deleted || expired || status === "submitted";
-  const reason = deleted ? "已刪除" : expired ? "已過期" : status === "submitted" ? "已送出" : "";
+  const submittedLocks = status === "submitted" && isSubmitLockScheduleActiveNow();
+  const locked = deleted || expired || submittedLocks;
+  const reason = deleted ? "已刪除" : expired ? "已過期" : submittedLocks ? "已送出" : "";
   return { locked, reason };
 }
 
@@ -629,7 +660,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null);
   // PDF 防連點狀態：避免短時間重複觸發 /api/pdf。
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
-  // 畫面唯讀鎖定狀態：當草稿狀態為 submitted/expired/deleted 時禁止編輯。
+  // 畫面唯讀鎖定：deleted／過期；送件後鎖定則依 planLockSchedule（預設 2026/5/5 起）。
   const [isPlanLocked, setIsPlanLocked] = useState(false);
   const [planLockReason, setPlanLockReason] = useState<string>("");
 
@@ -681,7 +712,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           setIsPlanLocked(lock.locked);
           setPlanLockReason(lock.reason);
           setFormData((prev) => ({ ...prev, ...next }));
-          if (next.submittedAt) setLastSubmittedAt(next.submittedAt);
+          if (next.submittedAt) {
+            const shown = formatSubmittedAtForDisplay(next.submittedAt);
+            if (shown) setLastSubmittedAt(shown);
+          }
         }
       })
       .catch(() => {
@@ -779,7 +813,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         alert(`草稿儲存失敗：${body?.error || "未知錯誤"}`);
         return false;
       }
-      setLastSaved(new Date().toLocaleTimeString());
+      setLastSaved(formatTaipeiTimeOnly());
       return true;
     } finally {
       setIsSaving(false);
@@ -937,17 +971,15 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         return;
       }
 
-      const submittedAt = new Date();
-      const stamp = `${submittedAt.getFullYear()}/${String(submittedAt.getMonth() + 1).padStart(2, "0")}/${String(
-        submittedAt.getDate()
-      ).padStart(2, "0")} ${String(submittedAt.getHours()).padStart(2, "0")}:${String(submittedAt.getMinutes()).padStart(
-        2,
-        "0"
-      )}:${String(submittedAt.getSeconds()).padStart(2, "0")}`;
+      const stamp = formatTaipeiDateTime(new Date());
       setLastSubmittedAt(stamp);
-      setIsPlanLocked(true);
-      setPlanLockReason("已送出");
-      setFormData((prev) => ({ ...prev, workflowStatus: "submitted", submittedAt: stamp }));
+      setFormData((prev) => {
+        const next = { ...prev, workflowStatus: "submitted" as const, submittedAt: stamp };
+        const lock = getPlanLockState(next);
+        setIsPlanLocked(lock.locked);
+        setPlanLockReason(lock.reason);
+        return next;
+      });
       setStatusToast(`已於${stamp}成功送出`);
       alert(`已於${stamp}成功送出`);
     } catch (e) {
@@ -1436,7 +1468,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           </div>
 
           <div className="px-6 pb-4 text-center text-sm text-gray-500">
-            Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+            Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
           </div>
 
         </main>
@@ -1450,7 +1482,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
       <footer className="w-full py-6 mt-auto text-center text-sm text-gray-500">
         <p>
-          Copyright &copy; {new Date().getFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
+          Copyright &copy; {getTaipeiFullYear()} 嘉澄股份有限公司 版權所有 <span className="mx-2">|</span> 連絡電話：(04)2326-8281
         </p>
       </footer>
 

@@ -1,5 +1,7 @@
 import type { drive_v3 } from "googleapis";
 
+import { isSubmitLockScheduleActiveNow } from "./planLockSchedule";
+
 type AnyRecord = Record<string, unknown>;
 
 export function getDraftNameByEmailKey(emailKey: string) {
@@ -17,8 +19,9 @@ export function extractLockStateFromDraft(input: unknown) {
   const expiresAtTs = expiresAtRaw ? Date.parse(expiresAtRaw) : NaN;
   const isExpired = Number.isFinite(expiresAtTs) && expiresAtTs < now;
   const isSubmitted = workflowStatus === "submitted";
-  const locked = isDeleted || isExpired || isSubmitted;
-  const reason = isDeleted ? "deleted" : isExpired ? "expired" : isSubmitted ? "submitted" : null;
+  const lockedBySubmit = isSubmitted && isSubmitLockScheduleActiveNow();
+  const locked = isDeleted || isExpired || lockedBySubmit;
+  const reason = isDeleted ? "deleted" : isExpired ? "expired" : lockedBySubmit ? "submitted" : null;
   return { locked, reason, workflowStatus, isDeleted, isExpired };
 }
 

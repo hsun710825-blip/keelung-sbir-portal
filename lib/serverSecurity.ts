@@ -72,3 +72,17 @@ export function sanitizeProjectNameForFolder(input: unknown) {
   return basename || "未命名計畫";
 }
 
+/** 送件 PDF 於 Google Drive／通知信附件之顯示檔名（仍可寫入中文計畫名；已排除路徑與非法字元） */
+export function buildSafeDisplayPdfName(projectName: unknown) {
+  const raw = sanitizeProjectNameForFolder(projectName);
+  const cleaned = raw
+    .replace(/[<>:"/\\|?*]/g, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.\s]+$/g, "")
+    .slice(0, 80);
+  const base = cleaned || "未命名計畫";
+  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+}
+
