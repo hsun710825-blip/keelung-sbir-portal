@@ -124,7 +124,7 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
 
   const subject =
     announcement === "remarks_only"
-      ? `【基隆市 SBIR】計畫「${plan}」管理員說明已更新`
+      ? `【基隆市 SBIR】計畫「${plan}」案件狀態已更新`
       : `【基隆市 SBIR】您的計畫書狀態已更新為：${statusLabelZh}`;
 
   const lineText = `如有問題請聯繫《115基隆SBIR幫》Line官方帳號：${LINE_OFFICIAL_URL}`;
