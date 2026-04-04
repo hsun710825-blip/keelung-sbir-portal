@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
+import { Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
+import { MigrateFromSheetsButton } from "@/components/admin/MigrateFromSheetsButton";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -137,6 +139,8 @@ export default async function AdminDashboardPage() {
             </table>
           </div>
         </section>
+
+        {dbUser.role === Role.ADMIN ? <MigrateFromSheetsButton /> : null}
       </div>
     </main>
   );
