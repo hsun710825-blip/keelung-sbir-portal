@@ -138,7 +138,7 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
     "",
     leadText,
     "",
-    "── 管理員說明 ──",
+    "── 案件狀態說明 ──",
     remarksBlock,
     "",
     `登入系統：${portalUrl}`,
@@ -166,7 +166,7 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
 <p style="margin:0 0 12px;">${safeName} 您好，</p>
 ${leadHtml}
 <div style="margin-top:20px;padding:16px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:8px;">
-<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">管理員說明</p>
+<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">案件狀態說明</p>
 <div style="margin:0;font-size:14px;color:#422006;white-space:pre-wrap;">${safeRemarks}</div>
 </div>
 <p style="margin:24px 0 8px;"><a href="${safePortal}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">前往系統首頁</a></p>
