@@ -5,6 +5,42 @@ export const SMTP_FROM_NAME = "基隆SBIR系統自動發信通知";
 
 const LINE_OFFICIAL_URL = "https://lin.ee/PY8K7qG";
 
+/** 正式站預設網址；環境變數缺失或無效時寄信按鈕仍須可點 */
+const DEFAULT_PUBLIC_SITE_URL = "https://keelungsbir.tw";
+
+/**
+ * 寄信與伺服端共用的對外網站網址（絕對路徑、含 http(s)）。
+ * - 依序嘗試 NEXT_PUBLIC_BASE_URL、NEXTAUTH_URL、VERCEL_URL（自動補 https://）
+ * - 若變數為空白、僅空白字元或無法解析為 URL，則使用 {@link DEFAULT_PUBLIC_SITE_URL}
+ */
+export function resolvePublicSiteUrl(): string {
+  const vercel = process.env.VERCEL_URL?.trim();
+  const candidates: (string | undefined)[] = [
+    process.env.NEXT_PUBLIC_BASE_URL,
+    process.env.NEXTAUTH_URL,
+    vercel ? `https://${vercel.replace(/^https?:\/\//i, "")}` : undefined,
+  ];
+
+  for (const raw of candidates) {
+    const trimmed = String(raw ?? "").trim();
+    if (!trimmed) continue;
+
+    const withScheme = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed.replace(/^\/+/, "")}`;
+
+    try {
+      const u = new URL(withScheme);
+      if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+      return u.toString();
+    } catch {
+      continue;
+    }
+  }
+
+  return DEFAULT_PUBLIC_SITE_URL;
+}
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -59,9 +95,7 @@ export function createSmtpMailContext(): SmtpMailContext {
 }
 
 function portalBaseUrl(): string {
-  return String(
-    process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || "https://keelungsbir.tw",
-  ).trim();
+  return resolvePublicSiteUrl();
 }
 
 export type StatusUpdateMailContentInput = {
@@ -135,7 +169,7 @@ ${leadHtml}
 <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">管理員說明</p>
 <div style="margin:0;font-size:14px;color:#422006;white-space:pre-wrap;">${safeRemarks}</div>
 </div>
-<p style="margin:24px 0 8px;"><a href="${safePortal}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">前往系統首頁</a></p>
+<p style="margin:24px 0 8px;"><a href="${safePortal}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">前往系統首頁</a></p>
 <p style="margin:0;font-size:12px;color:#64748b;">此信件由系統自動寄出，請勿直接回覆。</p>
 ${lineHtml}
 </td></tr></table>

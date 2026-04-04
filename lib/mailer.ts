@@ -1,5 +1,5 @@
 import { formatTaipeiDateTimeMail } from "./taipeiTime";
-import { createSmtpMailContext, escapeHtml } from "./mail";
+import { createSmtpMailContext, escapeHtml, resolvePublicSiteUrl } from "./mail";
 
 const LINE_OFFICIAL_URL = "https://lin.ee/PY8K7qG";
 
@@ -14,9 +14,7 @@ function formatSubmitSuccessMail(input: SubmitMailInput) {
   const { to, projectName, submittedAtIso } = input;
   const planTitle = projectName || "未命名計畫";
   const sentAtDisplay = formatTaipeiDateTimeMail(submittedAtIso) || submittedAtIso;
-  const portalUrl = String(
-    process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || "https://keelungsbir.tw",
-  ).trim();
+  const portalUrl = resolvePublicSiteUrl();
 
   const subject = `【SBIR 系統通知】計畫書已成功送出：${planTitle}`;
   const lineText = `如有問題請聯繫《115基隆SBIR幫》Line官方帳號連結如右→ ${LINE_OFFICIAL_URL}`;
@@ -51,7 +49,7 @@ function formatSubmitSuccessMail(input: SubmitMailInput) {
 <li>送出時間：${safeSent}</li>
 <li>計畫書檔案：為保護貴公司的商業機密與資訊安全，本通知信不夾帶實體檔案。請您隨時登入『基隆 SBIR 計畫申請系統』，於系統內檢視或下載完整的 PDF 計畫書。</li>
 </ul>
-<p><a href="${safePortalUrl}">👉 點此登入基隆 SBIR 系統</a></p>
+<p><a href="${safePortalUrl}" target="_blank" rel="noopener noreferrer">👉 點此登入基隆 SBIR 系統</a></p>
 <p>此信件由系統自動寄出，請勿直接回覆。</p>
 ${lineHtml}
 </body></html>`;
