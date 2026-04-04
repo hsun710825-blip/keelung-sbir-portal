@@ -24,9 +24,18 @@ type ApplicationListRow = Prisma.ApplicationGetPayload<{
   };
 }>;
 
-export default async function AdminDashboardPage() {
+type DashboardSearchParams = { q?: string | string[] };
+
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<DashboardSearchParams>;
+}) {
   const session = await getServerSession(authOptions);
   const emailRaw = session?.user?.email?.trim() || "";
+  const sp = (await searchParams) ?? {};
+  const qRaw = sp.q;
+  const searchQuery = typeof qRaw === "string" ? qRaw.trim() : "";
 
   if (!session?.user?.email || !emailRaw) {
     redirect("/");
@@ -46,6 +55,15 @@ export default async function AdminDashboardPage() {
   let applications: ApplicationListRow[];
   try {
     applications = await prisma.application.findMany({
+      where: searchQuery
+        ? {
+            OR: [
+              { title: { contains: searchQuery, mode: "insensitive" } },
+              { applicant: { email: { contains: searchQuery, mode: "insensitive" } } },
+              { applicant: { name: { contains: searchQuery, mode: "insensitive" } } },
+            ],
+          }
+        : undefined,
       orderBy: { updatedAt: "desc" },
       include: {
         applicant: {
@@ -143,8 +161,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
 
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-6 py-4">
-            <h2 className="text-base font-semibold text-slate-800">全部申請案</h2>
-            <p className="mt-0.5 text-sm text-slate-500">共 {applications.length} 筆（Prisma）</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-slate-800">全部申請案</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  共 {applications.length} 筆（Prisma）
+                  {searchQuery ? (
+                    <span className="text-slate-600">
+                      {" "}
+                      · 搜尋「<span className="font-medium">{searchQuery}</span>」
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  列表依最後更新排序；欄位主顯示為最後更新時間，若與建立時間相差超過一分鐘會於下方附註建立時間。
+                </p>
+              </div>
+              <form action="/admin/dashboard" method="get" className="flex w-full max-w-md flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <label className="sr-only" htmlFor="admin-dashboard-q">
+                  搜尋 Email、計畫名稱或申請人
+                </label>
+                <input
+                  id="admin-dashboard-q"
+                  name="q"
+                  type="search"
+                  defaultValue={searchQuery}
+                  placeholder="搜尋 Email／計畫／申請人"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  >
+                    搜尋
+                  </button>
+                  {searchQuery ? (
+                    <Link
+                      href="/admin/dashboard"
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      清除
+                    </Link>
+                  ) : null}
+                </div>
+              </form>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -158,7 +220,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                     申請人／公司
                   </th>
                   <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    送件時間
+                    最後更新／建立
                   </th>
                   <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                     目前狀態
@@ -169,7 +231,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                 {applications.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
-                      尚無申請資料。請在資料庫建立測試資料後重新整理此頁。
+                      {searchQuery
+                        ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
+                        : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
                     </td>
                   </tr>
                 ) : (
@@ -177,6 +241,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                     const applicantLabel =
                       [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
                     const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
+                    const createdMs = row.createdAt.getTime();
+                    const updatedMs = row.updatedAt.getTime();
+                    const showCreatedSub = Math.abs(updatedMs - createdMs) > 60_000;
                     return (
                       <tr key={row.id} className="transition-colors hover:bg-slate-50/80">
                         <td className="max-w-[220px] px-5 py-3.5 font-medium text-slate-900">
@@ -199,8 +266,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                             {applicantLabel}
                           </span>
                         </td>
-                        <td className="whitespace-nowrap px-5 py-3.5 tabular-nums text-slate-600">
-                          {formatTaipeiDateTime(row.createdAt)}
+                        <td className="px-5 py-3.5 tabular-nums text-slate-600">
+                          <div className="whitespace-nowrap font-medium text-slate-800">
+                            {formatTaipeiDateTime(row.updatedAt)}
+                          </div>
+                          {showCreatedSub ? (
+                            <div className="mt-0.5 whitespace-nowrap text-xs text-slate-400">
+                              建立 {formatTaipeiDateTime(row.createdAt)}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-5 py-3.5">
                           <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-800">
