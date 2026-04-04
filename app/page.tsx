@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { 
   Calendar, CircleDollarSign, ShieldCheck, ArrowRight, User, 
   LogOut, Phone, Building2, FileText, CheckSquare, 
@@ -20,6 +20,8 @@ import {
   formatTaipeiTimeOnly,
   getTaipeiFullYear,
 } from "@/lib/taipeiTime";
+import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
+import type { ApplicationStatus } from "@prisma/client";
 
 type UserRole = "applicant" | "reviewer";
 type UserContext = { name: string; role: UserRole; email: string };
@@ -575,6 +577,14 @@ type ApplicationFormData = {
   isDeleted?: boolean;
 };
 
+type MeApplicationRow = {
+  id: string;
+  title: string | null;
+  status: ApplicationStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function getPlanLockState(formData: Partial<ApplicationFormData>) {
   // 前端顯示層鎖定判定：僅負責控制互動（真正阻擋仍由 API 端執行）。
   const status = String(formData.workflowStatus || "").toLowerCase();
@@ -715,6 +725,22 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   // 畫面唯讀鎖定：deleted／過期；送件後鎖定則依 planLockSchedule（預設 2026/5/5 起）。
   const [isPlanLocked, setIsPlanLocked] = useState(false);
   const [planLockReason, setPlanLockReason] = useState<string>("");
+  const [dbApplications, setDbApplications] = useState<MeApplicationRow[]>([]);
+
+  const refreshMyApplications = useCallback(() => {
+    fetch("/api/applications/me", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; applications?: MeApplicationRow[] }) => {
+        if (data?.ok && Array.isArray(data.applications)) {
+          setDbApplications(data.applications);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshMyApplications();
+  }, [refreshMyApplications]);
 
   const [formData, setFormData] = useState<ApplicationFormData>({
     // 第一頁籤：封面
@@ -866,6 +892,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         return false;
       }
       setLastSaved(formatTaipeiTimeOnly());
+      refreshMyApplications();
       return true;
     } finally {
       setIsSaving(false);
@@ -1034,6 +1061,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       });
       setStatusToast(`已於${stamp}成功送出`);
       alert(`已於${stamp}成功送出`);
+      refreshMyApplications();
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         alert("送出逾時：上傳流程可能尚未完成。請稍後再檢查狀態，必要時可再送出一次。");
@@ -1080,6 +1108,34 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
       <div className="flex flex-1 max-w-[1400px] w-full mx-auto p-6 gap-6 items-start">
         <aside className="w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] overflow-hidden sticky top-24">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/60">
+            <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase">案件進度</h3>
+            <p className="mt-1 text-[11px] text-slate-400 leading-snug">以下為系統資料庫紀錄，與管理員後台 Prisma 總表同步。</p>
+            {dbApplications.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+                尚無案件。儲存草稿後會出現「草稿」；確認送件後狀態為「已送件」。
+              </p>
+            ) : (
+              <ul className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-0.5" aria-label="我的申請案件列表">
+                {dbApplications.map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded-lg border border-slate-100 bg-white px-2.5 py-2 text-xs shadow-sm"
+                  >
+                    <p className="font-medium text-slate-800 line-clamp-2" title={row.title?.trim() || undefined}>
+                      {row.title?.trim() || "（未命名計畫）"}
+                    </p>
+                    <p className="mt-0.5 tabular-nums text-[11px] text-slate-400">
+                      {formatTaipeiDateTime(row.updatedAt)} 更新
+                    </p>
+                    <span className="mt-1 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-800">
+                      {applicationStatusLabel(row.status)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="p-5 border-b border-slate-50"><h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">計畫書章節</h3></div>
           <nav className="p-2 space-y-1" aria-label="計畫書章節導覽">
             {tabs.map((tab) => (

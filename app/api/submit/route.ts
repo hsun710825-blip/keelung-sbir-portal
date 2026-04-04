@@ -19,6 +19,10 @@ import {
 import { assertDraftUnlocked, findDraftFileIdInFolder, readDraftJsonByFileId } from "../../../lib/projectSecurity";
 import { writeAuditLog } from "../../../lib/audit";
 import { sendSubmitSuccessEmail } from "../../../lib/mailer";
+import {
+  ensureApplicantDbUser,
+  finalizeApplicationOnSubmit,
+} from "../../../lib/applicantApplicationSync";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -165,6 +169,29 @@ export async function POST(req: Request) {
       if (!res.data) throw new Error("Drive upload returned empty response");
       return { userFolder, projectFolder, file: res.data, draftFileId };
     });
+
+    const dbUser = await ensureApplicantDbUser(email, session.user?.name);
+    try {
+      await finalizeApplicationOnSubmit({
+        applicantUserId: dbUser.id,
+        driveProjectFolderId: projectFolder.folderId,
+        projectTitle: projectName,
+        formData: registryFormData ?? null,
+        pdfDriveFileId: String(file.id || ""),
+        pdfDisplayName: displayPdfName,
+        pdfByteLength: pdfBytes.byteLength,
+      });
+    } catch (prismaErr) {
+      console.error("[submit] prisma finalize failed:", prismaErr);
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "計畫書檔案已上傳，但案件資料寫入資料庫失敗。請稍後再試或聯絡管理員（無需重複上傳檔案時請先洽詢）。",
+        },
+        { status: 503 },
+      );
+    }
 
     if (draftFileId) {
       // 送件成功後回寫草稿狀態為 submitted，形成後端不可逆鎖定。

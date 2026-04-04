@@ -15,6 +15,10 @@ import {
   readDraftJsonByFileId,
 } from "../../../lib/projectSecurity";
 import { writeAuditLog } from "../../../lib/audit";
+import {
+  ensureApplicantDbUser,
+  upsertApplicationFromDraftSave,
+} from "../../../lib/applicantApplicationSync";
 
 type DraftKeys = {
   // 以登入者 email hash 作為草稿識別鍵，避免直接暴露可猜測識別資訊。
@@ -213,6 +217,21 @@ export async function POST(req: Request) {
       return { file: res.data!, folderMeta };
     })) as SaveResult;
     const { file, folderMeta } = saveResult;
+
+    const projectFolderId = folderMeta?.project?.id;
+    if (projectFolderId && payload?.formData) {
+      const dbUser = await ensureApplicantDbUser(email, session.user?.name);
+      const projectTitle =
+        typeof (payload.formData as Record<string, unknown>)?.projectName === "string"
+          ? String((payload.formData as Record<string, unknown>).projectName).trim()
+          : "";
+      await upsertApplicationFromDraftSave({
+        applicantUserId: dbUser.id,
+        driveProjectFolderId: projectFolderId,
+        projectTitle: projectTitle || "未命名計畫",
+        formData: payload.formData as Record<string, unknown>,
+      });
+    }
 
     const mail = session?.user?.email?.trim();
     if (mail && payload?.formData) {

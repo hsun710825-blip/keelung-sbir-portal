@@ -99,6 +99,9 @@ model Application {
   applicantUserId String
   applicant       User   @relation("ApplicantApplications", fields: [applicantUserId], references: [id], onDelete: Restrict)
 
+  /// Google Drive「計畫專案資料夾」id；與草稿／送件路徑一致，供民眾端與 DB 單一案件對應
+  driveProjectFolderId String? @unique
+
   title       String?
   periodYear  Int?
   description String? @db.Text
