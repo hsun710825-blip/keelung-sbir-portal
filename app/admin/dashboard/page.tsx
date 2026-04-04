@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   description: "管理員後台：Prisma 案件總表",
 };
 
+/** 依登入與 DB 即時渲染，避免被誤判為靜態頁面 */
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboardPage() {
   const session = await getServerSession(authOptions);
   const emailRaw = session?.user?.email?.trim() || "";

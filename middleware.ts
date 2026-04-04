@@ -17,5 +17,6 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  // 明確列出 /admin 與子路徑，避免部分環境對 :path* 比對差異
+  matcher: ["/admin", "/admin/:path*"],
 };
