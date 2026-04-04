@@ -6,7 +6,6 @@ import { Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
-import { MigrateFromSheetsButton } from "@/components/admin/MigrateFromSheetsButton";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -36,6 +35,8 @@ export default async function AdminDashboardPage() {
     redirect("/");
   }
 
+  const isAdmin = dbUser.role === Role.ADMIN;
+
   const applications = await prisma.application.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
@@ -58,6 +59,11 @@ export default async function AdminDashboardPage() {
             <p className="mt-2 text-sm text-slate-600">
               {session.user.name ?? "管理員"} · {session.user.email}
             </p>
+            {!isAdmin ? (
+              <p className="mt-2 text-xs text-amber-800">
+                您為審查委員身分：可檢視列表；案件詳情與狀態變更僅限管理員。
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
@@ -111,12 +117,23 @@ export default async function AdminDashboardPage() {
                   applications.map((row) => {
                     const applicantLabel =
                       [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
+                    const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
                     return (
                       <tr key={row.id} className="transition-colors hover:bg-slate-50/80">
                         <td className="max-w-[220px] px-5 py-3.5 font-medium text-slate-900">
-                          <span className="line-clamp-2" title={row.title ?? undefined}>
-                            {row.title?.trim() ? row.title : "（未命名計畫）"}
-                          </span>
+                          {isAdmin ? (
+                            <Link
+                              href={`/admin/application/${row.id}`}
+                              className="line-clamp-2 text-blue-700 hover:text-blue-900 hover:underline"
+                              title={titleText}
+                            >
+                              {titleText}
+                            </Link>
+                          ) : (
+                            <span className="line-clamp-2" title={titleText}>
+                              {titleText}
+                            </span>
+                          )}
                         </td>
                         <td className="max-w-[200px] px-5 py-3.5 text-slate-700">
                           <span className="line-clamp-2" title={applicantLabel}>
@@ -139,8 +156,6 @@ export default async function AdminDashboardPage() {
             </table>
           </div>
         </section>
-
-        {dbUser.role === Role.ADMIN ? <MigrateFromSheetsButton /> : null}
       </div>
     </main>
   );
