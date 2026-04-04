@@ -10,6 +10,12 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
   "image/png": ".png",
 };
 
+const MIME_EXT_ALIASES: Record<string, string[]> = {
+  "application/pdf": [".pdf"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+};
+
 export function sanitizeInputString(value: string) {
   const noCtrl = value
     .replace(/\r\n/g, "\n")
@@ -46,6 +52,44 @@ export function ensureAllowedUploadMime(mimeType: string) {
     };
   }
   return { ok: true as const, mimeType: normalized, extension: ext };
+}
+
+export function ensureAllowedUploadExtension(filename: string, mimeType: string) {
+  const ext = path.extname(String(filename || "").trim().toLowerCase());
+  const allowed = MIME_EXT_ALIASES[mimeType] || [];
+  if (!ext || !allowed.includes(ext)) {
+    return {
+      ok: false as const,
+      error: "File extension does not match declared MIME type",
+      allowedExtensions: allowed,
+    };
+  }
+  return { ok: true as const };
+}
+
+function detectMimeByMagic(bytes: Uint8Array): string | null {
+  if (bytes.length >= 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+    return "application/pdf";
+  }
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return "image/png";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  return null;
+}
+
+export function ensureAllowedUploadMagic(bytes: Uint8Array, mimeType: string) {
+  const detected = detectMimeByMagic(bytes);
+  if (!detected || detected !== mimeType) {
+    return {
+      ok: false as const,
+      error: "File content signature mismatch",
+      detectedMime: detected,
+    };
+  }
+  return { ok: true as const, detectedMime: detected };
 }
 
 export function ensureFileSizeLimit(size: number) {

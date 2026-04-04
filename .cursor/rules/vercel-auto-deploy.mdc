@@ -15,7 +15,7 @@ alwaysApply: true
 
   工作目錄須為 `C:\Users\User\keelung-sbir-portal`。
 
-- 部署成功後，在回覆中貼上 **Production** 與 **keelung-sbir-portal.vercel.app** 等可用網址（以 CLI 輸出為準）。
+- 部署成功後，在回覆中貼上 **Production** 與 **https://keelungsbir.tw** 等可用網址（以 CLI 輸出為準）。
 
 ## 可略過部署的情況
 

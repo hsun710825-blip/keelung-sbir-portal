@@ -29,7 +29,7 @@ function formatSubmitSuccessMail(input: SubmitMailInput) {
   const portalUrl = String(
     process.env.NEXT_PUBLIC_BASE_URL ||
       process.env.NEXTAUTH_URL ||
-      "https://keelung-sbir-portal.vercel.app"
+      "https://keelungsbir.tw"
   ).trim();
 
   const subject = `【SBIR 系統通知】計畫書已成功送出：${planTitle}`;

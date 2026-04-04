@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { getBackofficeRoleByEmail } from "@/lib/adminAuth";
+
+import { getPrismaRoleByEmail } from "@/lib/adminAuth";
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -20,21 +21,36 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
+  pages: {
+    /** OAuth 錯誤或 AccessDenied 時導回首頁，由 ?error= 顯示訊息 */
+    signIn: "/",
+  },
   callbacks: {
-    async jwt({ token }) {
-      const role = getBackofficeRoleByEmail(token?.email);
-      (token as { role?: string | null }).role = role;
+    /**
+     * 申請者與後台共用同一 Google Provider，不可在此拒絕一般使用者，否則申請者無法登入。
+     * 後台是否放行改由 JWT 內之 Prisma role，以及 /admin 的 middleware 判定（ADMIN / COMMITTEE）。
+     */
+    async signIn({ user, account }) {
+      return account?.provider === "google" && Boolean(user?.email?.trim());
+    },
+    async jwt({ token, user }) {
+      const email = (user?.email ?? token.email) as string | undefined;
+      if (!email?.trim()) {
+        token.role = null;
+        return token;
+      }
+      // 初次 OAuth 完成時會帶入 user；舊版 JWT 可能尚未寫入 role
+      if (user || token.role === undefined) {
+        token.role = await getPrismaRoleByEmail(email);
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
-        // @ts-expect-error add id to session user
         session.user.id = token.sub;
-        // @ts-expect-error add role to session user
-        session.user.role = ((token as { role?: string | null }).role || null) as "admin" | "reviewer" | null;
+        session.user.role = token.role ?? null;
       }
       return session;
     },
   },
 };
-

@@ -43,13 +43,25 @@ export default function App() {
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("auth") === "forbidden") {
-        setAuthNotice("權限不足：此帳號無法進入管理員後台。");
+      const auth = params.get("auth");
+      const error = params.get("error");
+      if (auth === "forbidden") {
+        setAuthNotice("權限不足：此帳號無法進入管理員後台（Prisma 需為 ADMIN 或 COMMITTEE）。");
+      } else if (error === "AccessDenied") {
+        setAuthNotice("登入遭拒：Google 帳號缺少 email，或已被系統拒絕登入。");
+      } else if (error) {
+        setAuthNotice(`登入發生錯誤（${error}）。請稍後再試。`);
       }
       if (params.get("enter") === "applicant") {
         setEnterApplicantMode(true);
         params.delete("enter");
         params.delete("auth");
+        params.delete("error");
+        const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", next);
+      } else if (auth || error) {
+        params.delete("auth");
+        params.delete("error");
         const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
         window.history.replaceState({}, "", next);
       }

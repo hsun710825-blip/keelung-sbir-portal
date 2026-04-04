@@ -2,16 +2,13 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-import { getBackofficeRoleByEmail } from "@/lib/adminAuth";
+import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  const email = String(token?.email || "").trim();
-  const roleByEmail = getBackofficeRoleByEmail(email);
-  const roleByToken = (token as { role?: string | null } | null)?.role || null;
-  const role = roleByToken || roleByEmail;
+  const role = token?.role ?? null;
 
-  if (!token || !role || (role !== "admin" && role !== "reviewer")) {
+  if (!token || !isBackofficePrismaRole(role)) {
     const url = new URL("/", req.url);
     url.searchParams.set("auth", "forbidden");
     return NextResponse.redirect(url);

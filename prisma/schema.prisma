@@ -1,0 +1,228 @@
+// Keelung SBIR Portal — PostgreSQL（與既有 Google Sheets 並行導入時，新表不影響舊流程）
+// 新必填欄位請搭配 @default(...) 以利向下相容與遷移。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  USER
+  ADMIN
+  COMMITTEE
+}
+
+/// 申請案狀態（狀態機；實際轉換由應用層驗證）
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  COMMITTEE_REVIEW
+  REVISE_REQUESTED
+  REVISION_SUBMITTED
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+/// Email 寄送紀錄狀態
+enum EmailNotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+}
+
+/// Email 類型（擴充時加值即可，舊資料不受影響）
+enum EmailNotificationType {
+  APPLICATION_SUBMITTED
+  STATUS_CHANGED
+  REMINDER
+  COMMITTEE_ASSIGNMENT
+  CUSTOM
+  OTHER
+}
+
+/// 附件分類（對應計畫書稿、補件、核定本等）
+enum AttachmentCategory {
+  DRAFT_PDF
+  SLOT_ATTACHMENT
+  FINAL_APPROVED_PDF
+  GENERAL
+  OTHER
+}
+
+// ---------------------------------------------------------------------------
+// User
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          Role      @default(USER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  applications           Application[]              @relation("ApplicantApplications")
+  statusHistoryChanges   ApplicationStatusHistory[] @relation("StatusChangedBy")
+  scores                 ApplicationScore[]
+  attachmentsUploaded    ApplicationAttachment[]    @relation("AttachmentUploadedBy")
+  emailNotifications     EmailNotification[]        @relation("EmailRelatedUser")
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Application
+// ---------------------------------------------------------------------------
+
+model Application {
+  id     String            @id @default(cuid())
+  status ApplicationStatus @default(DRAFT)
+
+  applicantUserId String
+  applicant       User   @relation("ApplicantApplications", fields: [applicantUserId], references: [id], onDelete: Restrict)
+
+  title       String?
+  periodYear  Int?
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  statusHistory ApplicationStatusHistory[]
+  scores        ApplicationScore[]
+  attachments   ApplicationAttachment[]
+  emailLogs     EmailNotification[]
+
+  @@index([applicantUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([periodYear])
+}
+
+// ---------------------------------------------------------------------------
+// Status history（稽核／狀態機軌跡）
+// ---------------------------------------------------------------------------
+
+model ApplicationStatusHistory {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  fromStatus ApplicationStatus?
+  toStatus   ApplicationStatus
+
+  changedByUserId String?
+  changedBy       User?   @relation("StatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([applicationId, createdAt])
+  @@index([changedByUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Committee scores（同一輪次同一委員同一案僅一筆）
+// ---------------------------------------------------------------------------
+
+model ApplicationScore {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  committeeUserId String
+  committeeUser   User   @relation(fields: [committeeUserId], references: [id], onDelete: Restrict)
+
+  reviewRound Int     @default(1)
+  score       Float?
+  comment     String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, committeeUserId, reviewRound])
+  @@index([committeeUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Email 通知紀錄（與 Application / User 可選關聯，不影響既有 API）
+// ---------------------------------------------------------------------------
+
+model EmailNotification {
+  id String @id @default(cuid())
+
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  relatedUserId String?
+  relatedUser   User?   @relation("EmailRelatedUser", fields: [relatedUserId], references: [id], onDelete: SetNull)
+
+  type    EmailNotificationType    @default(OTHER)
+  status  EmailNotificationStatus  @default(PENDING)
+  toEmail String
+
+  subject String
+  /// 可存 HTML／純文字；大內容可改走 payloadJson
+  body        String? @db.Text
+  payloadJson String? @db.Text
+
+  providerMessageId String?
+  errorMessage      String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([relatedUserId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@index([toEmail])
+}
+
+// ---------------------------------------------------------------------------
+// 附件 metadata（Drive file id、檔名、MIME、大小等；實體檔仍在 Drive）
+// ---------------------------------------------------------------------------
+
+model ApplicationAttachment {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  uploadedByUserId String?
+  uploadedBy       User?   @relation("AttachmentUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  /// Google Drive file id 或內部 storage key
+  driveFileId String?
+  storageKey  String?
+
+  fileName  String
+  mimeType  String   @default("application/octet-stream")
+  sizeBytes BigInt   @default(0)
+  category  AttachmentCategory @default(GENERAL)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([uploadedByUserId])
+  @@index([category])
+  @@index([createdAt])
+}

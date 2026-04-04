@@ -6,6 +6,8 @@ import { emailHashKey, ensureProjectFolder, ensureUserFolder, getDriveAndSession
 import { withGoogleApiRetry } from "../_googleApiRetry";
 import {
   buildSafeUploadFilename,
+  ensureAllowedUploadExtension,
+  ensureAllowedUploadMagic,
   ensureAllowedUploadMime,
   ensureFileSizeLimit,
   sanitizeProjectNameForFolder,
@@ -17,7 +19,8 @@ export async function POST(req: Request) {
   try {
     // 1) 權限驗證：無 Session 一律拒絕，避免未授權檔案寫入。
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const email = session?.user?.email?.trim();
+    if (!session || !session.user || !email) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -32,6 +35,13 @@ export async function POST(req: Request) {
     const mimeCheck = ensureAllowedUploadMime(file.type || "");
     if (!mimeCheck.ok) {
       return NextResponse.json({ ok: false, error: mimeCheck.error, allowed: mimeCheck.allowed }, { status: 400 });
+    }
+    const extCheck = ensureAllowedUploadExtension(file.name, mimeCheck.mimeType);
+    if (!extCheck.ok) {
+      return NextResponse.json(
+        { ok: false, error: extCheck.error, allowedExtensions: extCheck.allowedExtensions },
+        { status: 400 }
+      );
     }
     // 4) 單檔容量限制：防止大檔濫用資源。
     const sizeCheck = ensureFileSizeLimit(file.size);
@@ -49,7 +59,11 @@ export async function POST(req: Request) {
       // 6) 狀態鎖定：已送出/已刪除/過期計畫禁止再上傳附件。
       const draftFileId = await findDraftFileIdInFolder(drive, projectFolder.folderId, emailHashKey(session.user?.email || ""));
       await assertDraftUnlocked(drive, draftFileId, "Plan is locked");
-      const bytes = Buffer.from(await file.arrayBuffer());
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const magicCheck = ensureAllowedUploadMagic(bytes, mimeCheck.mimeType);
+      if (!magicCheck.ok) {
+        throw new Error(magicCheck.error);
+      }
       const createRes = await drive.files.create({
         requestBody: {
           name: filename,
@@ -57,7 +71,7 @@ export async function POST(req: Request) {
         },
         media: {
           mimeType: mimeCheck.mimeType,
-          body: Readable.from(bytes),
+          body: Readable.from(Buffer.from(bytes)),
         },
         fields: "id,name",
         supportsAllDrives: true,
@@ -74,7 +88,7 @@ export async function POST(req: Request) {
 
     // 7) 稽核紀錄：保留誰在何時上傳了哪個附件。
     await writeAuditLog({
-      userId: session.user.email || "unknown",
+      userId: email,
       action: "attachment.upload",
       targetId: String(fileId),
       timestamp: new Date().toISOString(),

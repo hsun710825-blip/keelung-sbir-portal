@@ -9,6 +9,8 @@ import { markRegistrySubmitted } from "../_registrySheet";
 import { withGoogleApiRetry } from "../_googleApiRetry";
 import {
   buildSafeDisplayPdfName,
+  ensureAllowedUploadExtension,
+  ensureAllowedUploadMagic,
   ensureAllowedUploadMime,
   ensureFileSizeLimit,
   sanitizeDeepInput,
@@ -87,6 +89,10 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     if (!mimeCheck.ok || mimeCheck.mimeType !== "application/pdf") {
       throw new Error("Only PDF is allowed for submit");
     }
+    const extCheck = ensureAllowedUploadExtension(file.name, mimeCheck.mimeType);
+    if (!extCheck.ok) {
+      throw new Error(extCheck.error);
+    }
     const sizeCheck = ensureFileSizeLimit(file.size);
     if (!sizeCheck.ok) throw new Error(sizeCheck.error);
     const projectNameField = form.get("projectName");
@@ -96,9 +102,15 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
         : "未命名計畫"
     );
 
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const magicCheck = ensureAllowedUploadMagic(bytes, mimeCheck.mimeType);
+    if (!magicCheck.ok) {
+      throw new Error(magicCheck.error);
+    }
+
     return {
       projectName,
-      pdfBytes: Buffer.from(await file.arrayBuffer()),
+      pdfBytes: Buffer.from(bytes),
     };
   }
   throw new Error("Unsupported Content-Type");
@@ -124,7 +136,8 @@ export async function POST(req: Request) {
     }
     // 權限驗證：僅登入者可執行正式送件。
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const email = session?.user?.email?.trim();
+    if (!session || !session.user || !email) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -176,13 +189,10 @@ export async function POST(req: Request) {
     }
 
     // 動作 C：專案總表標記「已確認送出」（不影響 Drive 上傳結果；失敗僅記錄 log）
-    const email = session.user.email?.trim();
-    if (email) {
-      void markRegistrySubmitted(email, sanitizeDeepInput(registryFormData ?? null)).catch(() => {});
-    }
+    void markRegistrySubmitted(email, sanitizeDeepInput(registryFormData ?? null)).catch(() => {});
     // 稽核紀錄：記錄正式送件責任鏈（人、時間、目標）。
     await writeAuditLog({
-      userId: session.user.email || "unknown",
+      userId: email,
       action: "plan.submit",
       targetId: String(file.id || "pdf"),
       timestamp: new Date().toISOString(),
@@ -190,17 +200,15 @@ export async function POST(req: Request) {
     });
 
     // 必須 await 寄信後再回傳 JSON：在 Vercel Serverless 若用 void 背景寄信，回應送出後程序會被凍結，Promise 常無法跑完（故日誌無 [submit.mail]、信也寄不出）。
-    if (email) {
-      try {
-        await sendSubmitSuccessEmail({
-          to: email,
-          projectName,
-          submittedAtIso: nowIso,
-        });
-        console.log("[submit.mail] ok", { to: email });
-      } catch (err) {
-        console.warn("[submit.mail] failed:", err instanceof Error ? err.message : String(err));
-      }
+    try {
+      await sendSubmitSuccessEmail({
+        to: email,
+        projectName,
+        submittedAtIso: nowIso,
+      });
+      console.log("[submit.mail] ok", { to: email });
+    } catch (err) {
+      console.warn("[submit.mail] failed:", err instanceof Error ? err.message : String(err));
     }
 
     return NextResponse.json({

@@ -1,38 +1,19 @@
-export function getAdminEmailAllowlist(): string[] {
-  const raw =
-    process.env.ADMIN_EMAILS ||
-    process.env.ADMIN_EXPORT_EMAILS ||
-    process.env.NEXTAUTH_ADMIN_EMAILS ||
-    "";
-  return raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
+import type { Role } from "@prisma/client";
 
-export function isAdminEmail(email: string | null | undefined): boolean {
-  const em = String(email || "").trim().toLowerCase();
-  if (!em) return false;
-  const allow = getAdminEmailAllowlist();
-  if (allow.length === 0) return false;
-  return allow.includes(em);
-}
+import { prisma } from "@/lib/prisma";
 
-export function getReviewerEmailAllowlist(): string[] {
-  const raw = process.env.REVIEWER_EMAILS || process.env.ADMIN_REVIEWER_EMAILS || "";
-  return raw
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-}
+export { isBackofficePrismaRole } from "@/lib/backofficeRole";
 
-export type BackofficeRole = "admin" | "reviewer" | null;
-
-export function getBackofficeRoleByEmail(email: string | null | undefined): BackofficeRole {
-  const em = String(email || "").trim().toLowerCase();
+/**
+ * 依 email（不分大小寫）查詢 Prisma User.role；無列則 null。
+ * 後台權限一律由此與 JWT 承載，不再使用環境變數名單。
+ */
+export async function getPrismaRoleByEmail(email: string | null | undefined): Promise<Role | null> {
+  const em = String(email || "").trim();
   if (!em) return null;
-  if (isAdminEmail(em)) return "admin";
-  const reviewers = getReviewerEmailAllowlist();
-  if (reviewers.includes(em)) return "reviewer";
-  return null;
+  const row = await prisma.user.findFirst({
+    where: { email: { equals: em, mode: "insensitive" } },
+    select: { role: true },
+  });
+  return row?.role ?? null;
 }

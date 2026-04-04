@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 
 import { authOptions } from "../../auth/[...nextauth]/authOptions";
 import { getSheetsSaClient } from "../../_driveSa";
-import { getBackofficeRoleByEmail } from "@/lib/adminAuth";
+import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 
 function getSpreadsheetId(): string | null {
   const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim() || process.env.GOOGLE_SHEET_ID?.trim();
@@ -26,9 +26,8 @@ function pickByHeader(row: Record<string, unknown>, aliases: string[]): string {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    const email = session?.user?.email?.trim() || "";
-    const role = getBackofficeRoleByEmail(email);
-    if (!session?.user || !role) {
+    const role = session?.user?.role ?? null;
+    if (!session?.user || !isBackofficePrismaRole(role)) {
       return NextResponse.json(
         {
           ok: false,
