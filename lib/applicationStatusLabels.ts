@@ -7,7 +7,9 @@ const LABELS: Record<ApplicationStatus, string> = {
   COMMITTEE_REVIEW: "委員審查",
   REVISE_REQUESTED: "待補件／修訂",
   REVISION_SUBMITTED: "已補件送審",
-  APPROVED: "核定通過",
+  REVISION_REQUIRED: "退回補件",
+  PRE_REVIEW_PASSED: "初審通過",
+  APPROVED: "已核定",
   REJECTED: "未通過",
   CLOSED: "結案",
 };

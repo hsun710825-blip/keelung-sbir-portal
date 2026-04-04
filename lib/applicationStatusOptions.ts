@@ -1,7 +1,7 @@
 import type { ApplicationStatus } from "@prisma/client";
 import { ApplicationStatus as AS } from "@prisma/client";
 
-/** 下拉選單顯示順序（與 Schema enum 一致） */
+/** 下拉選單顯示順序 */
 export const APPLICATION_STATUS_OPTIONS: ApplicationStatus[] = [
   AS.DRAFT,
   AS.SUBMITTED,
@@ -9,6 +9,8 @@ export const APPLICATION_STATUS_OPTIONS: ApplicationStatus[] = [
   AS.COMMITTEE_REVIEW,
   AS.REVISE_REQUESTED,
   AS.REVISION_SUBMITTED,
+  AS.REVISION_REQUIRED,
+  AS.PRE_REVIEW_PASSED,
   AS.APPROVED,
   AS.REJECTED,
   AS.CLOSED,

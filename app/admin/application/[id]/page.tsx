@@ -123,7 +123,12 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
         </header>
 
         <div className="mb-6">
-          <ApplicationStatusControl applicationId={application.id} currentStatus={application.status} />
+          <ApplicationStatusControl
+            applicationId={application.id}
+            currentStatus={application.status}
+            initialAdminRemarks={application.adminRemarks}
+            planTitle={application.title ?? ""}
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">

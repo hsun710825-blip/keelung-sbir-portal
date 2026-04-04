@@ -28,6 +28,10 @@ enum ApplicationStatus {
   COMMITTEE_REVIEW
   REVISE_REQUESTED
   REVISION_SUBMITTED
+  /// 退回補件（與 REVISE_REQUESTED 並存，供新流程與信函範本使用）
+  REVISION_REQUIRED
+  /// 初審通過（後續可銜接「複審簡報上傳」等前端功能）
+  PRE_REVIEW_PASSED
   APPROVED
   REJECTED
   CLOSED
@@ -98,6 +102,8 @@ model Application {
   title       String?
   periodYear  Int?
   description String? @db.Text
+  /// 管理員狀態更新說明（通知信與審查紀錄）
+  adminRemarks String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
