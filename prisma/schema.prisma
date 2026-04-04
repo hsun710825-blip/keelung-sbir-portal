@@ -81,6 +81,7 @@ model User {
   applications           Application[]              @relation("ApplicantApplications")
   statusHistoryChanges   ApplicationStatusHistory[] @relation("StatusChangedBy")
   scores                 ApplicationScore[]
+  evaluations            Evaluation[]               @relation("CommitteeEvaluations")
   attachmentsUploaded    ApplicationAttachment[]    @relation("AttachmentUploadedBy")
   emailNotifications     EmailNotification[]        @relation("EmailRelatedUser")
 
@@ -113,6 +114,7 @@ model Application {
 
   statusHistory ApplicationStatusHistory[]
   scores        ApplicationScore[]
+  evaluations   Evaluation[]
   attachments   ApplicationAttachment[]
   emailLogs     EmailNotification[]
 
@@ -167,6 +169,27 @@ model ApplicationScore {
 
   @@unique([applicationId, committeeUserId, reviewRound])
   @@index([committeeUserId])
+}
+
+/// 審查委員評分（一案一委員一筆；與 ApplicationScore 並存，供委員端 UI 使用）
+model Evaluation {
+  id String @id @default(cuid())
+
+  score   Float
+  comment String? @db.Text
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  committeeId String
+  committee   User   @relation("CommitteeEvaluations", fields: [committeeId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, committeeId])
+  @@index([applicationId])
+  @@index([committeeId])
 }
 
 // ---------------------------------------------------------------------------

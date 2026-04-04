@@ -51,6 +51,7 @@ export default async function AdminDashboardPage({
   }
 
   const isAdmin = dbUser.role === Role.ADMIN;
+  const isCommittee = dbUser.role === Role.COMMITTEE;
 
   let applications: ApplicationListRow[];
   try {
@@ -155,6 +156,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             >
               後台（Sheets）
             </Link>
+            {isAdmin ? (
+              <Link
+                href="/admin/users"
+                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900 shadow-sm transition hover:bg-violet-100"
+              >
+                權限管理
+              </Link>
+            ) : null}
+            {isCommittee ? (
+              <Link
+                href="/committee/dashboard"
+                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition hover:bg-sky-100"
+              >
+                委員審查
+              </Link>
+            ) : null}
             <AdminSignOutButton />
           </div>
         </header>
