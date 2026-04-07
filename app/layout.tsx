@@ -25,6 +25,13 @@ export const metadata: Metadata = {
   description:
     "提供基隆市在地企業線上申請地方型產業創新研發推動計畫 (SBIR) 之專屬入口平台。",
   keywords: ["基隆", "SBIR", "地方創生", "研發補助", "產業創新", "中小企業補助", "基隆市政府"],
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     type: "website",
     locale: "zh_TW",
