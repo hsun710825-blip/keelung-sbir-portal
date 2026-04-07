@@ -6,6 +6,18 @@ import { initWorkshopAnalytics, workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUPS, type WorkshopGroupId } from "@/app/workshop/_lib/workshopGroups";
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
+const STICKY_COLORS = [
+  "#fee2e2",
+  "#ffedd5",
+  "#fef3c7",
+  "#ecfccb",
+  "#dcfce7",
+  "#ccfbf1",
+  "#dbeafe",
+  "#e0e7ff",
+  "#ede9fe",
+  "#fce7f3",
+];
 
 export default function WorkshopStudentPage() {
   const [groupId, setGroupId] = useState<WorkshopGroupId>("A");
@@ -35,6 +47,8 @@ export default function WorkshopStudentPage() {
         companyName: companyName.trim(),
         studentName: studentName.trim(),
         ideaText: ideaText.trim(),
+        color: STICKY_COLORS[Math.floor(Math.random() * STICKY_COLORS.length)],
+        type: "sticky",
         x: null,
         y: null,
         createdAt: serverTimestamp(),
@@ -114,7 +128,7 @@ export default function WorkshopStudentPage() {
               value={ideaText}
               onChange={(e) => setIdeaText(e.target.value)}
               rows={6}
-              placeholder="請簡述問題、解法、目標客群與預期效益"
+              placeholder="請填寫您分工的構思內容。"
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               required
             />
