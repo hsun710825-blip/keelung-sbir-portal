@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { collection, deleteField, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUPS } from "@/app/workshop/_lib/workshopGroups";
@@ -118,14 +119,22 @@ export default function WorkshopAdminPage() {
                   <td className="px-4 py-3 text-slate-700">{row.memberCount}</td>
                   <td className="px-4 py-3 tabular-nums text-slate-600">{row.updatedAt}</td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => void clearGroup(row.groupId)}
-                      disabled={clearingGroup === row.groupId}
-                      className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
-                    >
-                      {clearingGroup === row.groupId ? "清除中..." : "⚠️ 清空該組所有資料"}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/workshop/workspace/${row.groupId}`}
+                        className="rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                      >
+                        👁️ 查看畫布
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => void clearGroup(row.groupId)}
+                        disabled={clearingGroup === row.groupId}
+                        className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+                      >
+                        {clearingGroup === row.groupId ? "清除中..." : "⚠️ 清空該組所有資料"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
