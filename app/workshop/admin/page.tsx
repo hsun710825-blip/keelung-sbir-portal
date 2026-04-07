@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteField, doc, getDocs, onSnapshot, query, setDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteField, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUPS } from "@/app/workshop/_lib/workshopGroups";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -76,7 +76,7 @@ export default function WorkshopAdminPage() {
           memberCount: 0,
           budgetRows: [],
           budgetSummary: deleteField(),
-          updatedAt: new Date(),
+          updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
