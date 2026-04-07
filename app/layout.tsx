@@ -27,10 +27,11 @@ export const metadata: Metadata = {
   keywords: ["基隆", "SBIR", "地方創生", "研發補助", "產業創新", "中小企業補助", "基隆市政府"],
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/icon.png", type: "image/png" },
+      { url: "/favicon.ico?v=2", sizes: "any" },
+      { url: "/icon.png?v=2", type: "image/png" },
     ],
-    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png?v=2", sizes: "180x180", type: "image/png" }],
+    shortcut: [{ url: "/favicon.ico?v=2" }],
   },
   openGraph: {
     type: "website",
