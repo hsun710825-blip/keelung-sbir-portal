@@ -2,19 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  deleteField,
-  doc,
-  getDoc,
-  getDocs,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
+import { collection, deleteField, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUPS } from "@/app/workshop/_lib/workshopGroups";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -106,42 +94,28 @@ export default function WorkshopAdminPage() {
     if (!ok) return;
 
     setRecoveringGroup(groupId);
-    const archiveId = `${groupId}-${Date.now()}`;
+    const backupId = `${groupId}-${Date.now()}`;
     try {
-      // A) 備份 board
+      // A) 備份：下載本機 JSON（避免被 Firestore rules 擋住）
       const boardRef = doc(workshopDb, "workshop_boards", groupId);
       const boardSnap = await getDoc(boardRef);
-      if (boardSnap.exists()) {
-        await setDoc(doc(workshopDb, "workshop_boards", `ARCHIVE-${archiveId}-${groupId}`), {
-          archiveId,
-          isArchive: true,
-          sourceGroupId: groupId,
-          archivedAt: serverTimestamp(),
-          ...boardSnap.data(),
-        }, { merge: false });
-      }
-
-      // A) 備份 ideas（分批，避免 batch 上限）
       const qIdeas = query(collection(workshopDb, "workshop_ideas"), where("groupId", "==", groupId));
       const snap = await getDocs(qIdeas);
       const ideaDocs = snap.docs;
-      for (let i = 0; i < ideaDocs.length; i += 300) {
-        const slice = ideaDocs.slice(i, i + 300);
-        const batch = writeBatch(workshopDb);
-        slice.forEach((d) => {
-          const backupRef = doc(collection(workshopDb, "workshop_ideas"));
-          batch.set(backupRef, {
-            archiveId,
-            isArchive: true,
-            sourceGroupId: groupId,
-            sourceId: d.id,
-            archivedAt: serverTimestamp(),
-            groupId: `ARCHIVE-${groupId}`,
-            ...d.data(),
-          });
-        });
-        await batch.commit();
-      }
+      const backupPayload = {
+        backupId,
+        groupId,
+        exportedAt: new Date().toISOString(),
+        board: boardSnap.exists() ? boardSnap.data() : null,
+        ideas: ideaDocs.map((d) => ({ id: d.id, ...d.data() })),
+      };
+      const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `workshop-backup-${backupId}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       // B) 修復 ideas 必要欄位與座標（不改既有文字）
       const softColors = ["#fee2e2", "#ffedd5", "#fef3c7", "#ecfccb", "#dcfce7", "#ccfbf1", "#dbeafe", "#e0e7ff", "#ede9fe", "#fce7f3"];
@@ -184,21 +158,12 @@ export default function WorkshopAdminPage() {
             if (typeof x.height !== "number") patch.height = 140;
           }
 
-          batch.set(doc(workshopDb, "workshop_ideas", d.id), patch, { merge: true });
+          if (Object.keys(patch).length > 0) {
+            batch.update(doc(workshopDb, "workshop_ideas", d.id), patch);
+          }
         });
         await batch.commit();
       }
-
-      // 記錄最近一次復原資訊
-      await setDoc(
-        boardRef,
-        {
-          lastRecoveryArchiveId: archiveId,
-          recoveryAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
 
       window.alert(`${groupId} 組已完成 A+B（已備份並復原版面）。`);
     } catch (err) {
