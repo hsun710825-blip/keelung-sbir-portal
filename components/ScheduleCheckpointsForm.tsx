@@ -251,21 +251,22 @@ export default function ScheduleCheckpointsForm({
 
   useEffect(() => {
     if (!value) return;
+    const incomingRows = value.rows ?? [];
     setRows(
-      value.rows.map((r) => {
-        const raw = (r.months || {}) as Record<string, unknown>;
+      incomingRows.map((r) => {
+        const raw = (r.months ?? {}) as Record<string, unknown>;
         return { ...r, months: normalizeMonthsByCurrentLabels(raw) };
       })
     );
-    setKpis(value.kpis.map(normalizeKpiPeriod));
-    setNotes(value.notes);
+    setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
+    setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
     setTestReportImages(value.testReportImages ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function normalizeKpiPeriod(k: KpiRow): KpiRow {
-    if (k.periodStartYear != null) return k;
-    const m = k.period.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
+    if (k?.periodStartYear != null) return k;
+    const m = k?.period?.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
     if (m) return { ...k, periodStartYear: m[1], periodStartMonth: m[2], periodEndYear: m[3], periodEndMonth: m[4] };
     return k;
   }
@@ -288,29 +289,30 @@ export default function ScheduleCheckpointsForm({
   };
 
   const getMonthKeyFromKpi = (k: KpiRow): string | null => {
-    if (k.periodStartYear && k.periodStartMonth) return `${k.periodStartYear}/${k.periodStartMonth}`;
-    const m = String(k.period || "").match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
+    if (k?.periodStartYear != null && k?.periodStartMonth != null) {
+      return `${k.periodStartYear}/${k.periodStartMonth}`;
+    }
+    const m = String(k?.period ?? "").match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
     if (!m) return null;
     return `${m[1]}/${m[2]}`;
   };
 
   const deriveKpisFromProgress = () => {
     const derived: Array<{ key: string; row: KpiRow }> = [];
-    for (const r of rows) {
-      // Skip分項計畫列（A/B）
-      if (String(r.id || "").length === 1) continue;
-
-      const workKey = r.id;
-      const workName = r.item;
-      const months = r.months ?? {};
+    rows.forEach((r, rowIdx) => {
+      const workKey = String(r?.id ?? "").trim() || `row-${rowIdx}`;
+      const workName = r?.item ?? "";
+      const months = r?.months ?? {};
 
       for (const mk of monthLabels) {
-        const cell = months[mk] ?? { progress: false, checkpoint: false };
-        if (!cell.checkpoint) continue;
+        const cell = months?.[mk] ?? { progress: false, checkpoint: false };
+        if (!cell?.checkpoint) continue;
 
-        const [y, mo] = mk.split("/");
-        const hasYmo = !!y && !!mo;
-        const period = hasYmo ? `${y}/${mo}~${y}/${mo}` : mk;
+        const parts = String(mk ?? "").split("/");
+        const y = parts[0];
+        const mo = parts[1];
+        const hasYmo = !!(y && mo);
+        const period = hasYmo ? `${y}/${mo}~${y}/${mo}` : String(mk ?? "");
 
         derived.push({
           key: `${workKey}|${mk}`,
@@ -328,14 +330,14 @@ export default function ScheduleCheckpointsForm({
           },
         });
       }
-    }
+    });
     return derived;
   };
 
   useEffect(() => {
     setRows((prev) =>
-      prev.map((r) => {
-        const raw = (r.months || {}) as Record<string, unknown>;
+      (prev ?? []).map((r) => {
+        const raw = (r?.months ?? {}) as Record<string, unknown>;
         return { ...r, months: normalizeMonthsByCurrentLabels(raw) };
       })
     );
@@ -347,10 +349,10 @@ export default function ScheduleCheckpointsForm({
     const derived = deriveKpisFromProgress();
     setKpis((prev) => {
       const prevMap = new Map<string, KpiRow>();
-      for (const k of prev) {
+      for (const k of prev ?? []) {
         const mk = getMonthKeyFromKpi(k);
         if (!mk) continue;
-        const wk = k.workKey ?? extractWorkCode(k.code);
+        const wk = k?.workKey ?? extractWorkCode(k?.code ?? "");
         prevMap.set(`${wk}|${mk}`, k);
       }
 
@@ -375,20 +377,24 @@ export default function ScheduleCheckpointsForm({
 
   const toggleMonth = (rowIdx: number, month: string) => {
     setRows((prev) => {
-      const next = [...prev];
+      const next = [...(prev ?? [])];
       const row = next[rowIdx];
-      const cur = row.months[month] ?? { progress: false, checkpoint: false };
-      next[rowIdx] = { ...row, months: { ...row.months, [month]: { ...cur, progress: !cur.progress } } };
+      if (!row) return prev ?? [];
+      const months = row.months ?? {};
+      const cur = months[month] ?? { progress: false, checkpoint: false };
+      next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, progress: !cur.progress } } };
       return next;
     });
   };
 
   const toggleCheckpoint = (rowIdx: number, month: string) => {
     setRows((prev) => {
-      const next = [...prev];
+      const next = [...(prev ?? [])];
       const row = next[rowIdx];
-      const cur = row.months[month] ?? { progress: false, checkpoint: false };
-      next[rowIdx] = { ...row, months: { ...row.months, [month]: { ...cur, checkpoint: !cur.checkpoint } } };
+      if (!row) return prev ?? [];
+      const months = row.months ?? {};
+      const cur = months[month] ?? { progress: false, checkpoint: false };
+      next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, checkpoint: !cur.checkpoint } } };
       return next;
     });
   };
@@ -707,13 +713,13 @@ export default function ScheduleCheckpointsForm({
                           onClick={() => {
                             const mk = getMonthKeyFromKpi(k);
                             if (!mk) return;
-                            const workKey = k.workKey ?? extractWorkCode(k.code);
+                            const workKey = k?.workKey ?? extractWorkCode(k?.code ?? "");
                             setRows((prev) =>
-                              prev.map((r) => {
-                                if (r.id !== workKey) return r;
-                                const months = r.months ?? {};
+                              (prev ?? []).map((r) => {
+                                if (r?.id !== workKey) return r;
+                                const months = r?.months ?? {};
                                 const cell = months[mk] ?? { progress: false, checkpoint: false };
-                                if (!cell.checkpoint) return r;
+                                if (!cell?.checkpoint) return r;
                                 return { ...r, months: { ...months, [mk]: { ...cell, checkpoint: false } } };
                               })
                             );
