@@ -112,12 +112,13 @@ export default function WorkshopAdminPage() {
       const boardRef = doc(workshopDb, "workshop_boards", groupId);
       const boardSnap = await getDoc(boardRef);
       if (boardSnap.exists()) {
-        await setDoc(doc(workshopDb, "workshop_boards_archive", `${archiveId}-${groupId}`), {
+        await setDoc(doc(workshopDb, "workshop_boards", `ARCHIVE-${archiveId}-${groupId}`), {
           archiveId,
+          isArchive: true,
           sourceGroupId: groupId,
           archivedAt: serverTimestamp(),
           ...boardSnap.data(),
-        });
+        }, { merge: false });
       }
 
       // A) 備份 ideas（分批，避免 batch 上限）
@@ -128,12 +129,14 @@ export default function WorkshopAdminPage() {
         const slice = ideaDocs.slice(i, i + 300);
         const batch = writeBatch(workshopDb);
         slice.forEach((d) => {
-          const backupRef = doc(collection(workshopDb, "workshop_ideas_archive"));
+          const backupRef = doc(collection(workshopDb, "workshop_ideas"));
           batch.set(backupRef, {
             archiveId,
+            isArchive: true,
             sourceGroupId: groupId,
             sourceId: d.id,
             archivedAt: serverTimestamp(),
+            groupId: `ARCHIVE-${groupId}`,
             ...d.data(),
           });
         });
@@ -200,7 +203,8 @@ export default function WorkshopAdminPage() {
       window.alert(`${groupId} 組已完成 A+B（已備份並復原版面）。`);
     } catch (err) {
       console.error(err);
-      window.alert(`${groupId} 組復原失敗，請稍後再試。`);
+      const msg = err instanceof Error ? err.message : "unknown error";
+      window.alert(`${groupId} 組復原失敗：${msg}`);
     } finally {
       setRecoveringGroup(null);
     }
