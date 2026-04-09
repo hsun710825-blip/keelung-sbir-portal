@@ -1,10 +1,17 @@
+import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 
-// 工作坊已結束：阻擋 /workshop/*（redirect 會導向首頁，無法同時顯示本 Layout 的 JSX）
-export default function WorkshopLayout({
-  children: _children,
+import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
+
+// 只開放 ADMIN 進入 workshop；其餘導回首頁
+export default async function WorkshopLayout({
+  children,
 }: {
   children: React.ReactNode;
 }) {
-  redirect("/");
+  const session = await getServerSession(authOptions);
+  if (session?.user?.role !== "ADMIN") {
+    redirect("/");
+  }
+  return <>{children}</>;
 }
