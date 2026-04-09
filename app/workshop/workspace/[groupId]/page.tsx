@@ -359,7 +359,7 @@ function WorkspaceInner() {
           .map(({ _groupId: _g, ...rest }) => rest);
         ideasMapRef.current = new Map(rows.map((r) => [r.id, r]));
         setIdeas(rows);
-        const mapped = rows.map((r, i) => toNode(r, i, selectedNodeId));
+      const mapped = rows.map((r, i) => toNode(r, i, null));
         const normalized = repairMode
           ? mapped.map((n, i) => ({
               ...n,
@@ -376,7 +376,17 @@ function WorkspaceInner() {
       },
     );
     return () => un();
-  }, [groupId, normalizeGroup, selectedNodeId, repairMode]);
+  }, [groupId, normalizeGroup, repairMode]);
+
+  useEffect(() => {
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.type === "sticky"
+          ? { ...n, data: { ...n.data, showTools: n.id === selectedNodeId } }
+          : n,
+      ),
+    );
+  }, [selectedNodeId]);
 
   useEffect(() => {
     if (!groupId) return;
@@ -506,6 +516,7 @@ function WorkspaceInner() {
     const drawings = nodes.filter((n) => n.type === "draw");
     const laid = autoLayout(sticky, layoutKind);
     setNodes([...laid, ...drawings]);
+    if (repairMode) return;
     await Promise.all(
       laid.map((n) =>
         updateDoc(doc(workshopDb, "workshop_ideas", n.id), { x: n.position.x, y: n.position.y, updatedAt: serverTimestamp() }).catch(
