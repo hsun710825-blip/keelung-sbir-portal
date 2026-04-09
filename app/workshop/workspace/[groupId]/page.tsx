@@ -41,6 +41,7 @@ import {
   updateDoc,
   where,
   type DocumentData,
+  type Query,
 } from "firebase/firestore";
 import { workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUP_MAP, normalizeWorkshopGroupId } from "@/app/workshop/_lib/workshopGroups";
@@ -290,6 +291,7 @@ function WorkspaceInner() {
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [budgetRows, setBudgetRows] = useState<BudgetRow[]>([{ id: crypto.randomUUID(), category: ACCOUNTING_OPTIONS[0], subsidy: 0, matching: 0 }]);
   const [savingMsg, setSavingMsg] = useState("");
+  const [loadError, setLoadError] = useState<string>("");
   const [undoStack, setUndoStack] = useState<UndoItem[]>([]);
   const [isMouseDown, setIsMouseDown] = useState(false);
   const ideasMapRef = useRef<Map<string, IdeaDoc>>(new Map());
@@ -297,6 +299,13 @@ function WorkspaceInner() {
   const flowRef = useRef<ReactFlowInstance | null>(null);
 
   const nodeTypes = useMemo(() => ({ sticky: StickyNode, draw: DrawNode }), []);
+
+  const normalizeGroup = useCallback((v: unknown) => {
+    return String(v ?? "")
+      .trim()
+      .replace(/^"+|"+$/g, "")
+      .toUpperCase();
+  }, []);
 
   useEffect(() => {
     const down = () => setIsMouseDown(true);
@@ -311,47 +320,63 @@ function WorkspaceInner() {
 
   useEffect(() => {
     if (!groupId) return;
-    const un = onSnapshot(query(collection(workshopDb, "workshop_ideas"), where("groupId", "==", groupId)), (snap) => {
-      const rows = snap.docs
-        .map((d) => {
-          const x = d.data() as DocumentData;
-          const createdAtMs = x.createdAt?.toMillis?.() ?? 0;
-          return {
-            id: d.id,
-            type: x.type === "draw" ? "draw" : "sticky",
-            companyName: String(x.companyName || ""),
-            studentName: String(x.studentName || ""),
-            ideaText: String(x.ideaText || ""),
-            color: typeof x.color === "string" ? x.color : null,
-            x: typeof x.x === "number" ? x.x : null,
-            y: typeof x.y === "number" ? x.y : null,
-            width: typeof x.width === "number" ? x.width : null,
-            height: typeof x.height === "number" ? x.height : null,
-            pathData: typeof x.pathData === "string" ? x.pathData : null,
-            strokeWidth: typeof x.strokeWidth === "number" ? x.strokeWidth : null,
-            strokeColor: typeof x.strokeColor === "string" ? x.strokeColor : null,
-            strokeStyle: x.strokeStyle === "dashed" || x.strokeStyle === "dotted" ? x.strokeStyle : "solid",
-            opacity: typeof x.opacity === "number" ? x.opacity : null,
-            createdAtMs,
-          } as IdeaDoc;
-        })
-        .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
-      ideasMapRef.current = new Map(rows.map((r) => [r.id, r]));
-      setIdeas(rows);
-      const mapped = rows.map((r, i) => toNode(r, i, selectedNodeId));
-      const normalized = repairMode
-        ? mapped.map((n, i) => ({
-            ...n,
-            position: {
-              x: 120 + (i % 4) * 280,
-              y: 120 + Math.floor(i / 4) * 190,
-            },
-          }))
-        : mapped;
-      setNodes(normalized);
-    });
+    const source: Query<DocumentData> | ReturnType<typeof collection> = repairMode
+      ? collection(workshopDb, "workshop_ideas")
+      : query(collection(workshopDb, "workshop_ideas"), where("groupId", "==", groupId));
+
+    const un = onSnapshot(
+      source,
+      (snap) => {
+        setLoadError("");
+        const targetGroup = normalizeGroup(groupId);
+        const rows = snap.docs
+          .map((d) => {
+            const x = d.data() as DocumentData;
+            const createdAtMs = x.createdAt?.toMillis?.() ?? 0;
+            const row = {
+              id: d.id,
+              type: x.type === "draw" ? "draw" : "sticky",
+              companyName: String(x.companyName || ""),
+              studentName: String(x.studentName || ""),
+              ideaText: String(x.ideaText || ""),
+              color: typeof x.color === "string" ? x.color : null,
+              x: typeof x.x === "number" ? x.x : null,
+              y: typeof x.y === "number" ? x.y : null,
+              width: typeof x.width === "number" ? x.width : null,
+              height: typeof x.height === "number" ? x.height : null,
+              pathData: typeof x.pathData === "string" ? x.pathData : null,
+              strokeWidth: typeof x.strokeWidth === "number" ? x.strokeWidth : null,
+              strokeColor: typeof x.strokeColor === "string" ? x.strokeColor : null,
+              strokeStyle: x.strokeStyle === "dashed" || x.strokeStyle === "dotted" ? x.strokeStyle : "solid",
+              opacity: typeof x.opacity === "number" ? x.opacity : null,
+              createdAtMs,
+              _groupId: normalizeGroup(x.groupId),
+            } as IdeaDoc & { _groupId: string };
+            return row;
+          })
+          .filter((r) => r._groupId === targetGroup)
+          .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id))
+          .map(({ _groupId: _g, ...rest }) => rest);
+        ideasMapRef.current = new Map(rows.map((r) => [r.id, r]));
+        setIdeas(rows);
+        const mapped = rows.map((r, i) => toNode(r, i, selectedNodeId));
+        const normalized = repairMode
+          ? mapped.map((n, i) => ({
+              ...n,
+              position: {
+                x: 120 + (i % 4) * 280,
+                y: 120 + Math.floor(i / 4) * 190,
+              },
+            }))
+          : mapped;
+        setNodes(normalized);
+      },
+      (err) => {
+        setLoadError(err?.message || "讀取畫布資料失敗");
+      },
+    );
     return () => un();
-  }, [groupId, selectedNodeId, repairMode]);
+  }, [groupId, normalizeGroup, selectedNodeId, repairMode]);
 
   useEffect(() => {
     if (!groupId) return;
@@ -597,6 +622,11 @@ function WorkspaceInner() {
         </header>
 
         <section className="relative flex-1">
+          {loadError ? (
+            <div className="pointer-events-none absolute left-3 top-3 z-40 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 shadow-sm">
+              讀取畫布資料時發生問題：{loadError}
+            </div>
+          ) : null}
           <DrawOverlay
             enabled={mode === "pen" || mode === "highlighter"}
             reactFlow={rf}
