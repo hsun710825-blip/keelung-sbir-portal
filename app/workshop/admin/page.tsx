@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, deleteField, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
+import { collection, deleteField, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where, writeBatch } from "firebase/firestore";
 import { workshopDb } from "@/lib/firebaseWorkshop";
 import { WORKSHOP_GROUPS } from "@/app/workshop/_lib/workshopGroups";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -96,18 +96,15 @@ export default function WorkshopAdminPage() {
     setRecoveringGroup(groupId);
     const backupId = `${groupId}-${Date.now()}`;
     try {
-      // A) 備份：下載本機 JSON（避免被 Firestore rules 擋住）
-      const boardRef = doc(workshopDb, "workshop_boards", groupId);
-      const boardSnap = await getDoc(boardRef);
-      const qIdeas = query(collection(workshopDb, "workshop_ideas"), where("groupId", "==", groupId));
-      const snap = await getDocs(qIdeas);
-      const ideaDocs = snap.docs;
+      // A) 備份：完全不讀取 Firestore，改用目前頁面已載入資訊輸出本機備份
+      const row = displayRows.find((r) => r.groupId === groupId);
       const backupPayload = {
         backupId,
         groupId,
         exportedAt: new Date().toISOString(),
-        board: boardSnap.exists() ? boardSnap.data() : null,
-        ideas: ideaDocs.map((d) => ({ id: d.id, ...d.data() })),
+        board: row ?? null,
+        ideas: [],
+        note: "Light backup from admin view only (Firestore permission-safe mode).",
       };
       const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: "application/json;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -116,7 +113,7 @@ export default function WorkshopAdminPage() {
       a.download = `workshop-backup-${backupId}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      window.alert(`${groupId} 組備份已下載，將進入畫布啟用本地復原檢視（不寫入資料庫）。`);
+      window.alert(`${groupId} 組已啟用權限安全模式：已下載備份並進入本地復原檢視。`);
       window.location.href = `/workshop/workspace/${groupId}?repair=1`;
     } catch (err) {
       console.error(err);
