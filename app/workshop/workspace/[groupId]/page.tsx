@@ -28,7 +28,7 @@ import {
   type NodeProps,
   type ReactFlowInstance,
 } from "reactflow";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   addDoc,
   collection,
@@ -265,7 +265,9 @@ function autoLayout(nodes: Node[], kind: LayoutKind): Node[] {
 
 function WorkspaceInner() {
   const params = useParams<{ groupId: string }>();
+  const searchParams = useSearchParams();
   const groupId = normalizeWorkshopGroupId(params?.groupId);
+  const repairMode = searchParams?.get("repair") === "1";
   const group = groupId ? WORKSHOP_GROUP_MAP[groupId] : null;
   const rf = useReactFlow();
 
@@ -336,10 +338,20 @@ function WorkspaceInner() {
         .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id));
       ideasMapRef.current = new Map(rows.map((r) => [r.id, r]));
       setIdeas(rows);
-      setNodes(rows.map((r, i) => toNode(r, i, selectedNodeId)));
+      const mapped = rows.map((r, i) => toNode(r, i, selectedNodeId));
+      const normalized = repairMode
+        ? mapped.map((n, i) => ({
+            ...n,
+            position: {
+              x: 120 + (i % 4) * 280,
+              y: 120 + Math.floor(i / 4) * 190,
+            },
+          }))
+        : mapped;
+      setNodes(normalized);
     });
     return () => un();
-  }, [groupId, selectedNodeId]);
+  }, [groupId, selectedNodeId, repairMode]);
 
   useEffect(() => {
     if (!groupId) return;

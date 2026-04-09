@@ -116,56 +116,8 @@ export default function WorkshopAdminPage() {
       a.download = `workshop-backup-${backupId}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-      // B) 修復 ideas 必要欄位與座標（不改既有文字）
-      const softColors = ["#fee2e2", "#ffedd5", "#fef3c7", "#ecfccb", "#dcfce7", "#ccfbf1", "#dbeafe", "#e0e7ff", "#ede9fe", "#fce7f3"];
-      const sortedIdeas = [...ideaDocs].sort((a, b) => {
-        const ta = a.data()?.createdAt?.toMillis?.() ?? 0;
-        const tb = b.data()?.createdAt?.toMillis?.() ?? 0;
-        return ta - tb || a.id.localeCompare(b.id);
-      });
-      for (let i = 0; i < sortedIdeas.length; i += 300) {
-        const slice = sortedIdeas.slice(i, i + 300);
-        const batch = writeBatch(workshopDb);
-        slice.forEach((d, idx) => {
-          const x = d.data() as Record<string, unknown>;
-          const globalIdx = i + idx;
-          const patch: Record<string, unknown> = {
-            updatedAt: serverTimestamp(),
-          };
-
-          const hasType = x.type === "sticky" || x.type === "draw";
-          if (!hasType) patch.type = "sticky";
-
-          const hasX = typeof x.x === "number" && Number.isFinite(x.x);
-          const hasY = typeof x.y === "number" && Number.isFinite(x.y);
-          if (!hasX) patch.x = 120 + (globalIdx % 4) * 280;
-          if (!hasY) patch.y = 120 + Math.floor(globalIdx / 4) * 180;
-
-          if ((x.type ?? patch.type) === "sticky") {
-            if (typeof x.companyName !== "string") patch.companyName = "";
-            if (typeof x.studentName !== "string") patch.studentName = "";
-            if (typeof x.ideaText !== "string") patch.ideaText = "";
-            if (typeof x.color !== "string" || !x.color) patch.color = softColors[globalIdx % softColors.length];
-          }
-
-          if ((x.type ?? patch.type) === "draw") {
-            if (typeof x.pathData !== "string") patch.pathData = "";
-            if (typeof x.strokeColor !== "string") patch.strokeColor = "#0f172a";
-            if (typeof x.strokeWidth !== "number") patch.strokeWidth = 3;
-            if (typeof x.opacity !== "number") patch.opacity = 1;
-            if (typeof x.width !== "number") patch.width = 220;
-            if (typeof x.height !== "number") patch.height = 140;
-          }
-
-          if (Object.keys(patch).length > 0) {
-            batch.update(doc(workshopDb, "workshop_ideas", d.id), patch);
-          }
-        });
-        await batch.commit();
-      }
-
-      window.alert(`${groupId} 組已完成 A+B（已備份並復原版面）。`);
+      window.alert(`${groupId} 組備份已下載，將進入畫布啟用本地復原檢視（不寫入資料庫）。`);
+      window.location.href = `/workshop/workspace/${groupId}?repair=1`;
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "unknown error";
