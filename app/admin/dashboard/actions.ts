@@ -41,6 +41,7 @@ export async function deleteApplicationAction(applicationId: string): Promise<De
   }
 
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin", "layout");
   return { ok: true };
 }
 
@@ -56,6 +57,7 @@ export async function bulkDeleteApplicationsAction(ids: string[]): Promise<BulkD
       where: { id: { in: cleanedIds } },
     });
     revalidatePath("/admin/dashboard");
+    revalidatePath("/admin", "layout");
     return { ok: true, deletedCount: result.count };
   } catch {
     return { ok: false, error: "批次刪除失敗" };

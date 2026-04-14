@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 
 /** 依登入與 DB 即時渲染，避免被誤判為靜態頁面 */
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type ApplicationListRow = Prisma.ApplicationGetPayload<{
   include: {
