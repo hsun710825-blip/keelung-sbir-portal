@@ -107,6 +107,14 @@ export default function App() {
         }
       : null;
 
+  const downloadFiles = [
+    { name: "115年度SBIR-申請者文件檢查表.odt", type: "odt" as const },
+    { name: "115年度SBIR-計畫申請表.odt", type: "odt" as const },
+    { name: "115年度SBIR-聯合合作協議書.odt", type: "odt" as const },
+    { name: "115年度基隆市政府地方產業創新研發推動申請須知.pdf", type: "pdf" as const },
+    { name: "環勞衛切結書.odt", type: "odt" as const },
+  ];
+
   if (enterApplicantMode && userContext) {
     return <Dashboard user={userContext} onLogout={handleLogout} />;
   }
@@ -239,6 +247,43 @@ export default function App() {
               </div>
               <div className="mt-8 text-center">
                 <p className="text-[11px] text-slate-400 font-light">登入即表示您同意本計畫之隱私權政策與資訊安全規範。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 bg-white/90 backdrop-blur-md rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col lg:flex-row items-center justify-center gap-6 lg:gap-12 transition-all">
+          <div className="w-full">
+            <div className="rounded-2xl border border-slate-100 bg-white/90 p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <h3 className="text-lg font-medium text-slate-800 tracking-wide flex items-center gap-2">
+                <FileText size={18} className="text-blue-600" />
+                相關文件下載
+              </h3>
+              <p className="mt-1 text-sm font-light text-slate-500">申請前請先下載並確認以下文件內容。</p>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {downloadFiles.map((file) => {
+                  const href = `/downloads/${file.name}`;
+                  const isPdf = file.type === "pdf";
+                  return (
+                    <a
+                      key={file.name}
+                      href={href}
+                      download={isPdf ? undefined : true}
+                      target={isPdf ? "_blank" : undefined}
+                      rel={isPdf ? "noopener noreferrer" : undefined}
+                      className="group flex min-h-[52px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-blue-300 hover:bg-blue-50/50"
+                    >
+                      {isPdf ? (
+                        <FileText size={18} className="shrink-0 text-rose-500" />
+                      ) : (
+                        <File size={18} className="shrink-0 text-slate-500" />
+                      )}
+                      <span className="line-clamp-2 flex-1">{file.name}</span>
+                      <ArrowRight size={14} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
+                    </a>
+                  );
+                })}
               </div>
             </div>
           </div>
