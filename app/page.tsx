@@ -12,7 +12,6 @@ import ScheduleCheckpointsForm from '@/components/ScheduleCheckpointsForm';
 import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsForm';
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
-import NextImage from "next/image";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
 import { isSubmitLockScheduleActiveNow } from "@/lib/planLockSchedule";
 import {
@@ -276,12 +275,10 @@ export default function App() {
                       key={file.name}
                       className="flex min-h-[56px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-blue-300 hover:bg-blue-50/50"
                     >
-                      <NextImage
-                        src={isPdf ? "/icons/pdf-icon.png" : "/icons/odt-icon.png"}
+                      <img
+                        src={isPdf ? "/icon/pdf-icon.png" : "/icon/odt-icon.png"}
                         alt={isPdf ? "PDF 文件" : "ODT 文件"}
-                        width={24}
-                        height={24}
-                        className="h-6 w-6 shrink-0"
+                        className="w-8 h-8 object-contain flex-shrink-0"
                       />
                       <span className="line-clamp-2 flex-1">{file.name}</span>
                       <a
@@ -291,12 +288,10 @@ export default function App() {
                         rel={isPdf ? "noopener noreferrer" : undefined}
                         className="group inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition hover:scale-[1.03] hover:bg-blue-100"
                       >
-                        <NextImage
-                          src="/icons/download-icon.png"
+                        <img
+                          src="/icon/download-icon.png"
                           alt="下載"
-                          width={24}
-                          height={24}
-                          className="h-6 w-6"
+                          className="w-5 h-5 object-contain"
                         />
                         <span>下載</span>
                       </a>
