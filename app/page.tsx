@@ -108,7 +108,6 @@ export default function App() {
       : null;
 
   const downloadFiles = [
-    { name: "115年度SBIR-計畫書格式.odt", type: "odt" as const },
     { name: "115年度SBIR-申請者文件檢查表.odt", type: "odt" as const },
     { name: "115年度SBIR-計畫申請表.odt", type: "odt" as const },
     { name: "115年度SBIR-聯合合作協議書.odt", type: "odt" as const },
