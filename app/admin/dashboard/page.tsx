@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
@@ -33,6 +34,7 @@ export default async function AdminDashboardPage({
 }: {
   searchParams?: Promise<DashboardSearchParams>;
 }) {
+  noStore();
   const session = await getServerSession(authOptions);
   const emailRaw = session?.user?.email?.trim() || "";
   const sp = (await searchParams) ?? {};

@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { ApplicationStatus } from "@prisma/client";
 
 import { authOptions } from "../../auth/[...nextauth]/authOptions";
-import { getSheetsSaClient } from "../../_driveSa";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
+import { prisma } from "@/lib/prisma";
+import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 
-function getSpreadsheetId(): string | null {
-  const id = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim() || process.env.GOOGLE_SHEET_ID?.trim();
-  return id || null;
-}
-
-function getSheetName(): string {
-  return (process.env.GOOGLE_SHEETS_REGISTRY_SHEET_NAME || "專案總表").trim() || "專案總表";
-}
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -22,45 +18,39 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const spreadsheetId = getSpreadsheetId();
-    if (!spreadsheetId) {
-      return NextResponse.json({ ok: false, error: "Missing GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SHEET_ID" }, { status: 500 });
-    }
+    // 與 /admin/dashboard 同步：完全以 Prisma Application 為基準
+    const [registeredCount, draftCount, submittedCount, submittedRows] = await Promise.all([
+      prisma.application.count(),
+      prisma.application.count({ where: { status: ApplicationStatus.DRAFT } }),
+      prisma.application.count({ where: { status: { not: ApplicationStatus.DRAFT } } }),
+      prisma.application.findMany({
+        where: { status: { not: ApplicationStatus.DRAFT } },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        include: {
+          applicant: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
 
-    const sheetName = getSheetName();
-    const sheets = await getSheetsSaClient();
-    const range = `'${sheetName.replace(/'/g, "''")}'!A1:L`;
-    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-    const values = res.data.values || [];
-    if (values.length <= 1) {
-      return NextResponse.json({
-        ok: true,
-        summary: { registeredCount: 0, draftCount: 0, submittedCount: 0 },
-        submittedPlans: [],
-      });
-    }
-
-    const rows = values.slice(1);
-    const registeredCount = rows.filter((r) => String(r?.[0] ?? "").trim()).length;
-    const draftCount = rows.filter((r) => String(r?.[10] ?? "").trim() === "草稿處理中").length;
-    const submittedRows = rows.filter((r) => String(r?.[10] ?? "").trim() === "已確認送出");
-
-    const submittedPlans = submittedRows
-      .map((r) => ({
-        companyName: String(r?.[3] ?? "").trim(),
-        projectName: String(r?.[4] ?? "").trim(),
-        submittedAt: String(r?.[11] ?? "").trim(),
-        status: String(r?.[10] ?? "").trim(),
-      }))
-      .sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1))
-      .slice(0, 200);
+    const submittedPlans = submittedRows.map((row) => ({
+      companyName: String(row.applicant?.name || row.applicant?.email || "").trim(),
+      projectName: String(row.title || "").trim(),
+      submittedAt: row.updatedAt.toISOString(),
+      status: applicationStatusLabel(row.status),
+    }));
 
     return NextResponse.json({
       ok: true,
       summary: {
         registeredCount,
         draftCount,
-        submittedCount: submittedRows.length,
+        submittedCount,
       },
       submittedPlans,
     });
