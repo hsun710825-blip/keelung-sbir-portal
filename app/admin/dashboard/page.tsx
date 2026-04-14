@@ -6,7 +6,7 @@ import { Prisma, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
-import { DeleteApplicationButton } from "@/components/admin/DeleteApplicationButton";
+import { AdminApplicationsTable, type AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -128,6 +128,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
     );
   }
 
+  const tableRows: AdminApplicationTableRow[] = applications.map((row) => {
+    const applicantLabel = [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
+    const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
+    const createdMs = row.createdAt.getTime();
+    const updatedMs = row.updatedAt.getTime();
+    const showCreatedSub = Math.abs(updatedMs - createdMs) > 60_000;
+    return {
+      id: row.id,
+      titleText,
+      applicantLabel,
+      updatedAtLabel: formatTaipeiDateTime(row.updatedAt),
+      createdAtLabel: showCreatedSub ? formatTaipeiDateTime(row.createdAt) : null,
+      statusLabel: applicationStatusLabel(row.status),
+    };
+  });
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
@@ -227,91 +243,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/90">
-                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    計畫名稱
-                  </th>
-                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    申請人／公司
-                  </th>
-                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    最後更新／建立
-                  </th>
-                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    目前狀態
-                  </th>
-                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {applications.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center text-slate-500">
-                      {searchQuery
-                        ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
-                        : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
-                    </td>
-                  </tr>
-                ) : (
-                  applications.map((row) => {
-                    const applicantLabel =
-                      [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
-                    const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
-                    const createdMs = row.createdAt.getTime();
-                    const updatedMs = row.updatedAt.getTime();
-                    const showCreatedSub = Math.abs(updatedMs - createdMs) > 60_000;
-                    return (
-                      <tr key={row.id} className="transition-colors hover:bg-slate-50/80">
-                        <td className="max-w-[220px] px-5 py-3.5 font-medium text-slate-900">
-                          {isAdmin ? (
-                            <Link
-                              href={`/admin/application/${row.id}`}
-                              className="line-clamp-2 text-blue-700 hover:text-blue-900 hover:underline"
-                              title={titleText}
-                            >
-                              {titleText}
-                            </Link>
-                          ) : (
-                            <span className="line-clamp-2" title={titleText}>
-                              {titleText}
-                            </span>
-                          )}
-                        </td>
-                        <td className="max-w-[200px] px-5 py-3.5 text-slate-700">
-                          <span className="line-clamp-2" title={applicantLabel}>
-                            {applicantLabel}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 tabular-nums text-slate-600">
-                          <div className="whitespace-nowrap font-medium text-slate-800">
-                            {formatTaipeiDateTime(row.updatedAt)}
-                          </div>
-                          {showCreatedSub ? (
-                            <div className="mt-0.5 whitespace-nowrap text-xs text-slate-400">
-                              建立 {formatTaipeiDateTime(row.createdAt)}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-800">
-                            {applicationStatusLabel(row.status)}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {isAdmin ? <DeleteApplicationButton applicationId={row.id} /> : <span className="text-xs text-slate-400">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <AdminApplicationsTable rows={tableRows} isAdmin={isAdmin} searchQuery={searchQuery} />
         </section>
       </div>
     </main>
