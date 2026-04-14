@@ -6,6 +6,7 @@ import { Prisma, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
+import { DeleteApplicationButton } from "@/components/admin/DeleteApplicationButton";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -242,12 +243,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                   <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                     目前狀態
                   </th>
+                  <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    操作
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {applications.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-5 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-5 py-12 text-center text-slate-500">
                       {searchQuery
                         ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
                         : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
@@ -297,6 +301,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                           <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                             {applicationStatusLabel(row.status)}
                           </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {isAdmin ? <DeleteApplicationButton applicationId={row.id} /> : <span className="text-xs text-slate-400">—</span>}
                         </td>
                       </tr>
                     );
