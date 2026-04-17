@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { 
   Calendar, CircleDollarSign, ShieldCheck, ArrowRight, User, 
   LogOut, Phone, Building2, FileText, CheckSquare, 
-  UploadCloud, Save, ChevronRight, AlertCircle, Trash2, File, CheckCircle2 
+  UploadCloud, Save, ChevronRight, ChevronLeft, AlertCircle, Trash2, File, CheckCircle2 
 } from 'lucide-react';
 import CompanyProfileForm from '@/components/CompanyProfileForm'; 
 import PlanContentImplementationForm from '@/components/PlanContentImplementationForm';
@@ -824,6 +824,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [planLockReason, setPlanLockReason] = useState<string>("");
   const [dbApplications, setDbApplications] = useState<MeApplicationRow[]>([]);
   const lastAutoPreviewKeyRef = useRef<string>("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showSidebarHint, setShowSidebarHint] = useState(true);
 
   const refreshMyApplications = useCallback(() => {
     fetch("/api/applications/me", { credentials: "include" })
@@ -839,6 +841,15 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   useEffect(() => {
     refreshMyApplications();
   }, [refreshMyApplications]);
+
+  useEffect(() => {
+    const syncSidebarByViewport = () => {
+      setIsSidebarOpen(window.innerWidth >= 1024);
+    };
+    syncSidebarByViewport();
+    window.addEventListener("resize", syncSidebarByViewport);
+    return () => window.removeEventListener("resize", syncSidebarByViewport);
+  }, []);
 
   const [formData, setFormData] = useState<ApplicationFormData>({
     // 第一頁籤：封面
@@ -1239,11 +1250,43 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         </div>
       </header>
 
-      <div className="flex flex-1 max-w-[1400px] w-full mx-auto p-6 gap-6 items-start">
-        <aside className="w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] overflow-hidden sticky top-24">
+      <div className="flex flex-1 w-full p-4 lg:p-6 gap-4 lg:gap-6 items-start">
+        <aside
+          className={`${
+            isSidebarOpen ? "w-64" : "w-16"
+          } flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] overflow-hidden sticky top-24 transition-all duration-300 ease-in-out`}
+        >
+          <div className="p-3 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between gap-2">
+            {isSidebarOpen ? (
+              <>
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase">案件進度</h3>
+                  <p className="mt-1 text-[11px] text-slate-400 leading-snug">以下為系統資料庫紀錄，與管理員後台 Prisma 總表同步。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  aria-label="收合左側章節選單"
+                  title="收合選單"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="mx-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                aria-label="展開左側章節選單"
+                title="展開選單"
+              >
+                <ChevronRight size={16} />
+              </button>
+            )}
+          </div>
+          {isSidebarOpen ? (
           <div className="p-4 border-b border-slate-100 bg-slate-50/60">
-            <h3 className="text-xs font-semibold text-slate-500 tracking-widest uppercase">案件進度</h3>
-            <p className="mt-1 text-[11px] text-slate-400 leading-snug">以下為系統資料庫紀錄，與管理員後台 Prisma 總表同步。</p>
             {dbApplications.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500 leading-relaxed">
                 尚無案件。儲存草稿後會出現「草稿」；確認送件後狀態為「已送件」。
@@ -1269,7 +1312,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               </ul>
             )}
           </div>
-          <div className="p-5 border-b border-slate-50"><h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">計畫書章節</h3></div>
+          ) : (
+            <div className="p-3 border-b border-slate-100 bg-slate-50/60 text-center text-[10px] text-slate-400 tracking-widest">章節</div>
+          )}
+          {isSidebarOpen && <div className="p-5 border-b border-slate-50"><h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">計畫書章節</h3></div>}
           <nav className="p-2 space-y-1" aria-label="計畫書章節導覽">
             {tabs.map((tab) => (
               <button
@@ -1278,20 +1324,20 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                 onClick={() => void handleTabChange(tab.id)}
                 aria-current={activeTab === tab.id ? "page" : undefined}
                 aria-label={`第 ${tab.id} 章：${tab.title}`}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-sm rounded-xl transition-all duration-200 ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-start gap-3 px-4" : "justify-center px-2"} py-3 text-sm rounded-xl transition-all duration-200 ${
                   activeTab === tab.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 font-light'
                 }`}
               >
                 <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${
                   activeTab === tab.id ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'
                 }`} aria-hidden>{tab.id}</div>
-                {tab.title}
+                {isSidebarOpen && tab.title}
               </button>
             ))}
           </nav>
         </aside>
 
-        <main className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] min-h-[70vh] flex flex-col">
+        <main className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.02)] min-h-[70vh] flex flex-col">
           <div className="p-8 md:p-12 flex-1">
             
             {/* 只在非封面頁顯示一般標題 */}
@@ -1306,6 +1352,19 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                 isPlanLocked ? "opacity-75" : ""
               } ${isPlanLocked && activeTab !== 9 ? "pointer-events-none" : ""}`}
             >
+              {showSidebarHint && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+                  <p>💡 筆電使用者請注意：若覺得編輯畫面太擠，可點擊左側【收合選單】按鈕，展開全螢幕編輯體驗！</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowSidebarHint(false)}
+                    className="shrink-0 text-blue-700 hover:text-blue-900 font-medium"
+                    aria-label="關閉版面提示"
+                  >
+                    ✖ 關閉
+                  </button>
+                </div>
+              )}
               {isPlanLocked && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   此計畫書目前為鎖定狀態（{planLockReason || "已鎖定"}），僅可檢視，不可再修改或上傳附件。
