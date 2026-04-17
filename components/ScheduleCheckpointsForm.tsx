@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   SCHEDULE_KPI_TABLE_NOTE,
   SCHEDULE_PROGRESS_TABLE_NOTE,
@@ -68,6 +68,59 @@ type KpiRow = {
 };
 
 const DEFAULT_MONTH_LABELS = ["7月", "8月", "9月", "10月", "11月", "12月", "1月", "2月", "3月", "4月"] as const;
+
+const DEFAULT_PROGRESS_ROWS: ProgressRow[] = [
+  { id: "A", item: "A. 分項計畫", weight: "", manMonths: "", months: {} },
+  { id: "A1", item: "A1. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
+  { id: "A2", item: "A2. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
+  { id: "B", item: "B. 分項計畫", weight: "", manMonths: "", months: {} },
+  { id: "B1", item: "B1. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
+  { id: "B2", item: "B2. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
+];
+
+function buildMonthAliasMap(monthsKey: string[]) {
+  const map = new Map<string, string>();
+  monthsKey.forEach((k, idx) => {
+    map.set(k, k);
+    const m = k.match(/^(\d+)\/(\d+)$/);
+    if (m) {
+      const mm = String(Number(m[2]));
+      map.set(`${mm}月`, k);
+    }
+    const fallback = DEFAULT_MONTH_LABELS[idx];
+    if (fallback) map.set(fallback, k);
+  });
+  return map;
+}
+
+function normalizeIncomingRowMonths(
+  raw: Record<string, unknown>,
+  monthLabels: string[],
+  monthAliasMap: Map<string, string>
+): Record<string, { progress: boolean; checkpoint: boolean }> {
+  const normalized = Object.fromEntries(monthLabels.map((m) => [m, { progress: false, checkpoint: false }])) as Record<
+    string,
+    { progress: boolean; checkpoint: boolean }
+  >;
+  for (const [k, v] of Object.entries(raw || {})) {
+    const targetKey = monthAliasMap.get(k) || k;
+    if (!(targetKey in normalized)) continue;
+    if (v && typeof v === "object") {
+      const o = v as { progress?: boolean; checkpoint?: boolean };
+      normalized[targetKey] = { progress: !!o.progress, checkpoint: !!o.checkpoint };
+    } else {
+      normalized[targetKey] = { progress: !!v, checkpoint: false };
+    }
+  }
+  return normalized;
+}
+
+function normalizeKpiPeriod(k: KpiRow): KpiRow {
+  if (k?.periodStartYear != null) return k;
+  const m = k?.period?.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
+  if (m) return { ...k, periodStartYear: m[1], periodStartMonth: m[2], periodEndYear: m[3], periodEndMonth: m[4] };
+  return k;
+}
 
 type TestReportImage = { id: string; name: string; size: string; url: string };
 
@@ -217,16 +270,23 @@ export default function ScheduleCheckpointsForm({
     [monthsKey]
   );
 
-  const [rows, setRows] = useState<ProgressRow[]>([
-    { id: "A", item: "A. 分項計畫", weight: "", manMonths: "", months: {} },
-    { id: "A1", item: "A1. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
-    { id: "A2", item: "A2. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
-    { id: "B", item: "B. 分項計畫", weight: "", manMonths: "", months: {} },
-    { id: "B1", item: "B1. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
-    { id: "B2", item: "B2. 工作項目（請填寫）", weight: "", manMonths: "", months: {} },
-  ]);
+  const [rows, setRows] = useState<ProgressRow[]>(() => {
+    const labels = getMonthLabelsFromRange(projectStartDate, projectEndDate);
+    const alias = buildMonthAliasMap(labels);
+    const emptyM = Object.fromEntries(labels.map((m) => [m, { progress: false, checkpoint: false }])) as Record<
+      string,
+      { progress: boolean; checkpoint: boolean }
+    >;
+    if (!value?.rows?.length) {
+      return DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }));
+    }
+    return value.rows.map((r) => ({
+      ...r,
+      months: normalizeIncomingRowMonths((r.months ?? {}) as Record<string, unknown>, labels, alias),
+    }));
+  });
 
-  const [kpis, setKpis] = useState<KpiRow[]>([]);
+  const [kpis, setKpis] = useState<KpiRow[]>(() => (value?.kpis ?? []).map(normalizeKpiPeriod));
 
   const [notes, setNotes] = useState({ progressNote: "", kpiNote: "" });
   const [testReportImages, setTestReportImages] = useState<{ id: string; name: string; size: string; url: string }[]>([]);
@@ -249,27 +309,26 @@ export default function ScheduleCheckpointsForm({
     return normalized;
   };
 
-  useEffect(() => {
-    if (!value) return;
-    const incomingRows = value.rows ?? [];
-    setRows(
-      incomingRows.map((r) => {
-        const raw = (r.months ?? {}) as Record<string, unknown>;
-        return { ...r, months: normalizeMonthsByCurrentLabels(raw) };
-      })
-    );
-    setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
-    setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
-    setTestReportImages(value.testReportImages ?? []);
+  const hadValueRef = useRef(!!value);
+  useLayoutEffect(() => {
+    const now = !!value;
+    const had = hadValueRef.current;
+    if (!had && now && value) {
+      const incomingRows = value.rows ?? [];
+      setRows(
+        incomingRows.map((r) => {
+          const raw = (r.months ?? {}) as Record<string, unknown>;
+          return { ...r, months: normalizeMonthsByCurrentLabels(raw) };
+        })
+      );
+      setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
+      setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
+      setTestReportImages(value.testReportImages ?? []);
+    }
+    hadValueRef.current = now;
+    // 僅在「父層 value 由無到有」時灌入草稿（例如登入後載入）；避免每次父層物件參考變動就覆寫本地編輯。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function normalizeKpiPeriod(k: KpiRow): KpiRow {
-    if (k?.periodStartYear != null) return k;
-    const m = k?.period?.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
-    if (m) return { ...k, periodStartYear: m[1], periodStartMonth: m[2], periodEndYear: m[3], periodEndMonth: m[4] };
-    return k;
-  }
+  }, [value]);
 
   function buildKpiPeriod(k: KpiRow, sy?: string, sm?: string, ey?: string, em?: string): string {
     const a = sy ?? k.periodStartYear;
@@ -361,6 +420,7 @@ export default function ScheduleCheckpointsForm({
         if (!existing) return d.row;
         return {
           ...d.row,
+          workKey: existing.workKey ?? d.row.workKey,
           description: existing.description ?? "",
           weight: existing.weight ?? "",
           staffCode: existing.staffCode ?? "",
@@ -736,7 +796,10 @@ export default function ScheduleCheckpointsForm({
                     <td className="px-4 py-3 border-r border-gray-200 text-left text-gray-500">─</td>
                     <td className="px-4 py-3 border-r border-gray-200 text-gray-500">─</td>
                     <td className="px-4 py-3 border-r border-gray-200 text-right">
-                      {kpis.reduce((acc, r) => acc + (Number(r.weight) || 0), 0).toFixed(1)}
+                      {(() => {
+                        const raw = kpis.reduce((acc, r) => acc + (Number(String(r.weight ?? "").replace(/,/g, "")) || 0), 0);
+                        return (Math.round(raw * 100) / 100).toFixed(2);
+                      })()}
                     </td>
                     <td className="px-4 py-3 border-r border-gray-200 text-gray-500">─</td>
                     <td className="px-4 py-3 border-gray-200" />

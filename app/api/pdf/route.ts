@@ -1348,8 +1348,14 @@ export async function POST(req: Request) {
     const expRows = exp.length ? exp.slice(0, 3).map((r) => [asString(r.org), asString(r.time), asString(r.dept), asString(r.title)]) : [["", "", "", ""]];
     const prjRows = projs.length ? projs.slice(0, 3).map((r) => [asString(r.org), asString(r.time), asString(r.name), asString(r.task)]) : [["", "", "", ""]];
 
+    const achievementsText = asString(pi.achievements);
+    const achValueColW = Math.max(8, xR - (x0 + leftW) - pad * 2);
+    const achLines = wrapText(achievementsText, achValueColW, font, 9);
+    const achLineStep = 10.5;
+    const achRowH = Math.max(rowH, pad * 2 + achLines.length * achLineStep + 2);
+
     const totalRows = 6 + (1 + eduRows.length) + (1 + expRows.length) + (1 + prjRows.length);
-    const totalH = totalRows * rowH;
+    const totalH = totalRows * rowH + (achRowH - rowH);
     ensure(totalH + 24);
     const top = y;
     const bottom = top - totalH;
@@ -1373,11 +1379,11 @@ export async function POST(req: Request) {
       }
     };
 
-    let r = 0;
-    const y1 = () => top - r * rowH;
+    let rowOff = 0;
+    const y1 = () => top - rowOff;
     const y2 = () => y1() - rowH;
     const drawH = () => {
-      if (r > 0) cur.drawLine({ start: { x: x0, y: y1() }, end: { x: xR, y: y1() }, thickness: 0.5, color: rgb(0, 0, 0) });
+      if (rowOff > 0) cur.drawLine({ start: { x: x0, y: y1() }, end: { x: xR, y: y1() }, thickness: 0.5, color: rgb(0, 0, 0) });
     };
     const drawBasic = (a: string, b: string, c: string, d: string) => {
       drawH();
@@ -1389,7 +1395,7 @@ export async function POST(req: Request) {
       drawCell(b, bx[1]!, bx[2]!, y1(), y2());
       drawCell(c, bx[2]!, bx[3]!, y1(), y2(), true, true);
       drawCell(d, bx[3]!, bx[4]!, y1(), y2());
-      r += 1;
+      rowOff += rowH;
     };
 
     drawBasic("姓名", asString(pi.name), "稱謂", `□先生  □女士  □其他：${asString(pi.salutation)}`);
@@ -1404,10 +1410,33 @@ export async function POST(req: Request) {
       cur.drawLine({ start: { x: split, y: y1() }, end: { x: split, y: y2() }, thickness: 0.5, color: rgb(0, 0, 0) });
       drawCell(k, x0, split, y1(), y2(), true, true);
       drawCell(v, split, xR, y1(), y2());
-      r += 1;
+      rowOff += rowH;
+    };
+    const drawTwoColTallValue = (k: string, v: string, valueRowH: number) => {
+      drawH();
+      const split = x0 + leftW;
+      const yt = y1();
+      const yb = yt - valueRowH;
+      cur.drawLine({ start: { x: split, y: yt }, end: { x: split, y: yb }, thickness: 0.5, color: rgb(0, 0, 0) });
+      drawCell(k, x0, split, yt, yb, true, true);
+      const f = font;
+      const size = 9;
+      const lines = wrapText(asString(v), Math.max(8, xR - split - pad * 2), f, size);
+      const blockH = lines.length * achLineStep;
+      const baseY = yb + (yt - yb - blockH) / 2 + blockH - 8;
+      for (let i = 0; i < lines.length; i++) {
+        cur.drawText(lines[i]!, {
+          x: split + pad,
+          y: baseY - i * achLineStep,
+          size,
+          font: f,
+          color: rgb(0, 0, 0),
+        });
+      }
+      rowOff += valueRowH;
     };
     drawTwoCol("專業領域", asString(pi.field));
-    drawTwoCol("重要成就", asString(pi.achievements));
+    drawTwoColTallValue("重要成就", achievementsText, achRowH);
 
     const drawSection = (leftTitle: string, header: [string, string, string, string], rows: string[][]) => {
       const sectionRows = 1 + rows.length;
@@ -1422,7 +1451,7 @@ export async function POST(req: Request) {
       const rowBottom = () => rowTop() - rowH;
       const rx = [split, split + secCols[0]!, split + secCols[0]! + secCols[1]!, split + secCols[0]! + secCols[1]! + secCols[2]!, xR];
       const drawRightRow = (vals: [string, string, string, string], isHeader = false) => {
-        if (!(r === 0 && rr === 0)) cur.drawLine({ start: { x: split, y: rowTop() }, end: { x: xR, y: rowTop() }, thickness: 0.5, color: rgb(0, 0, 0) });
+        if (!(rowOff === 0 && rr === 0)) cur.drawLine({ start: { x: split, y: rowTop() }, end: { x: xR, y: rowTop() }, thickness: 0.5, color: rgb(0, 0, 0) });
         cur.drawLine({ start: { x: rx[1]!, y: rowTop() }, end: { x: rx[1]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
         cur.drawLine({ start: { x: rx[2]!, y: rowTop() }, end: { x: rx[2]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
         cur.drawLine({ start: { x: rx[3]!, y: rowTop() }, end: { x: rx[3]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
@@ -1436,7 +1465,7 @@ export async function POST(req: Request) {
       rows.forEach((rw) => drawRightRow([asString(rw[0]), asString(rw[1]), asString(rw[2]), asString(rw[3])], false));
       // 明確補上左側跨行標題區塊下邊線，避免視覺缺線
       cur.drawLine({ start: { x: x0, y: secBottom }, end: { x: split, y: secBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
-      r += sectionRows;
+      rowOff += rowH * sectionRows;
     };
 
     drawSection("學歷", ["學校(大專以上)", "時間", "學位", "科系"], eduRows);
