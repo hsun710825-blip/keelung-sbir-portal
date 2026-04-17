@@ -231,14 +231,21 @@ export type ScheduleCheckpointsDraft = {
   testReportImages?: { id: string; name: string; size: string; url: string }[];
 };
 
+type BoundWorkItem = {
+  id: string;
+  item: string;
+};
+
 export default function ScheduleCheckpointsForm({
   projectStartDate = "",
   projectEndDate = "",
+  boundWorkItems,
   value,
   onChange,
 }: {
   projectStartDate?: string;
   projectEndDate?: string;
+  boundWorkItems?: BoundWorkItem[];
   value?: ScheduleCheckpointsDraft;
   onChange?: (next: ScheduleCheckpointsDraft) => void;
 }) {
@@ -269,6 +276,14 @@ export default function ScheduleCheckpointsForm({
     () => Object.fromEntries(monthsKey.map((m) => [m, { progress: false, checkpoint: false }])) as Record<string, { progress: boolean; checkpoint: boolean }>,
     [monthsKey]
   );
+  const normalizedBoundItems = useMemo(
+    () =>
+      (boundWorkItems ?? [])
+        .map((w) => ({ id: String(w.id || "").trim(), item: String(w.item || "").trim() }))
+        .filter((w) => w.id && w.item),
+    [boundWorkItems]
+  );
+  const hasBoundItems = normalizedBoundItems.length > 0;
 
   const [rows, setRows] = useState<ProgressRow[]>(() => {
     const labels = getMonthLabelsFromRange(projectStartDate, projectEndDate);
@@ -277,6 +292,9 @@ export default function ScheduleCheckpointsForm({
       string,
       { progress: boolean; checkpoint: boolean }
     >;
+    if (normalizedBoundItems.length > 0) {
+      return normalizedBoundItems.map((w) => ({ ...w, weight: "", manMonths: "", months: { ...emptyM } }));
+    }
     if (!value?.rows?.length) {
       return DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }));
     }
@@ -329,6 +347,25 @@ export default function ScheduleCheckpointsForm({
     // 僅在「父層 value 由無到有」時灌入草稿（例如登入後載入）；避免每次父層物件參考變動就覆寫本地編輯。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
+
+  useEffect(() => {
+    if (!hasBoundItems) return;
+    setRows((prev) => {
+      const prevMap = new Map<string, ProgressRow>();
+      for (const p of prev ?? []) prevMap.set(String(p.id || "").trim(), p);
+      return normalizedBoundItems.map((w) => {
+        const old = prevMap.get(w.id);
+        return {
+          id: w.id,
+          item: w.item,
+          weight: old?.weight ?? "",
+          manMonths: old?.manMonths ?? "",
+          months: normalizeMonthsByCurrentLabels((old?.months ?? {}) as Record<string, unknown>),
+        };
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBoundItems, normalizedBoundItems, monthLabels.join(","), monthAliasMap]);
 
   function buildKpiPeriod(k: KpiRow, sy?: string, sm?: string, ey?: string, em?: string): string {
     const a = sy ?? k.periodStartYear;
@@ -475,7 +512,13 @@ export default function ScheduleCheckpointsForm({
           <section className="mb-12">
             <SectionTitle>一、預定進度表</SectionTitle>
             <Hint>填寫建議：先把分項計畫（A/B）與工作項目（A1/A2…）列好，再勾選每月查核點；分項計畫列之權重建議合計 100%。表後附完整法規說明。</Hint>
+            {!hasBoundItems && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-4 py-3 text-sm">
+                請先至前方章節（樹枝圖/工作架構）建立計畫工作項目，此處將自動帶入。
+              </div>
+            )}
 
+            {hasBoundItems ? (
             <div className="mt-6 overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
@@ -496,9 +539,11 @@ export default function ScheduleCheckpointsForm({
                     <tr key={r.id} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       <td className="p-2 border-r border-gray-200 text-left">
                         <input
-                          className="w-full bg-transparent outline-none px-2 py-1"
+                          className={`w-full bg-transparent outline-none px-2 py-1 ${hasBoundItems ? "text-gray-600" : ""}`}
                           value={r.item}
+                          readOnly={hasBoundItems}
                           onChange={(e) => {
+                            if (hasBoundItems) return;
                             const next = [...rows];
                             next[rIdx] = { ...next[rIdx], item: e.target.value };
                             setRows(next);
@@ -564,8 +609,8 @@ export default function ScheduleCheckpointsForm({
                       <td className="p-2 border-gray-200">
                         <button
                           type="button"
-                          disabled={rows.length <= 1}
-                          onClick={() => rows.length > 1 && setRows((prev) => prev.filter((_, i) => i !== rIdx))}
+                          disabled={hasBoundItems || rows.length <= 1}
+                          onClick={() => !hasBoundItems && rows.length > 1 && setRows((prev) => prev.filter((_, i) => i !== rIdx))}
                           className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
                         >
                           − 刪除
@@ -585,32 +630,11 @@ export default function ScheduleCheckpointsForm({
                 </tbody>
               </table>
             </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setRows((prev) => {
-                  const workItemCount = prev.filter((r) => String(r.item || "").includes("工作項目")).length;
-                  const newCode = `W${workItemCount + 1}`;
-                  return [
-                    ...prev,
-                    {
-                      id: newCode,
-                      item: `${newCode}. 工作項目（請填寫）`,
-                      weight: "",
-                      manMonths: "",
-                      months: { ...emptyMonths },
-                    },
-                  ];
-                })
-              }
-              className="mt-4 text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              新增工作項目
-            </button>
+            ) : (
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                尚無可用工作項目，建立樹枝圖後將自動顯示可勾選的預定進度列。
+              </div>
+            )}
 
             <div className="mt-4 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-4 whitespace-pre-wrap leading-relaxed">
               點選方框為進度，點選圓點為打開查核點開關；開啟查核點後，系統會自動在下方「二、預定查核點說明」帶入對應列。

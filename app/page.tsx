@@ -686,6 +686,7 @@ async function compressImageDataUrl(dataUrl: string): Promise<string> {
 }
 
 type RawTreeNode = { id?: string; text?: string; name?: string; weight?: string | number; execUnit?: string; unit?: string; children?: unknown[] };
+type ScheduleBoundWorkItem = { id: string; item: string };
 
 function cleanTreeData(input: unknown): RawTreeNode | null {
   if (!input || typeof input !== "object") return null;
@@ -720,6 +721,44 @@ function sanitizePlanContent(input: unknown): unknown {
     plan.formData = formData;
   }
   return plan;
+}
+
+function buildScheduleBoundWorkItems(planContent: PlanContentValue | undefined): ScheduleBoundWorkItem[] {
+  if (!planContent || typeof planContent !== "object") return [];
+  const rawTree = (planContent as { architectureTree?: unknown; formData?: { architectureTreeJson?: string } }).architectureTree;
+  const rawTreeJson = (planContent as { formData?: { architectureTreeJson?: string } }).formData?.architectureTreeJson;
+  let tree: RawTreeNode | null = null;
+  if (rawTree && typeof rawTree === "object") tree = rawTree as RawTreeNode;
+  if (!tree && typeof rawTreeJson === "string" && rawTreeJson.trim()) {
+    try {
+      const parsed = JSON.parse(rawTreeJson);
+      if (parsed && typeof parsed === "object") tree = parsed as RawTreeNode;
+    } catch {
+      tree = null;
+    }
+  }
+  if (!tree) return [];
+
+  const normalizeName = (src: unknown, fallback = "") => {
+    const raw = String(src ?? "").trim();
+    const noPrefix = raw.replace(/^[A-Za-z](?:\d+)?\s*[-.．、]\s*/, "").trim();
+    return noPrefix || raw || fallback;
+  };
+
+  const firstLevel = Array.isArray(tree.children) ? (tree.children as RawTreeNode[]) : [];
+  const items: ScheduleBoundWorkItem[] = [];
+  for (let i = 0; i < firstLevel.length; i++) {
+    const parent = firstLevel[i] || {};
+    const parentCode = String.fromCharCode(65 + i);
+    items.push({ id: parentCode, item: `${parentCode}. ${normalizeName(parent.text ?? parent.name, "分項計畫")}` });
+    const children = Array.isArray(parent.children) ? (parent.children as RawTreeNode[]) : [];
+    for (let j = 0; j < children.length; j++) {
+      const child = children[j] || {};
+      const childCode = `${parentCode}${j + 1}`;
+      items.push({ id: childCode, item: `${childCode}. ${normalizeName(child.text ?? child.name, "工作項目")}` });
+    }
+  }
+  return items;
 }
 
 async function buildDraftPayload(input: unknown): Promise<unknown> {
@@ -837,6 +876,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     const summaryOver = Array.from(formData.summary || "").length > 110 || Array.from(formData.innovationFocus || "").length > 110;
     return planTooLong || summaryOver;
   }, [formData]);
+
+  const scheduleBoundWorkItems = useMemo(
+    () => buildScheduleBoundWorkItems(formData.planContent),
+    [formData.planContent]
+  );
 
   // 登入後自動載入先前草稿（若有）
   useEffect(() => {
@@ -1607,6 +1651,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   <ScheduleCheckpointsForm
                     projectStartDate={formData.projectStartDate}
                     projectEndDate={formData.projectEndDate}
+                    boundWorkItems={scheduleBoundWorkItems}
                     value={formData.scheduleCheckpoints || undefined}
                     onChange={(next) => setFormData((p) => ({ ...p, scheduleCheckpoints: next }))}
                   />
