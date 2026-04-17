@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { 
   Calendar, CircleDollarSign, ShieldCheck, ArrowRight, User, 
   LogOut, Phone, Building2, FileText, CheckSquare, 
@@ -784,6 +784,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [isPlanLocked, setIsPlanLocked] = useState(false);
   const [planLockReason, setPlanLockReason] = useState<string>("");
   const [dbApplications, setDbApplications] = useState<MeApplicationRow[]>([]);
+  const lastAutoPreviewKeyRef = useRef<string>("");
 
   const refreshMyApplications = useCallback(() => {
     fetch("/api/applications/me", { credentials: "include" })
@@ -1047,6 +1048,36 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     a.remove();
     URL.revokeObjectURL(url);
   };
+
+  const previewDataKey = useMemo(() => {
+    if (activeTab !== 9) return "";
+    return JSON.stringify({
+      projectName: formData.projectName,
+      companyName: formData.companyName,
+      projectCategory: formData.projectCategory,
+      projectStartDate: formData.projectStartDate,
+      projectEndDate: formData.projectEndDate,
+      projectMonths: formData.projectMonths,
+      summary: formData.summary,
+      innovationFocus: formData.innovationFocus,
+      executionAdvantage: formData.executionAdvantage,
+      expectedBenefits: formData.expectedBenefits,
+      companyProfile: formData.companyProfile,
+      planContent: formData.planContent,
+      scheduleCheckpoints: formData.scheduleCheckpoints,
+      humanBudget: formData.humanBudget,
+      files: formData.files,
+      attachmentChecks: formData.attachmentChecks,
+    });
+  }, [activeTab, formData]);
+
+  useEffect(() => {
+    if (activeTab !== 9 || !previewDataKey) return;
+    if (isSaving || isSubmitting || isPdfGenerating || formSaveBlocked) return;
+    if (lastAutoPreviewKeyRef.current === previewDataKey) return;
+    lastAutoPreviewKeyRef.current = previewDataKey;
+    void handleGeneratePdf({ download: false, openPreview: true });
+  }, [activeTab, previewDataKey, isSaving, isSubmitting, isPdfGenerating, formSaveBlocked]);
 
   const handleSubmitToDrive = async () => {
     if (isPlanLocked) {
@@ -1503,14 +1534,6 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => void handleGeneratePdf({ download: false, openPreview: true })}
-                      disabled={isSaving || isSubmitting || isPdfGenerating || formSaveBlocked}
-                      className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-60"
-                    >
-                      {isPdfGenerating ? "PDF 產製中..." : "重新產製預覽PDF"}
-                    </button>
-                    <button
-                      type="button"
                       onClick={handleDownloadLastPdf}
                       disabled={!lastPdfBlob || isSaving || isPdfGenerating}
                       className="px-4 py-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:pointer-events-none"
@@ -1518,11 +1541,24 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       下載PDF檔
                     </button>
                   </div>
-                  {previewPdfUrl ? (
-                    <iframe title="計畫書預覽" src={previewPdfUrl} className="w-full h-[760px] rounded-lg border border-slate-200 bg-white" />
-                  ) : (
-                    <div className="text-sm text-slate-500">尚未產製預覽PDF，請點「重新產製預覽PDF」。</div>
-                  )}
+                  <div className="relative">
+                    {previewPdfUrl ? (
+                      <iframe title="計畫書預覽" src={previewPdfUrl} className="w-full h-[760px] rounded-lg border border-slate-200 bg-white" />
+                    ) : (
+                      <div className="h-[760px] rounded-lg border border-slate-200 bg-white flex items-center justify-center text-sm text-slate-500">
+                        最新 PDF 產製中，請稍候...
+                      </div>
+                    )}
+                    {isPdfGenerating && (
+                      <div className="absolute inset-0 rounded-lg border border-slate-200 bg-white/85 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3">
+                        <div
+                          className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-blue-600 animate-spin"
+                          aria-hidden
+                        />
+                        <p className="text-sm text-slate-700 font-medium">最新 PDF 產製中，請稍候...</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
