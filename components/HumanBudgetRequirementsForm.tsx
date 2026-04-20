@@ -538,6 +538,16 @@ export default function HumanBudgetRequirementsForm({
     return grandTotal > 0 ? fmtPct((computed.total / grandTotal) * 100) : "0.0";
   };
 
+  const techDetailRows = useMemo(
+    () => [
+      { idx: idxTechBuy, label: "(1) 技術或智慧財產權購買費" },
+      { idx: idxTechResearch, label: "(2) 委託研究費" },
+      { idx: idxTechService, label: "(3) 委託勞務費" },
+      { idx: idxTechDesign, label: "(4) 委託設計費" },
+    ],
+    [idxTechBuy, idxTechResearch, idxTechService, idxTechDesign]
+  );
+
   return (
     <div className="bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1744,6 +1754,67 @@ export default function HumanBudgetRequirementsForm({
               </table>
             </div>
             <AppendixNote text={EQUIPMENT_USE_TABLE_NOTE} />
+
+            <SubTitle>（五）技術引進及委託研究費</SubTitle>
+            <Hint>請填寫各子項目之政府補助款與公司自籌款，系統會自動計算各列合計與本區塊小計，並同步回填至上方經費需求總表。</Hint>
+            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+              <table className="w-full text-sm text-center text-gray-600 min-w-[900px]">
+                <thead className="text-xs text-gray-700 bg-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 text-left">項目</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-40">政府補助款</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-40">公司自籌款</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-40">合計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {techDetailRows.map(({ idx, label }, rowIdx) => {
+                    const row = idx >= 0 ? budgetRows[idx] : null;
+                    const gov = row ? toNum(row.gov) : 0;
+                    const self = row ? toNum(row.self) : 0;
+                    const total = gov + self;
+                    return (
+                      <tr key={`tech-${rowIdx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                        <td className="p-2 border-r border-gray-200 text-left font-medium text-gray-700">{label}</td>
+                        <td className="p-2 border-r border-gray-200">
+                          <input
+                            className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                            value={idx >= 0 ? budgetRows[idx]?.gov ?? "" : ""}
+                            onChange={(e) => {
+                              if (idx < 0) return;
+                              const next = [...budgetRows];
+                              next[idx] = { ...next[idx], gov: e.target.value } as BudgetRow;
+                              setBudgetRows(next);
+                            }}
+                            placeholder="0"
+                          />
+                        </td>
+                        <td className="p-2 border-r border-gray-200">
+                          <input
+                            className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                            value={idx >= 0 ? budgetRows[idx]?.self ?? "" : ""}
+                            onChange={(e) => {
+                              if (idx < 0) return;
+                              const next = [...budgetRows];
+                              next[idx] = { ...next[idx], self: e.target.value } as BudgetRow;
+                              setBudgetRows(next);
+                            }}
+                            placeholder="0"
+                          />
+                        </td>
+                        <td className="p-2 text-right font-medium text-gray-700">{Math.round(total).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-gray-50 font-medium">
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">小計</td>
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">{Math.round(techSum.gov).toLocaleString()}</td>
+                    <td className="px-4 py-3 border-r border-gray-200 text-right">{Math.round(techSum.self).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">{Math.round(techSum.gov + techSum.self).toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       </div>

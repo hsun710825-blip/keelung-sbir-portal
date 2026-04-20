@@ -2376,14 +2376,20 @@ export async function POST(req: Request) {
     const buildBudgetRows = (): string[][] => {
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
       if (fromForm.length && fromForm.some((r) => asString(r.gov).trim() || asString(r.self).trim() || asString(r.total).trim())) {
-        return fromForm.map((r) => [
-          asString(r.subject),
-          asString(r.item),
-          asString(r.gov),
-          asString(r.self),
-          asString(r.total) || (r.item === "計畫人員" ? String(personnelTotal) : r.item === "顧問" ? String(consultantTotal) : r.item === "小 計" && r.subject.includes("人事") ? String(personnelSub) : ""),
-          asString(r.ratio),
-        ]);
+        let lastSubject = "";
+        return fromForm.map((r) => {
+          const subjectRaw = asString(r.subject).replace(/\s+/g, "");
+          const subject = subjectRaw === lastSubject ? "" : subjectRaw;
+          lastSubject = subjectRaw || lastSubject;
+          return [
+            subject,
+            asString(r.item).replace(/\s+/g, ""),
+            asString(r.gov),
+            asString(r.self),
+            asString(r.total) || (r.item === "計畫人員" ? String(personnelTotal) : r.item === "顧問" ? String(consultantTotal) : r.item === "小 計" && r.subject.includes("人事") ? String(personnelSub) : ""),
+            asString(r.ratio),
+          ];
+        });
       }
       return [
         ["1.人事費", "計畫人員", "", "", String(personnelTotal), ""],
@@ -2398,7 +2404,12 @@ export async function POST(req: Request) {
     };
     drawSubHeading("二、經費需求總表");
     const budgetTableRows = buildBudgetRows();
-    drawTableFlow(["科目", "項目", "政府補助款", "公司自籌款", "合計", "各科目佔總經費之比例%"], budgetTableRows, [contentW * 0.14, contentW * 0.22, contentW * 0.12, contentW * 0.12, contentW * 0.12, contentW * 0.14]);
+    // 調整科目/項目欄寬，避免長科目名稱在 PDF 內擠壓換行造成錯列。
+    drawTableFlow(
+      ["科目", "項目", "政府補助款", "公司自籌款", "合計", "各科目佔總經費之比例%"],
+      budgetTableRows,
+      [contentW * 0.22, contentW * 0.24, contentW * 0.11, contentW * 0.11, contentW * 0.11, contentW * 0.21]
+    );
     drawPara(BUDGET_SUMMARY_TABLE_NOTE);
     if (pcs.length) {
       drawSubHeading("（一）人事費");
