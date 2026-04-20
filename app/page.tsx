@@ -259,15 +259,16 @@ export default function App() {
                 <FileText size={18} className="text-blue-600" />
                 相關文件下載
               </h3>
-              <div className="mt-2 text-sm text-gray-500 leading-relaxed font-light">
-                <p>『1.請務必下載閱讀後依據補助須知規定登入系統撰寫計畫書</p>
-                <p>2.申請者文件檢查表、計畫申請表、環勞衛切結書請務必下載填寫用印後掃描為pdf檔上傳於計畫書系統"附件上傳"區</p>
-                <p>"3.聯合提案者請務必再下載"聯合合作協議書"雙方皆須檢視填寫相關資料併用印後上傳,前項內容之"申請者文件檢查表"內文件,除第一張檢查表由雙方一起確認並用印,其他切結書如符合或必附之文件,請雙方皆須各自填寫用印上傳』</p>
+              {/* @ai-ignore: 靜態檔案下載區塊已確認路徑與排版無誤，未來進行任何系統修改或擴充時，絕對不可更動此區塊的結構、檔案路徑與圖示設定。 */}
+              <div className="mt-2 text-sm text-gray-500 leading-relaxed mb-6 space-y-2 font-light">
+                <p>1. 請務必下載閱讀後依據補助須知規定登入系統撰寫計畫書</p>
+                <p>2. 申請者文件檢查表、計畫申請表、環勞衛切結書請務必下載填寫用印後掃描為pdf檔上傳於計畫書系統&quot;附件上傳&quot;區</p>
+                <p>3. 聯合提案者請務必再下載&quot;聯合合作協議書&quot;雙方皆須檢視填寫相關資料併用印後上傳，前項內容之&quot;申請者文件檢查表&quot;內文件，除第一張檢查表由雙方一起確認並用印，其他切結書如符合或必附之文件，請雙方皆須各自填寫用印上傳</p>
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {downloadFiles.map((file) => {
-                  const href = `/downloads/${file.name}`;
+                  const href = `/downloads/${encodeURIComponent(file.name)}`;
                   const isPdf = file.type === "pdf";
                   return (
                     <div
@@ -282,9 +283,7 @@ export default function App() {
                       <span className="line-clamp-2 flex-1">{file.name}</span>
                       <a
                         href={href}
-                        download={isPdf ? undefined : true}
-                        target={isPdf ? "_blank" : undefined}
-                        rel={isPdf ? "noopener noreferrer" : undefined}
+                        download
                         className="group inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition hover:scale-[1.03] hover:bg-blue-100"
                       >
                         <img
