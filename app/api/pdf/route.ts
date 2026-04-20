@@ -2096,9 +2096,8 @@ export async function POST(req: Request) {
       const treeDoc = await PDFDocument.load(treePdfBytes);
       const treePage = treeDoc.getPage(0);
       const embeddedTree = await pdfDoc.embedPage(treePage);
-      const pageW = cur.getSize().width;
-      const boxX = 20;
-      const boxW = Math.max(1, pageW - 40);
+      const boxX = M.left;
+      const boxW = contentW;
       const tw = treePage.getSize().width;
       const th = treePage.getSize().height;
       const widthScale = boxW / Math.max(1, tw);
@@ -2403,76 +2402,45 @@ export async function POST(req: Request) {
     const grandTotal = personnelSub + consumablesTotal + equipmentTotal + maintenanceTotal + techTotal;
     const buildBudgetRows = (): string[][] => {
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
-      if (fromForm.length && fromForm.some((r) => asString(r.gov).trim() || asString(r.self).trim() || asString(r.total).trim())) {
-        const govSumFromRows = fromForm
-          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
-          .reduce((s, r) => s + num(r.gov), 0);
-        const selfSumFromRows = fromForm
-          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
-          .reduce((s, r) => s + num(r.self), 0);
-        const totalSumFromRows = fromForm
-          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
-          .reduce((s, r) => s + num(r.total), 0);
-        const computedGrand = totalSumFromRows || grandTotal;
-        let lastSubject = "";
-        return fromForm.map((r) => {
-          const subjectRaw = asString(r.subject).replace(/\s+/g, "");
-          const subject = subjectRaw === lastSubject ? "" : subjectRaw;
-          lastSubject = subjectRaw || lastSubject;
-          return [
-            subject,
-            asString(r.item).replace(/\s+/g, ""),
-            asString(r.gov) ||
-              (r.item === "計畫人員" ? String(personnelTotal) :
-              r.item === "顧問" ? String(consultantTotal) :
-              r.subject.startsWith("4.") ? String(maintenanceGov) :
-              r.item.includes("(1)") ? String(sumTechRows(tech?.buy)) :
-              r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
-              r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
-              r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
-              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) :
-              r.subject === "合計" ? String(govSumFromRows) :
-              r.subject === "百分比" ? (computedGrand ? `${((govSumFromRows / computedGrand) * 100).toFixed(1)}%` : "") : ""),
-            asString(r.self) ||
-              (r.item === "計畫人員" ? "0" :
-              r.item === "顧問" ? "0" :
-              r.subject.startsWith("4.") ? String(maintenanceSelf) :
-              r.item.includes("(1)") || r.item.includes("(2)") || r.item.includes("(3)") || r.item.includes("(4)") ? "0" :
-              r.item === "小計" && r.subject.includes("5.") ? "0" :
-              r.subject === "合計" ? String(selfSumFromRows) :
-              r.subject === "百分比" ? (computedGrand ? `${((selfSumFromRows / computedGrand) * 100).toFixed(1)}%` : "") : ""),
-            asString(r.total) ||
-              (r.item === "計畫人員" ? String(personnelTotal) :
-              r.item === "顧問" ? String(consultantTotal) :
-              r.item === "小 計" && r.subject.includes("人事") ? String(personnelSub) :
-              r.subject.startsWith("4.") ? String(maintenanceTotal) :
-              r.item.includes("(1)") ? String(sumTechRows(tech?.buy)) :
-              r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
-              r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
-              r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
-              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) :
-              r.subject === "合計" ? String(computedGrand) :
-              r.subject === "百分比" ? (computedGrand ? "100%" : "") : ""),
-            asString(r.ratio) ||
-              (() => {
-                const t =
-                  r.item === "計畫人員" ? personnelTotal :
-                  r.item === "顧問" ? consultantTotal :
-                  r.item === "小 計" && r.subject.includes("人事") ? personnelSub :
-                  r.subject.startsWith("2.") ? consumablesTotal :
-                  r.subject.startsWith("3.") ? equipmentTotal :
-                  r.subject.startsWith("4.") ? maintenanceTotal :
-                  r.item.includes("(1)") ? sumTechRows(tech?.buy) :
-                  r.item.includes("(2)") ? sumTechRows(tech?.research) :
-                  r.item.includes("(3)") ? sumTechRows(tech?.service) :
-                  r.item.includes("(4)") ? sumTechRows(tech?.design) :
-                  r.item === "小計" && r.subject.includes("5.") ? techTotal :
-                  r.subject.includes("合計") ? computedGrand :
-                  r.subject === "百分比" ? computedGrand : 0;
-                return t && computedGrand ? `${((t / computedGrand) * 100).toFixed(1)}%` : "";
-              })(),
-          ];
-        });
+      if (fromForm.length) {
+        const findRow = (matcher: (r: { subject: string; item: string }) => boolean) =>
+          fromForm.find((r) => matcher({ subject: asString(r.subject), item: asString(r.item) }));
+        const cell = (r: { gov?: string; self?: string; total?: string; ratio?: string } | undefined) => [
+          asString(r?.gov),
+          asString(r?.self),
+          asString(r?.total),
+          asString(r?.ratio),
+        ];
+
+        const rPersonnel = findRow((r) => r.subject.includes("1.") && r.item.includes("計畫人員"));
+        const rConsultant = findRow((r) => r.subject.includes("1.") && r.item.includes("顧問"));
+        const rPersonnelSubtotal = findRow((r) => r.subject.includes("1.") && r.item.includes("小"));
+        const rConsumables = findRow((r) => r.subject.startsWith("2."));
+        const rEquipment = findRow((r) => r.subject.startsWith("3."));
+        const rMaintenance = findRow((r) => r.subject.startsWith("4."));
+        const rTech1 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(1)"));
+        const rTech2 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(2)"));
+        const rTech3 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(3)"));
+        const rTech4 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(4)"));
+        const rTechSubtotal = findRow((r) => r.subject.startsWith("5.") && r.item.includes("小"));
+        const rGrand = findRow((r) => r.subject.includes("合計"));
+        const rPercent = findRow((r) => r.subject.includes("百分比"));
+
+        return [
+          ["1.人事費", "計畫人員", ...cell(rPersonnel)],
+          ["", "顧問", ...cell(rConsultant)],
+          ["", "小計", ...cell(rPersonnelSubtotal)],
+          ["2.消耗性器材及原材料費", "", ...cell(rConsumables)],
+          ["3.研發設備使用費", "", ...cell(rEquipment)],
+          ["4.研發設備維護費", "", ...cell(rMaintenance)],
+          ["5.技術引進及委託研究費", "(1)技術或智慧財產權購買費", ...cell(rTech1)],
+          ["", "(2)委託研究費", ...cell(rTech2)],
+          ["", "(3)委託勞務費", ...cell(rTech3)],
+          ["", "(4)委託設計費", ...cell(rTech4)],
+          ["", "小計", ...cell(rTechSubtotal)],
+          ["合計", "", ...cell(rGrand)],
+          ["百分比", "", ...cell(rPercent)],
+        ];
       }
       return [
         ["1.人事費", "計畫人員", "", "", String(personnelTotal), ""],
@@ -2526,13 +2494,7 @@ export async function POST(req: Request) {
       const exList2 = Array.isArray(eq.existing) ? eq.existing : [];
       if (exList2.length) {
         drawSubHeading("（三）研發設備使用費（一、已有設備）");
-        const exRows = exList2.map((r) => {
-          const countB = Math.max(1, num(r.countB) || 1);
-          const months = Math.max(0, num(r.months));
-          const totalFallback = Math.round(num(r.monthlyFee) * countB * months);
-          const total = asString(r.total) || String(totalFallback || "");
-          return [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), total];
-        });
+        const exRows = exList2.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
         const exSubtotal = Math.round(exRows.reduce((s, r) => s + num(r[7]), 0));
         const exRowsWithSubtotal = [...exRows, ["小計", "", "", "", "", "", "", String(exSubtotal)].map(asString)];
         drawTableFlow(["設備名稱", "財產編號", "單套帳面價值A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "小計"], exRowsWithSubtotal, Array(8).fill(contentW / 8));
@@ -2540,13 +2502,7 @@ export async function POST(req: Request) {
       const nwList = Array.isArray(eq.new) ? eq.new : [];
       if (nwList.length) {
         drawSubHeading("（三）研發設備使用費（二、計畫新增設備）");
-        const nwRows = nwList.map((r) => {
-          const countB = Math.max(1, num(r.countB) || 1);
-          const months = Math.max(0, num(r.months));
-          const totalFallback = Math.round(num(r.monthlyFee) * countB * months);
-          const total = asString(r.total) || String(totalFallback || "");
-          return [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), total];
-        });
+        const nwRows = nwList.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
         const nwSubtotal = Math.round(nwRows.reduce((s, r) => s + num(r[7]), 0));
         const nwRowsWithSubtotal = [...nwRows, ["小計", "", "", "", "", "", "", String(nwSubtotal)].map(asString)];
         drawTableFlow(["設備名稱", "財產編號", "單套購置金額A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "小計"], nwRowsWithSubtotal, Array(8).fill(contentW / 8));
