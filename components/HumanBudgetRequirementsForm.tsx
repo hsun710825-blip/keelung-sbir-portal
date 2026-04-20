@@ -441,60 +441,42 @@ export default function HumanBudgetRequirementsForm({
   const consumablesSum = consumablesComputed.reduce((acc, r) => acc + r.totalNum, 0);
 
   // ---------- 自動計算：設備使用費 ----------
-  const computeExistingMonthlyFee = (r: EquipmentRow) => {
+  const computeExistingDerived = (r: EquipmentRow) => {
     const A = toNum(r.valueA);
-    const B = toNum(r.countB);
-    const years = toNum(r.remainingYears);
+    const B = Math.max(1, toNum(r.countB) || 1);
     const durableYears = toNum(r.durableYears ?? "");
     const depreciatedYears = toNum(r.depreciatedYears ?? "");
-    const nFactor = toNum(r.nFactor ?? "1");
     const residualValue = toNum(r.residualValue ?? "");
-    const planExecYears = toNum(r.planExecYears ?? "");
-    const amountA = A * B;
-    if (residualValue > 0) {
-      if (nFactor === 0) {
-        if (planExecYears <= 0) return 0;
-        return residualValue / (planExecYears * 12);
-      }
-      const Y = nFactor * (durableYears - depreciatedYears) + 1;
-      if (Y <= 0) return 0;
-      return residualValue / (Y * 12);
+    const planExecYears = Math.max(1, toNum(r.planExecYears ?? "") || 1);
+    const months = Math.max(0, toNum(r.months));
+
+    const N = Math.max(0, durableYears - depreciatedYears);
+    const Y = N + 1;
+    let monthlyFeePerUnit = 0;
+    if (N > 0) {
+      monthlyFeePerUnit = Y > 0 ? A / (Y * 12) : 0;
+    } else {
+      monthlyFeePerUnit = residualValue / (planExecYears * 12);
     }
-    if (amountA <= 0 || years <= 0) return 0;
-    return amountA / (years * 12);
+    const displayMonthly = Math.round(monthlyFeePerUnit);
+    const totalCost = Math.round(monthlyFeePerUnit * B * months);
+    return { N, Y, monthlyPerUnit: monthlyFeePerUnit, monthlyDisplay: displayMonthly, totalNum: totalCost };
   };
-  const computeNewMonthlyFee = (r: EquipmentRow) => {
+
+  const computeNewDerived = (r: EquipmentRow) => {
     const A = toNum(r.valueA);
-    const B = toNum(r.countB);
-    const years = toNum(r.remainingYears);
+    const B = Math.max(1, toNum(r.countB) || 1);
     const durableYears = toNum(r.durableYears ?? "");
-    const depreciatedYears = toNum(r.depreciatedYears ?? "");
-    const nFactor = toNum(r.nFactor ?? "1");
-    const residualValue = toNum(r.residualValue ?? "");
-    const planExecYears = toNum(r.planExecYears ?? "");
-    const amountA = A * B;
-    if (residualValue > 0) {
-      if (nFactor === 0) {
-        if (planExecYears <= 0) return 0;
-        return residualValue / (planExecYears * 12);
-      }
-      const Y = nFactor * (durableYears - depreciatedYears) + 1;
-      if (Y <= 0) return 0;
-      return residualValue / (Y * 12);
-    }
-    if (amountA <= 0 || years <= 0) return 0;
-    return amountA / (years * 12);
+    const months = Math.max(0, toNum(r.months));
+    const Y = durableYears + 1;
+    const monthlyFeePerUnit = Y > 0 ? A / (Y * 12) : 0;
+    const displayMonthly = Math.round(monthlyFeePerUnit);
+    const totalCost = Math.round(monthlyFeePerUnit * B * months);
+    return { Y, monthlyPerUnit: monthlyFeePerUnit, monthlyDisplay: displayMonthly, totalNum: totalCost };
   };
-  const equipmentsExistingComputed = equipments.existing.map((r) => {
-    const monthly = computeExistingMonthlyFee(r);
-    const total = monthly * toNum(r.months);
-    return { ...r, monthlyNum: monthly, totalNum: total };
-  });
-  const equipmentsNewComputed = equipments.new.map((r) => {
-    const monthly = computeNewMonthlyFee(r);
-    const total = monthly * toNum(r.months);
-    return { ...r, monthlyNum: monthly, totalNum: total };
-  });
+
+  const equipmentsExistingComputed = equipments.existing.map((r) => ({ ...r, ...computeExistingDerived(r) }));
+  const equipmentsNewComputed = equipments.new.map((r) => ({ ...r, ...computeNewDerived(r) }));
   const equipmentsExistingSum = equipmentsExistingComputed.reduce((acc, r) => acc + r.totalNum, 0);
   const equipmentsNewSum = equipmentsNewComputed.reduce((acc, r) => acc + r.totalNum, 0);
   const equipmentMaintenanceSum = useMemo(
@@ -1765,13 +1747,23 @@ export default function HumanBudgetRequirementsForm({
                 </thead>
                 <tbody>
                   {equipments.existing.map((r, idx) => {
-                    const monthly = equipmentsExistingComputed[idx]?.monthlyNum ?? 0;
-                    const total = equipmentsExistingComputed[idx]?.totalNum ?? 0;
+                    const calc = equipmentsExistingComputed[idx];
+                    const monthly = calc?.monthlyDisplay ?? 0;
+                    const total = calc?.totalNum ?? 0;
                     return (
                     <tr key={`ex-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       {(["name", "assetId", "valueA", "countB", "remainingYears", "durableYears", "depreciatedYears", "nFactor", "residualValue", "planExecYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "monthlyFee" || k === "total";
-                        const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
+                        const isComputed = k === "remainingYears" || k === "nFactor" || k === "monthlyFee" || k === "total";
+                        const computedValue =
+                          k === "remainingYears"
+                            ? String(calc?.Y ?? 0)
+                            : k === "nFactor"
+                              ? String(calc?.N ?? 0)
+                              : k === "monthlyFee"
+                                ? fmtInt(monthly)
+                                : k === "total"
+                                  ? fmtInt(total)
+                                  : r[k];
                         return (
                         <td key={k} className={`p-2 ${cIdx < 12 ? "border-r border-gray-200" : ""}`}>
                           <input
@@ -1842,12 +1834,8 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-32">財產編號</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">單套購置金額A</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">套數B</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限Y</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-28">耐用年限</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-28">已折舊年數</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-24">N</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">殘值</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">計畫執行年度</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限Y</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">月使用費</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
@@ -1856,15 +1844,23 @@ export default function HumanBudgetRequirementsForm({
                 </thead>
                 <tbody>
                   {equipments.new.map((r, idx) => {
-                    const monthly = equipmentsNewComputed[idx]?.monthlyNum ?? 0;
-                    const total = equipmentsNewComputed[idx]?.totalNum ?? 0;
+                    const calc = equipmentsNewComputed[idx];
+                    const monthly = calc?.monthlyDisplay ?? 0;
+                    const total = calc?.totalNum ?? 0;
                     return (
                     <tr key={`new-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                      {(["name", "assetId", "valueA", "countB", "remainingYears", "durableYears", "depreciatedYears", "nFactor", "residualValue", "planExecYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "monthlyFee" || k === "total";
-                        const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
+                      {(["name", "assetId", "valueA", "countB", "durableYears", "remainingYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
+                        const isComputed = k === "remainingYears" || k === "monthlyFee" || k === "total";
+                        const computedValue =
+                          k === "remainingYears"
+                            ? String(calc?.Y ?? 0)
+                            : k === "monthlyFee"
+                              ? fmtInt(monthly)
+                              : k === "total"
+                                ? fmtInt(total)
+                                : r[k];
                         return (
-                        <td key={k} className={`p-2 ${cIdx < 12 ? "border-r border-gray-200" : ""}`}>
+                        <td key={k} className={`p-2 ${cIdx < 8 ? "border-r border-gray-200" : ""}`}>
                           <input
                             className={`w-full bg-transparent outline-none px-2 py-1 ${
                               k === "name" || k === "assetId" ? "text-left" : "text-right"
@@ -1915,7 +1911,7 @@ export default function HumanBudgetRequirementsForm({
                         + 新增計畫新增設備
                       </button>
                     </td>
-                    <td className="p-2 border-r border-gray-200" colSpan={11} />
+                    <td className="p-2 border-r border-gray-200" colSpan={6} />
                     <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(equipmentsNewSum).toLocaleString()}
                     </td>
