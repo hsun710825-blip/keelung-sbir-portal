@@ -224,6 +224,13 @@ type HumanBudgetDraft = {
     existing: Array<{ name: string; assetId: string; valueA: string; countB: string; remainingYears: string; monthlyFee: string; months: string; total: string }>;
     new: Array<{ name: string; assetId: string; valueA: string; countB: string; remainingYears: string; monthlyFee: string; months: string; total: string }>;
   };
+  equipmentMaintenanceCosts?: Array<{ item: string; gov: string; self: string }>;
+  techIntroCosts?: {
+    buy?: Array<{ item: string; gov: string; self: string }>;
+    research?: Array<{ item: string; gov: string; self: string }>;
+    service?: Array<{ item: string; gov: string; self: string }>;
+    design?: Array<{ item: string; gov: string; self: string }>;
+  };
 };
 
 function asString(v: unknown) {
@@ -2081,8 +2088,8 @@ export async function POST(req: Request) {
       };
       const leafCount = countLeaves(root);
       const requiresDedicatedPage = leafCount > 8 || root.children.length > 3;
-      const treeBlockHeight = requiresDedicatedPage ? 470 : 320;
-      ensure(requiresDedicatedPage ? 9999 : treeBlockHeight + 16);
+      const treeBlockHeight = requiresDedicatedPage ? 640 : 420;
+      ensure(requiresDedicatedPage ? 9999 : treeBlockHeight + 20);
       if (requiresDedicatedPage) drawSubHeading("樹枝圖（完整顯示）");
 
       const treePdfBytes = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
@@ -2092,11 +2099,16 @@ export async function POST(req: Request) {
       const boxX = M.left + 6;
       const boxW = contentW - 12;
       const boxY = y - treeBlockHeight;
+      const tw = treePage.getSize().width;
+      const th = treePage.getSize().height;
+      const fitScale = Math.min(boxW / Math.max(1, tw), treeBlockHeight / Math.max(1, th));
+      const drawW = Math.max(1, tw * fitScale);
+      const drawH = Math.max(1, th * fitScale);
       cur.drawPage(embeddedTree, {
-        x: boxX,
-        y: boxY,
-        width: boxW,
-        height: treeBlockHeight,
+        x: boxX + (boxW - drawW) / 2,
+        y: boxY + (treeBlockHeight - drawH) / 2,
+        width: drawW,
+        height: drawH,
       });
       y -= treeBlockHeight;
       } else {
@@ -2364,6 +2376,7 @@ export async function POST(req: Request) {
     const ccs = Array.isArray(humanBudget.consultantCosts) ? humanBudget.consultantCosts : [];
     const cons = Array.isArray(humanBudget.consumables) ? humanBudget.consumables : [];
     const eq = humanBudget.equipments;
+    const maintenance = Array.isArray(humanBudget.equipmentMaintenanceCosts) ? humanBudget.equipmentMaintenanceCosts : [];
     const tech = (humanBudget as { techIntroCosts?: { buy?: Array<Record<string, unknown>>; research?: Array<Record<string, unknown>>; service?: Array<Record<string, unknown>>; design?: Array<Record<string, unknown>> } }).techIntroCosts;
     const num = (v: unknown) => (v === "" || v == null ? 0 : Number(v));
     const personnelTotal = pcs.reduce((s, r) => s + (num(r.cost) || num(r.avgSalary) * num(r.manMonths)), 0);
@@ -2372,11 +2385,14 @@ export async function POST(req: Request) {
     const ex = Array.isArray(eq?.existing) ? eq!.existing : [];
     const nw = Array.isArray(eq?.new) ? eq!.new : [];
     const equipmentTotal = ex.reduce((s, r) => s + num(r.total), 0) + nw.reduce((s, r) => s + num(r.total), 0);
+    const maintenanceGov = maintenance.reduce((s, r) => s + num(r.gov), 0);
+    const maintenanceSelf = maintenance.reduce((s, r) => s + num(r.self), 0);
+    const maintenanceTotal = maintenanceGov + maintenanceSelf;
     const sumTechRows = (rows: Array<Record<string, unknown>> | undefined) =>
       (rows ?? []).reduce((acc, r) => acc + num(r.gov) + num(r.self), 0);
     const techTotal = sumTechRows(tech?.buy) + sumTechRows(tech?.research) + sumTechRows(tech?.service) + sumTechRows(tech?.design);
     const personnelSub = personnelTotal + consultantTotal;
-    const grandTotal = personnelSub + consumablesTotal + equipmentTotal + techTotal;
+    const grandTotal = personnelSub + consumablesTotal + equipmentTotal + maintenanceTotal + techTotal;
     const buildBudgetRows = (): string[][] => {
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
       if (fromForm.length && fromForm.some((r) => asString(r.gov).trim() || asString(r.self).trim() || asString(r.total).trim())) {
@@ -2388,10 +2404,48 @@ export async function POST(req: Request) {
           return [
             subject,
             asString(r.item).replace(/\s+/g, ""),
-            asString(r.gov),
-            asString(r.self),
-            asString(r.total) || (r.item === "計畫人員" ? String(personnelTotal) : r.item === "顧問" ? String(consultantTotal) : r.item === "小 計" && r.subject.includes("人事") ? String(personnelSub) : ""),
-            asString(r.ratio),
+            asString(r.gov) ||
+              (r.item === "計畫人員" ? String(personnelTotal) :
+              r.item === "顧問" ? String(consultantTotal) :
+              r.subject.startsWith("4.") ? String(maintenanceGov) :
+              r.item.includes("(1)") ? String(sumTechRows(tech?.buy)) :
+              r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
+              r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
+              r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
+              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) : ""),
+            asString(r.self) ||
+              (r.item === "計畫人員" ? "0" :
+              r.item === "顧問" ? "0" :
+              r.subject.startsWith("4.") ? String(maintenanceSelf) :
+              r.item.includes("(1)") || r.item.includes("(2)") || r.item.includes("(3)") || r.item.includes("(4)") ? "0" :
+              r.item === "小計" && r.subject.includes("5.") ? "0" : ""),
+            asString(r.total) ||
+              (r.item === "計畫人員" ? String(personnelTotal) :
+              r.item === "顧問" ? String(consultantTotal) :
+              r.item === "小 計" && r.subject.includes("人事") ? String(personnelSub) :
+              r.subject.startsWith("4.") ? String(maintenanceTotal) :
+              r.item.includes("(1)") ? String(sumTechRows(tech?.buy)) :
+              r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
+              r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
+              r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
+              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) : ""),
+            asString(r.ratio) ||
+              (() => {
+                const t =
+                  r.item === "計畫人員" ? personnelTotal :
+                  r.item === "顧問" ? consultantTotal :
+                  r.item === "小 計" && r.subject.includes("人事") ? personnelSub :
+                  r.subject.startsWith("2.") ? consumablesTotal :
+                  r.subject.startsWith("3.") ? equipmentTotal :
+                  r.subject.startsWith("4.") ? maintenanceTotal :
+                  r.item.includes("(1)") ? sumTechRows(tech?.buy) :
+                  r.item.includes("(2)") ? sumTechRows(tech?.research) :
+                  r.item.includes("(3)") ? sumTechRows(tech?.service) :
+                  r.item.includes("(4)") ? sumTechRows(tech?.design) :
+                  r.item === "小計" && r.subject.includes("5.") ? techTotal :
+                  r.subject.includes("合計") ? grandTotal : 0;
+                return t && grandTotal ? `${((t / grandTotal) * 100).toFixed(1)}%` : "";
+              })(),
           ];
         });
       }
@@ -2401,7 +2455,7 @@ export async function POST(req: Request) {
         ["", "小 計", "", "", String(personnelSub), personnelSub && grandTotal ? ((personnelSub / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["2.消耗性器材及原材料費", "", "", "", String(consumablesTotal), consumablesTotal && grandTotal ? ((consumablesTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["3.研發設備使用費", "", "", "", String(equipmentTotal), equipmentTotal && grandTotal ? ((equipmentTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
-        ["4.研發設備維護費", "", "", "", "", ""],
+        ["4.研發設備維護費", "", String(maintenanceGov), String(maintenanceSelf), String(maintenanceTotal), maintenanceTotal && grandTotal ? ((maintenanceTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["5.技術引進及委託研究費", "", "", "", String(techTotal || ""), techTotal && grandTotal ? ((techTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["合 計", "", "", "", String(grandTotal), "100%"],
       ];
@@ -2459,6 +2513,11 @@ export async function POST(req: Request) {
       if (exList2.length || nwList.length) {
         drawPara(EQUIPMENT_USE_TABLE_NOTE);
       }
+    }
+    if (maintenance.length) {
+      drawSubHeading("（四）研發設備維護費");
+      const maintainRows = maintenance.map((r) => [asString(r.item), asString(r.gov), asString(r.self), String(num(r.gov) + num(r.self))]);
+      drawTableFlow(["項目", "政府補助款", "公司自籌款", "合計"], maintainRows, [contentW * 0.46, contentW * 0.18, contentW * 0.18, contentW * 0.18]);
     }
     const techSections = [
       { title: "（五）技術引進及委託研究費（一）技術或智慧財產權購買費", rows: tech?.buy ?? [] },

@@ -122,6 +122,14 @@ function normalizeDraftFormDataShape(payload: Record<string, unknown>) {
       service: normalizeRows(tc.service, "(3) 委託勞務費"),
       design: normalizeRows(tc.design, "(4) 委託設計費"),
     };
+    hb.equipmentMaintenanceCosts = (Array.isArray(hb.equipmentMaintenanceCosts) ? hb.equipmentMaintenanceCosts : [{ item: "研發設備維護費", gov: "", self: "" }]).map((r, idx) => {
+      const row = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+      return {
+        item: String(row.item ?? (idx === 0 ? "研發設備維護費" : "")),
+        gov: String(row.gov ?? ""),
+        self: String(row.self ?? ""),
+      };
+    });
     formData.humanBudget = hb;
   }
   out.formData = formData;

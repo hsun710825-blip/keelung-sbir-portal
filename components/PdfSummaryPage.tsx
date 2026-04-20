@@ -319,34 +319,34 @@ const TreeBranch = ({
   return (
     <View style={{ flexDirection: "row", alignItems: "stretch" }}>
       {!isRoot && (
-        <View style={{ width: 24, flexDirection: "column" }}>
-          <View style={{ flex: 1, borderLeftWidth: isFirst ? 0 : 2, borderColor: "#333" }} />
-          <View style={{ width: 24, height: 2, backgroundColor: "#333" }} />
-          <View style={{ flex: 1, borderLeftWidth: isLast ? 0 : 2, borderColor: "#333" }} />
+        <View style={{ width: 30, flexDirection: "column" }}>
+          <View style={{ flex: 1, borderLeftWidth: isFirst ? 0 : 2.6, borderColor: "#222" }} />
+          <View style={{ width: 30, height: 2.6, backgroundColor: "#222" }} />
+          <View style={{ flex: 1, borderLeftWidth: isLast ? 0 : 2.6, borderColor: "#222" }} />
         </View>
       )}
 
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 120,
-            marginVertical: 18,
-            padding: 10,
-            borderWidth: 1.5,
+            width: 156,
+            marginVertical: 20,
+            padding: 12,
+            borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "bold", marginBottom: 6, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: 10, color: "#555", lineHeight: 1.2 }}>
+          <Text style={{ fontSize: 13.5, fontWeight: "bold", marginBottom: 6, lineHeight: 1.25 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: 11.5, color: "#444", lineHeight: 1.25 }}>
             {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
           </Text>
         </View>
 
         {hasChildren && (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 20, height: 2, backgroundColor: "#333" }} />
+            <View style={{ width: 26, height: 2.6, backgroundColor: "#222" }} />
             <View style={{ flexDirection: "column" }}>
               {node.children!.map((child, index) => (
                 <TreeBranch
@@ -365,10 +365,24 @@ const TreeBranch = ({
   );
 };
 
-function TreePage({ treeData }: { treeData: PdfTreeNodeData }) {
+function countTreeDepth(node: PdfTreeNodeData | null | undefined): number {
+  if (!node) return 1;
+  const kids = Array.isArray(node.children) ? node.children : [];
+  if (!kids.length) return 1;
+  return 1 + Math.max(...kids.map((k) => countTreeDepth(k)));
+}
+
+function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
+  if (!node) return 1;
+  const kids = Array.isArray(node.children) ? node.children : [];
+  if (!kids.length) return 1;
+  return kids.reduce((acc, k) => acc + countTreeLeaves(k), 0);
+}
+
+function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
-    <Page size="A4" orientation="portrait" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 16, paddingVertical: 12 }}>
-      <View style={{ padding: 20, flexDirection: "column" }}>
+    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 22, paddingVertical: 18 }}>
+      <View style={{ padding: 20, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>
@@ -377,9 +391,14 @@ function TreePage({ treeData }: { treeData: PdfTreeNodeData }) {
 
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
+  const depth = Math.max(2, countTreeDepth(treeData));
+  const leaves = Math.max(3, countTreeLeaves(treeData));
+  // Use a larger, dynamic canvas-like page to prevent truncation and keep sharp rendering.
+  const pageWidth = Math.max(1190, Math.min(2400, 360 + depth * 290));
+  const pageHeight = Math.max(842, Math.min(3200, 240 + leaves * 120));
   const doc = (
     <Document>
-      <TreePage treeData={treeData} />
+      <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
     </Document>
   );
   return await renderToBuffer(doc);

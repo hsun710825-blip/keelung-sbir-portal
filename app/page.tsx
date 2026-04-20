@@ -684,7 +684,16 @@ async function compressImageDataUrl(dataUrl: string): Promise<string> {
   return out;
 }
 
-type RawTreeNode = { id?: string; text?: string; name?: string; weight?: string | number; execUnit?: string; unit?: string; children?: unknown[] };
+type RawTreeNode = {
+  id?: string;
+  text?: string;
+  name?: string;
+  weight?: string | number;
+  execUnit?: string;
+  unit?: string;
+  children?: unknown[];
+  subItems?: unknown[];
+};
 type ScheduleBoundWorkItem = { id: string; item: string };
 
 function cleanTreeData(input: unknown): RawTreeNode | null {
@@ -692,7 +701,11 @@ function cleanTreeData(input: unknown): RawTreeNode | null {
   const n = input as RawTreeNode;
   const text = String(n.text ?? n.name ?? "").trim();
   if (!text) return null;
-  const childrenRaw = Array.isArray(n.children) ? n.children : [];
+  const childrenRaw = Array.isArray(n.children)
+    ? n.children
+    : Array.isArray(n.subItems)
+      ? n.subItems
+      : [];
   const cleanedChildren = childrenRaw.map((c) => cleanTreeData(c)).filter(Boolean) as RawTreeNode[];
   const out: RawTreeNode = {
     id: typeof n.id === "string" ? n.id : undefined,
@@ -776,7 +789,11 @@ function buildScheduleBoundWorkItems(planContent: PlanContentValue | undefined):
     const fallback = parentCode ? "工作項目" : "分項計畫";
     items.push({ id: code, item: `${code}. ${normalizeName(rawLabel, fallback)}` });
 
-    const children = Array.isArray(node.children) ? (node.children as RawTreeNode[]) : [];
+    const children = Array.isArray(node.children)
+      ? (node.children as RawTreeNode[])
+      : Array.isArray(node.subItems)
+        ? (node.subItems as RawTreeNode[])
+        : [];
     for (let i = 0; i < children.length; i++) {
       walk(children[i], i, code);
     }

@@ -106,12 +106,23 @@ type EquipmentRow = {
   valueA: string;
   countB: string;
   remainingYears: string;
+  durableYears: string;
+  depreciatedYears: string;
+  nFactor: string;
+  residualValue: string;
+  planExecYears: string;
   monthlyFee: string;
   months: string;
   total: string;
 };
 
 type TechCostRow = {
+  item: string;
+  gov: string;
+  self: string;
+};
+
+type EquipmentMaintenanceRow = {
   item: string;
   gov: string;
   self: string;
@@ -164,6 +175,7 @@ export type HumanBudgetDraft = {
   consultantCosts: PersonnelCostRow[];
   consumables: ConsumableRow[];
   equipments: { existing: EquipmentRow[]; new: EquipmentRow[] };
+  equipmentMaintenanceCosts?: EquipmentMaintenanceRow[];
   techIntroCosts?: {
     buy: TechCostRow[];
     research: TechCostRow[];
@@ -303,9 +315,12 @@ export default function HumanBudgetRequirementsForm({
   ]);
 
   const [equipments, setEquipments] = useState({
-    existing: [{ name: "一、已有設備", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
-    new: [{ name: "二、計畫新增設備", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
+    existing: [{ name: "一、已有設備", assetId: "", valueA: "", countB: "", remainingYears: "", durableYears: "", depreciatedYears: "", nFactor: "1", residualValue: "", planExecYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
+    new: [{ name: "二、計畫新增設備", assetId: "", valueA: "", countB: "", remainingYears: "", durableYears: "", depreciatedYears: "", nFactor: "1", residualValue: "", planExecYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
   });
+  const [equipmentMaintenanceCosts, setEquipmentMaintenanceCosts] = useState<EquipmentMaintenanceRow[]>([
+    { item: "研發設備維護費", gov: "", self: "" },
+  ]);
   const [techIntroCosts, setTechIntroCosts] = useState(defaultTechIntroCosts);
 
   const didInitFromValue = React.useRef(false);
@@ -322,7 +337,29 @@ export default function HumanBudgetRequirementsForm({
     setPersonnelCosts(value.personnelCosts);
     setConsultantCosts(value.consultantCosts);
     setConsumables(value.consumables);
-    setEquipments(value.equipments);
+    setEquipments({
+      existing: (value.equipments?.existing ?? []).map((r) => ({
+        ...r,
+        durableYears: r.durableYears ?? "",
+        depreciatedYears: r.depreciatedYears ?? "",
+        nFactor: r.nFactor ?? "1",
+        residualValue: r.residualValue ?? "",
+        planExecYears: r.planExecYears ?? "",
+      })),
+      new: (value.equipments?.new ?? []).map((r) => ({
+        ...r,
+        durableYears: r.durableYears ?? "",
+        depreciatedYears: r.depreciatedYears ?? "",
+        nFactor: r.nFactor ?? "1",
+        residualValue: r.residualValue ?? "",
+        planExecYears: r.planExecYears ?? "",
+      })),
+    });
+    setEquipmentMaintenanceCosts(
+      value.equipmentMaintenanceCosts?.length
+        ? value.equipmentMaintenanceCosts
+        : [{ item: "研發設備維護費", gov: value.budgetRows?.find((r) => r.subject.startsWith("4."))?.gov ?? "", self: value.budgetRows?.find((r) => r.subject.startsWith("4."))?.self ?? "" }]
+    );
     setTechIntroCosts(
       value.techIntroCosts ?? {
         buy: [makeTechCostRow("(1) 技術或智慧財產權購買費", value.budgetRows?.find((r) => r.item.includes("(1)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(1)"))?.self ?? "")],
@@ -360,6 +397,7 @@ export default function HumanBudgetRequirementsForm({
       consultantCosts,
       consumables,
       equipments,
+      equipmentMaintenanceCosts,
       techIntroCosts,
     });
   }, [
@@ -375,6 +413,7 @@ export default function HumanBudgetRequirementsForm({
     consultantCosts,
     consumables,
     equipments,
+    equipmentMaintenanceCosts,
     techIntroCosts,
     onChange,
   ]);
@@ -403,21 +442,48 @@ export default function HumanBudgetRequirementsForm({
 
   // ---------- 自動計算：設備使用費 ----------
   const computeExistingMonthlyFee = (r: EquipmentRow) => {
-    const manual = toNum(r.monthlyFee);
-    if (manual > 0) return manual;
     const A = toNum(r.valueA);
     const B = toNum(r.countB);
     const years = toNum(r.remainingYears);
-    if (A <= 0 || B <= 0 || years <= 0) return 0;
-    return (A * B) / (years * 12);
+    const durableYears = toNum(r.durableYears ?? "");
+    const depreciatedYears = toNum(r.depreciatedYears ?? "");
+    const nFactor = toNum(r.nFactor ?? "1");
+    const residualValue = toNum(r.residualValue ?? "");
+    const planExecYears = toNum(r.planExecYears ?? "");
+    const amountA = A * B;
+    if (residualValue > 0) {
+      if (nFactor === 0) {
+        if (planExecYears <= 0) return 0;
+        return residualValue / (planExecYears * 12);
+      }
+      const Y = nFactor * (durableYears - depreciatedYears) + 1;
+      if (Y <= 0) return 0;
+      return residualValue / (Y * 12);
+    }
+    if (amountA <= 0 || years <= 0) return 0;
+    return amountA / (years * 12);
   };
   const computeNewMonthlyFee = (r: EquipmentRow) => {
-    const manual = toNum(r.monthlyFee);
-    if (manual > 0) return manual;
     const A = toNum(r.valueA);
     const B = toNum(r.countB);
-    if (A <= 0 || B <= 0) return 0;
-    return (A * B) / 60;
+    const years = toNum(r.remainingYears);
+    const durableYears = toNum(r.durableYears ?? "");
+    const depreciatedYears = toNum(r.depreciatedYears ?? "");
+    const nFactor = toNum(r.nFactor ?? "1");
+    const residualValue = toNum(r.residualValue ?? "");
+    const planExecYears = toNum(r.planExecYears ?? "");
+    const amountA = A * B;
+    if (residualValue > 0) {
+      if (nFactor === 0) {
+        if (planExecYears <= 0) return 0;
+        return residualValue / (planExecYears * 12);
+      }
+      const Y = nFactor * (durableYears - depreciatedYears) + 1;
+      if (Y <= 0) return 0;
+      return residualValue / (Y * 12);
+    }
+    if (amountA <= 0 || years <= 0) return 0;
+    return amountA / (years * 12);
   };
   const equipmentsExistingComputed = equipments.existing.map((r) => {
     const monthly = computeExistingMonthlyFee(r);
@@ -431,6 +497,14 @@ export default function HumanBudgetRequirementsForm({
   });
   const equipmentsExistingSum = equipmentsExistingComputed.reduce((acc, r) => acc + r.totalNum, 0);
   const equipmentsNewSum = equipmentsNewComputed.reduce((acc, r) => acc + r.totalNum, 0);
+  const equipmentMaintenanceSum = useMemo(
+    () =>
+      (equipmentMaintenanceCosts ?? []).reduce(
+        (acc, r) => ({ gov: acc.gov + toNum(r.gov), self: acc.self + toNum(r.self) }),
+        { gov: 0, self: 0 }
+      ),
+    [equipmentMaintenanceCosts, toNum]
+  );
   const techSectionSums = useMemo(() => {
     const sumRows = (rows: TechCostRow[]) =>
       (rows ?? []).reduce(
@@ -473,6 +547,7 @@ export default function HumanBudgetRequirementsForm({
 
   const getGovSelf = (idx: number) => {
     if (idx < 0) return { gov: 0, self: 0 };
+    if (idx === idxEquipMaintain) return equipmentMaintenanceSum;
     if (idx === idxTechBuy) return techSectionSums.buy;
     if (idx === idxTechResearch) return techSectionSums.research;
     if (idx === idxTechService) return techSectionSums.service;
@@ -1081,7 +1156,7 @@ export default function HumanBudgetRequirementsForm({
               />
             </div>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
+              <table className="w-full text-sm text-center text-gray-600 min-w-[1560px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-16">編號</th>
@@ -1183,7 +1258,7 @@ export default function HumanBudgetRequirementsForm({
             <SubTitle>（三）計畫人力統計（不含兼職顧問）</SubTitle>
             <Hint>待聘人數建議控制在投入計畫人力的 30% 以內（依申請須知原則）。</Hint>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
-              <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
+              <table className="w-full text-sm text-center text-gray-600 min-w-[1560px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-40">公司名稱</th>
@@ -1667,7 +1742,7 @@ export default function HumanBudgetRequirementsForm({
             <AppendixNote text={CONSUMABLES_TABLE_NOTE} />
 
             <SubTitle>（四）研發設備使用費</SubTitle>
-            <Hint>已有設備：需填剩餘使用年限與投入月數；新增設備：填購置金額與投入月數；系統會自動計算月使用費與全程費用概算。</Hint>
+            <Hint>每月使用費=A/(剩餘使用年限x12)，並依預計使用月數編列。A=新購設備為購置成本，舊有設備為帳面價值。若預留殘值，剩餘使用年限 Y=N(耐用年限-已折舊年數)+1。若 N=0，每月使用費為殘值/(計畫執行年度x12)。若 Y=0 則不得列報。月使用費與全程費用概算由系統自動計算。</Hint>
             <div className="overflow-x-auto border border-gray-200 rounded-lg">
               <table className="w-full text-sm text-center text-gray-600 min-w-[1100px]">
                 <thead className="text-xs text-gray-700 bg-gray-100">
@@ -1676,7 +1751,12 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-32">財產編號</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">單套帳面價值A</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">套數B</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限Y</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-28">耐用年限</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-28">已折舊年數</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-24">N</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">殘值</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">計畫執行年度</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">月使用費</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
@@ -1689,11 +1769,11 @@ export default function HumanBudgetRequirementsForm({
                     const total = equipmentsExistingComputed[idx]?.totalNum ?? 0;
                     return (
                     <tr key={`ex-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                      {(["name", "assetId", "valueA", "countB", "remainingYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "total";
+                      {(["name", "assetId", "valueA", "countB", "remainingYears", "durableYears", "depreciatedYears", "nFactor", "residualValue", "planExecYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
+                        const isComputed = k === "monthlyFee" || k === "total";
                         const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
                         return (
-                        <td key={k} className={`p-2 ${cIdx < 7 ? "border-r border-gray-200" : ""}`}>
+                        <td key={k} className={`p-2 ${cIdx < 12 ? "border-r border-gray-200" : ""}`}>
                           <input
                             className={`w-full bg-transparent outline-none px-2 py-1 ${
                               k === "name" || k === "assetId" ? "text-left" : "text-right"
@@ -1736,7 +1816,7 @@ export default function HumanBudgetRequirementsForm({
                         onClick={() =>
                           setEquipments((p) => ({
                             ...p,
-                            existing: [...p.existing, { name: "", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" }],
+                            existing: [...p.existing, { name: "", assetId: "", valueA: "", countB: "", remainingYears: "", durableYears: "", depreciatedYears: "", nFactor: "1", residualValue: "", planExecYears: "", monthlyFee: "", months: "", total: "" }],
                           }))
                         }
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
@@ -1744,7 +1824,7 @@ export default function HumanBudgetRequirementsForm({
                         + 新增已有設備
                       </button>
                     </td>
-                    <td className="p-2 border-r border-gray-200" colSpan={6} />
+                    <td className="p-2 border-r border-gray-200" colSpan={11} />
                     <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(equipmentsExistingSum).toLocaleString()}
                     </td>
@@ -1762,7 +1842,12 @@ export default function HumanBudgetRequirementsForm({
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-32">財產編號</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">單套購置金額A</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">套數B</th>
-                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">（可填）剩餘使用年限</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">剩餘使用年限Y</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-28">耐用年限</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-28">已折舊年數</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-24">N</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">殘值</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-32">計畫執行年度</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200">月使用費</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-24">投入月數</th>
                     <th className="px-4 py-3 border-r border-b border-gray-200 w-36">全程費用概算</th>
@@ -1775,11 +1860,11 @@ export default function HumanBudgetRequirementsForm({
                     const total = equipmentsNewComputed[idx]?.totalNum ?? 0;
                     return (
                     <tr key={`new-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                      {(["name", "assetId", "valueA", "countB", "remainingYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "total";
+                      {(["name", "assetId", "valueA", "countB", "remainingYears", "durableYears", "depreciatedYears", "nFactor", "residualValue", "planExecYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
+                        const isComputed = k === "monthlyFee" || k === "total";
                         const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
                         return (
-                        <td key={k} className={`p-2 ${cIdx < 7 ? "border-r border-gray-200" : ""}`}>
+                        <td key={k} className={`p-2 ${cIdx < 12 ? "border-r border-gray-200" : ""}`}>
                           <input
                             className={`w-full bg-transparent outline-none px-2 py-1 ${
                               k === "name" || k === "assetId" ? "text-left" : "text-right"
@@ -1822,7 +1907,7 @@ export default function HumanBudgetRequirementsForm({
                         onClick={() =>
                           setEquipments((p) => ({
                             ...p,
-                            new: [...p.new, { name: "", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" }],
+                            new: [...p.new, { name: "", assetId: "", valueA: "", countB: "", remainingYears: "", durableYears: "", depreciatedYears: "", nFactor: "1", residualValue: "", planExecYears: "", monthlyFee: "", months: "", total: "" }],
                           }))
                         }
                         className="text-sm text-blue-600 hover:text-blue-800 font-medium"
@@ -1830,7 +1915,7 @@ export default function HumanBudgetRequirementsForm({
                         + 新增計畫新增設備
                       </button>
                     </td>
-                    <td className="p-2 border-r border-gray-200" colSpan={6} />
+                    <td className="p-2 border-r border-gray-200" colSpan={11} />
                     <td className="p-2 border-r border-gray-200 text-right font-medium">
                       {Math.round(equipmentsNewSum).toLocaleString()}
                     </td>
@@ -1840,6 +1925,81 @@ export default function HumanBudgetRequirementsForm({
               </table>
             </div>
             <AppendixNote text={EQUIPMENT_USE_TABLE_NOTE} />
+
+            <SubTitle>（四）研發設備維護費</SubTitle>
+            <Hint>可逐筆新增維護費項目，填寫政府補助款與公司自籌款後，系統會自動彙整到經費需求總表「4. 研發設備維護費」。</Hint>
+            <div className="overflow-x-auto border border-gray-200 rounded-lg mb-6">
+              <table className="w-full text-sm text-center text-gray-600 min-w-[860px]">
+                <thead className="text-xs text-gray-700 bg-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 text-left">項目</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-44">政府補助款</th>
+                    <th className="px-4 py-3 border-r border-b border-gray-200 w-44">公司自籌款</th>
+                    <th className="px-4 py-3 border-b border-gray-200 w-36">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {equipmentMaintenanceCosts.map((row, idx) => (
+                    <tr key={`maint-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                      <td className="p-2 border-r border-gray-200 text-left">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-left"
+                          value={row.item}
+                          onChange={(e) =>
+                            setEquipmentMaintenanceCosts((prev) => prev.map((r, i) => (i === idx ? { ...r, item: e.target.value } : r)))
+                          }
+                          placeholder="例如：設備保養、校正、耗材維護"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                          value={row.gov}
+                          onChange={(e) =>
+                            setEquipmentMaintenanceCosts((prev) => prev.map((r, i) => (i === idx ? { ...r, gov: e.target.value } : r)))
+                          }
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="p-2 border-r border-gray-200">
+                        <input
+                          className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                          value={row.self}
+                          onChange={(e) =>
+                            setEquipmentMaintenanceCosts((prev) => prev.map((r, i) => (i === idx ? { ...r, self: e.target.value } : r)))
+                          }
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          disabled={equipmentMaintenanceCosts.length <= 1}
+                          onClick={() => setEquipmentMaintenanceCosts((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        >
+                          − 刪除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                    <td className="p-2 border-r border-gray-200 text-left">
+                      <button
+                        type="button"
+                        onClick={() => setEquipmentMaintenanceCosts((prev) => [...prev, { item: "", gov: "", self: "" }])}
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        + 新增項目
+                      </button>
+                    </td>
+                    <td className="p-2 border-r border-gray-200 text-right font-medium">{Math.round(equipmentMaintenanceSum.gov).toLocaleString()}</td>
+                    <td className="p-2 border-r border-gray-200 text-right font-medium">{Math.round(equipmentMaintenanceSum.self).toLocaleString()}</td>
+                    <td className="p-2" />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
             <SubTitle>（五）技術引進及委託研究費</SubTitle>
             <Hint>請填寫各子項目之政府補助款與公司自籌款，系統會自動計算各列合計與本區塊小計，並同步回填至上方經費需求總表。</Hint>
