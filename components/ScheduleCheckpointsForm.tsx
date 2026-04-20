@@ -425,40 +425,45 @@ export default function ScheduleCheckpointsForm({
   };
 
   const deriveKpisFromProgress = () => {
-    const derived: Array<{ key: string; row: KpiRow }> = [];
-    rows.forEach((r, rowIdx) => {
-      const workKey = String(r?.id ?? "").trim() || `row-${rowIdx}`;
-      const workName = r?.item ?? "";
-      const months = r?.months ?? {};
+    try {
+      const derived: Array<{ key: string; row: KpiRow }> = [];
+      (rows ?? []).forEach((r, rowIdx) => {
+        const workKey = String(r?.id ?? "").trim() || `row-${rowIdx}`;
+        const workName = r?.item ?? "";
+        const months = (r?.months ?? {}) as Record<string, { progress?: boolean; checkpoint?: boolean }>;
 
-      for (const mk of monthLabels) {
-        const cell = months?.[mk] ?? { progress: false, checkpoint: false };
-        if (!cell?.checkpoint) continue;
+        for (const mk of monthLabels ?? []) {
+          const cell = months?.[mk] ?? { progress: false, checkpoint: false };
+          if (!cell?.checkpoint) continue;
 
-        const parts = String(mk ?? "").split("/");
-        const y = parts[0];
-        const mo = parts[1];
-        const hasYmo = !!(y && mo);
-        const period = hasYmo ? `${y}/${mo}~${y}/${mo}` : String(mk ?? "");
+          const parts = String(mk ?? "").split("/");
+          const y = parts?.[0];
+          const mo = parts?.[1];
+          const hasYmo = !!(y && mo);
+          const period = hasYmo ? `${y}/${mo}~${y}/${mo}` : String(mk ?? "");
 
-        derived.push({
-          key: `${workKey}|${mk}`,
-          row: {
-            workKey,
-            code: String(workName || workKey),
-            description: "",
-            period,
-            periodStartYear: hasYmo ? y : undefined,
-            periodStartMonth: hasYmo ? mo : undefined,
-            periodEndYear: hasYmo ? y : undefined,
-            periodEndMonth: hasYmo ? mo : undefined,
-            weight: "",
-            staffCode: "",
-          },
-        });
-      }
-    });
-    return derived;
+          derived.push({
+            key: `${workKey}|${mk}`,
+            row: {
+              workKey,
+              code: String(workName || workKey),
+              description: "",
+              period,
+              periodStartYear: hasYmo ? y : undefined,
+              periodStartMonth: hasYmo ? mo : undefined,
+              periodEndYear: hasYmo ? y : undefined,
+              periodEndMonth: hasYmo ? mo : undefined,
+              weight: "",
+              staffCode: "",
+            },
+          });
+        }
+      });
+      return derived;
+    } catch (err) {
+      console.error("[ScheduleCheckpointsForm] deriveKpisFromProgress failed", err);
+      return [] as Array<{ key: string; row: KpiRow }>;
+    }
   };
 
   useEffect(() => {
@@ -473,29 +478,33 @@ export default function ScheduleCheckpointsForm({
 
   const prevDerivedCountRef = useRef(0);
   useEffect(() => {
-    const derived = deriveKpisFromProgress();
-    setKpis((prev) => {
-      const prevMap = new Map<string, KpiRow>();
-      for (const k of prev ?? []) {
-        const mk = getMonthKeyFromKpi(k);
-        if (!mk) continue;
-        const wk = k?.workKey ?? extractWorkCode(k?.code ?? "");
-        prevMap.set(`${wk}|${mk}`, k);
-      }
+    try {
+      const derived = deriveKpisFromProgress();
+      setKpis((prev) => {
+        const prevMap = new Map<string, KpiRow>();
+        for (const k of prev ?? []) {
+          const mk = getMonthKeyFromKpi(k);
+          if (!mk) continue;
+          const wk = k?.workKey ?? extractWorkCode(k?.code ?? "");
+          prevMap.set(`${wk}|${mk}`, k);
+        }
 
-      return derived.map((d) => {
-        const existing = prevMap.get(d.key);
-        if (!existing) return d.row;
-        return {
-          ...d.row,
-          workKey: existing.workKey ?? d.row.workKey,
-          description: existing.description ?? "",
-          weight: existing.weight ?? "",
-          staffCode: existing.staffCode ?? "",
-        };
+        return derived.map((d) => {
+          const existing = prevMap.get(d.key);
+          if (!existing) return d.row;
+          return {
+            ...d.row,
+            workKey: existing?.workKey ?? d.row.workKey,
+            description: existing?.description ?? "",
+            weight: existing?.weight ?? "",
+            staffCode: existing?.staffCode ?? "",
+          };
+        });
       });
-    });
-    prevDerivedCountRef.current = derived.length;
+      prevDerivedCountRef.current = derived.length;
+    } catch (err) {
+      console.error("[ScheduleCheckpointsForm] KPI sync effect failed", err);
+    }
   }, [rows, monthLabels.join(",")]);
 
   useEffect(() => {
@@ -504,27 +513,35 @@ export default function ScheduleCheckpointsForm({
   }, [rows, kpis, notes, testReportImages, onChange, draftHydrated]);
 
   const toggleMonth = (rowIdx: number, month: string) => {
-    setRows((prev) => {
-      const next = [...(prev ?? [])];
-      const row = next[rowIdx];
-      if (!row) return prev ?? [];
-      const months = row.months ?? {};
-      const cur = months[month] ?? { progress: false, checkpoint: false };
-      next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, progress: !cur.progress } } };
-      return next;
-    });
+    try {
+      setRows((prev) => {
+        const next = [...(prev ?? [])];
+        const row = next?.[rowIdx];
+        if (!row) return prev ?? [];
+        const months = row?.months ?? {};
+        const cur = months?.[month] ?? { progress: false, checkpoint: false };
+        next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, progress: !cur?.progress } } };
+        return next;
+      });
+    } catch (err) {
+      console.error("[ScheduleCheckpointsForm] toggleMonth failed", err);
+    }
   };
 
   const toggleCheckpoint = (rowIdx: number, month: string) => {
-    setRows((prev) => {
-      const next = [...(prev ?? [])];
-      const row = next[rowIdx];
-      if (!row) return prev ?? [];
-      const months = row.months ?? {};
-      const cur = months[month] ?? { progress: false, checkpoint: false };
-      next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, checkpoint: !cur.checkpoint } } };
-      return next;
-    });
+    try {
+      setRows((prev) => {
+        const next = [...(prev ?? [])];
+        const row = next?.[rowIdx];
+        if (!row) return prev ?? [];
+        const months = row?.months ?? {};
+        const cur = months?.[month] ?? { progress: false, checkpoint: false };
+        next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, checkpoint: !cur?.checkpoint } } };
+        return next;
+      });
+    } catch (err) {
+      console.error("[ScheduleCheckpointsForm] toggleCheckpoint failed", err);
+    }
   };
 
   /** 權重僅合計「分項計畫」列：id 為單一英文字母（A、B、C…） */
@@ -616,7 +633,7 @@ export default function ScheduleCheckpointsForm({
                               type="button"
                               onClick={() => toggleMonth(rIdx, m)}
                               className={`w-6 h-6 rounded border transition-colors ${
-                                r.months[m]?.progress ?? false
+                                r?.months?.[m]?.progress ?? false
                                   ? "bg-gray-800 border-gray-800"
                                   : "bg-white border-gray-300 hover:border-gray-500"
                               }`}
@@ -627,7 +644,7 @@ export default function ScheduleCheckpointsForm({
                               type="button"
                               onClick={() => toggleCheckpoint(rIdx, m)}
                               className={`w-6 h-6 rounded-full border transition-colors ${
-                                r.months[m]?.checkpoint ?? false
+                                r?.months?.[m]?.checkpoint ?? false
                                   ? "bg-emerald-600 border-emerald-600"
                                   : "bg-white border-gray-300 hover:border-gray-500"
                               }`}

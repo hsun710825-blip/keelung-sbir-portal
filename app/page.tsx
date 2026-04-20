@@ -746,16 +746,44 @@ function buildScheduleBoundWorkItems(planContent: PlanContentValue | undefined):
 
   const firstLevel = Array.isArray(tree.children) ? (tree.children as RawTreeNode[]) : [];
   const items: ScheduleBoundWorkItem[] = [];
-  for (let i = 0; i < firstLevel.length; i++) {
-    const parent = firstLevel[i] || {};
-    const parentCode = String.fromCharCode(65 + i);
-    items.push({ id: parentCode, item: `${parentCode}. ${normalizeName(parent.text ?? parent.name, "分項計畫")}` });
-    const children = Array.isArray(parent.children) ? (parent.children as RawTreeNode[]) : [];
-    for (let j = 0; j < children.length; j++) {
-      const child = children[j] || {};
-      const childCode = `${parentCode}${j + 1}`;
-      items.push({ id: childCode, item: `${childCode}. ${normalizeName(child.text ?? child.name, "工作項目")}` });
+  const seen = new Set<string>();
+
+  const alphaCode = (idx: number): string => {
+    let n = idx;
+    let out = "";
+    while (n >= 0) {
+      out = String.fromCharCode(65 + (n % 26)) + out;
+      n = Math.floor(n / 26) - 1;
     }
+    return out;
+  };
+
+  const extractCode = (src: unknown): string => {
+    const raw = String(src ?? "").trim();
+    const m = raw.match(/^([A-Za-z]+[0-9]*)\s*[.．、\-]/);
+    return (m?.[1] || "").toUpperCase();
+  };
+
+  const walk = (node: RawTreeNode | null | undefined, siblingIndex: number, parentCode?: string) => {
+    if (!node || typeof node !== "object") return;
+    const rawLabel = node.text ?? node.name;
+    const explicitCode = extractCode(rawLabel);
+    const computedCode = explicitCode || (parentCode ? `${parentCode}${siblingIndex + 1}` : alphaCode(siblingIndex));
+    const code = String(computedCode || "").trim().toUpperCase();
+    if (!code || seen.has(code)) return;
+    seen.add(code);
+
+    const fallback = parentCode ? "工作項目" : "分項計畫";
+    items.push({ id: code, item: `${code}. ${normalizeName(rawLabel, fallback)}` });
+
+    const children = Array.isArray(node.children) ? (node.children as RawTreeNode[]) : [];
+    for (let i = 0; i < children.length; i++) {
+      walk(children[i], i, code);
+    }
+  };
+
+  for (let i = 0; i < firstLevel.length; i++) {
+    walk(firstLevel[i], i);
   }
   return items;
 }

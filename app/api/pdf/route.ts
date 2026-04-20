@@ -303,6 +303,10 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
   return lines;
 }
 
+function normalizePdfMultilineText(input: unknown): string {
+  return String(input ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 function drawTextTopLeft(opts: {
   page: PDFPage;
   x: number;
@@ -313,15 +317,21 @@ function drawTextTopLeft(opts: {
   color?: { r: number; g: number; b: number };
 }) {
   const { page, x, y, text, size, font } = opts;
-  const t = String(text || "").trim();
+  const t = normalizePdfMultilineText(text).trim();
   if (!t) return;
-  page.drawText(t, {
-    x,
-    y,
-    size,
-    font,
-    color: rgb(opts.color?.r ?? 0, opts.color?.g ?? 0, opts.color?.b ?? 0),
-  });
+  const drawColor = rgb(opts.color?.r ?? 0, opts.color?.g ?? 0, opts.color?.b ?? 0);
+  const lines = t.split("\n");
+  const lineHeight = Math.max(size * 1.25, size + 1.5);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    page.drawText(line, {
+      x,
+      y: y - i * lineHeight,
+      size,
+      font,
+      color: drawColor,
+    });
+  }
 }
 
 function drawWhiteRect(page: PDFPage, x: number, y: number, w: number, h: number) {
