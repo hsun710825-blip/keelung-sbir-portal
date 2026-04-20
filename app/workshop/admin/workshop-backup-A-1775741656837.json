@@ -1,0 +1,16 @@
+{
+  "backupId": "A-1775741656837",
+  "groupId": "A",
+  "exportedAt": "2026-04-09T13:34:16.837Z",
+  "board": {
+    "groupId": "A",
+    "groupLabel": "A組",
+    "teacher": "鍾政偉老師",
+    "planTitle": "尚未儲存",
+    "status": "未開始",
+    "memberCount": 0,
+    "updatedAt": "—"
+  },
+  "ideas": [],
+  "note": "Light backup from admin view only (Firestore permission-safe mode)."
+}
