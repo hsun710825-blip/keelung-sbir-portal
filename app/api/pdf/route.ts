@@ -2364,6 +2364,7 @@ export async function POST(req: Request) {
     const ccs = Array.isArray(humanBudget.consultantCosts) ? humanBudget.consultantCosts : [];
     const cons = Array.isArray(humanBudget.consumables) ? humanBudget.consumables : [];
     const eq = humanBudget.equipments;
+    const tech = (humanBudget as { techIntroCosts?: { buy?: Array<Record<string, unknown>>; research?: Array<Record<string, unknown>>; service?: Array<Record<string, unknown>>; design?: Array<Record<string, unknown>> } }).techIntroCosts;
     const num = (v: unknown) => (v === "" || v == null ? 0 : Number(v));
     const personnelTotal = pcs.reduce((s, r) => s + (num(r.cost) || num(r.avgSalary) * num(r.manMonths)), 0);
     const consultantTotal = ccs.reduce((s, r) => s + (num(r.cost) || num(r.avgSalary) * num(r.manMonths)), 0);
@@ -2371,8 +2372,11 @@ export async function POST(req: Request) {
     const ex = Array.isArray(eq?.existing) ? eq!.existing : [];
     const nw = Array.isArray(eq?.new) ? eq!.new : [];
     const equipmentTotal = ex.reduce((s, r) => s + num(r.total), 0) + nw.reduce((s, r) => s + num(r.total), 0);
+    const sumTechRows = (rows: Array<Record<string, unknown>> | undefined) =>
+      (rows ?? []).reduce((acc, r) => acc + num(r.gov) + num(r.self), 0);
+    const techTotal = sumTechRows(tech?.buy) + sumTechRows(tech?.research) + sumTechRows(tech?.service) + sumTechRows(tech?.design);
     const personnelSub = personnelTotal + consultantTotal;
-    const grandTotal = personnelSub + consumablesTotal + equipmentTotal;
+    const grandTotal = personnelSub + consumablesTotal + equipmentTotal + techTotal;
     const buildBudgetRows = (): string[][] => {
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
       if (fromForm.length && fromForm.some((r) => asString(r.gov).trim() || asString(r.self).trim() || asString(r.total).trim())) {
@@ -2398,7 +2402,7 @@ export async function POST(req: Request) {
         ["2.消耗性器材及原材料費", "", "", "", String(consumablesTotal), consumablesTotal && grandTotal ? ((consumablesTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["3.研發設備使用費", "", "", "", String(equipmentTotal), equipmentTotal && grandTotal ? ((equipmentTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["4.研發設備維護費", "", "", "", "", ""],
-        ["5.技術引進及委託研究費", "", "", "", "", ""],
+        ["5.技術引進及委託研究費", "", "", "", String(techTotal || ""), techTotal && grandTotal ? ((techTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["合 計", "", "", "", String(grandTotal), "100%"],
       ];
     };
@@ -2455,6 +2459,23 @@ export async function POST(req: Request) {
       if (exList2.length || nwList.length) {
         drawPara(EQUIPMENT_USE_TABLE_NOTE);
       }
+    }
+    const techSections = [
+      { title: "（五）技術引進及委託研究費（一）技術或智慧財產權購買費", rows: tech?.buy ?? [] },
+      { title: "（五）技術引進及委託研究費（二）委託研究費", rows: tech?.research ?? [] },
+      { title: "（五）技術引進及委託研究費（三）委託勞務費", rows: tech?.service ?? [] },
+      { title: "（五）技術引進及委託研究費（四）委託設計費", rows: tech?.design ?? [] },
+    ];
+    for (const sec of techSections) {
+      if (!sec.rows.length) continue;
+      drawSubHeading(sec.title);
+      const rows = sec.rows.map((r) => {
+        const gov = asString(r.gov);
+        const self = asString(r.self);
+        const total = gov || self ? String(num(gov) + num(self)) : "";
+        return [asString(r.item), gov, self, total];
+      });
+      drawTableFlow(["項目", "政府補助款", "公司自籌款", "合計"], rows, [contentW * 0.46, contentW * 0.18, contentW * 0.18, contentW * 0.18]);
     }
   }
 

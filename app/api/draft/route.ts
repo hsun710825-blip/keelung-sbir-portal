@@ -104,6 +104,26 @@ function normalizeDraftFormDataShape(payload: Record<string, unknown>) {
   const formData = (out.formData && typeof out.formData === "object" ? { ...(out.formData as Record<string, unknown>) } : {}) as Record<string, unknown>;
   const schedule = normalizeScheduleCheckpointsDraft(formData.scheduleCheckpoints);
   if (schedule) formData.scheduleCheckpoints = schedule;
+  if (formData.humanBudget && typeof formData.humanBudget === "object") {
+    const hb = { ...(formData.humanBudget as Record<string, unknown>) };
+    const tc = hb.techIntroCosts && typeof hb.techIntroCosts === "object" ? (hb.techIntroCosts as Record<string, unknown>) : {};
+    const normalizeRows = (src: unknown, fallbackLabel: string) =>
+      (Array.isArray(src) ? src : [{ item: fallbackLabel, gov: "", self: "" }]).map((r, idx) => {
+        const row = r && typeof r === "object" ? (r as Record<string, unknown>) : {};
+        return {
+          item: String(row.item ?? (idx === 0 ? fallbackLabel : "")),
+          gov: String(row.gov ?? ""),
+          self: String(row.self ?? ""),
+        };
+      });
+    hb.techIntroCosts = {
+      buy: normalizeRows(tc.buy, "(1) 技術或智慧財產權購買費"),
+      research: normalizeRows(tc.research, "(2) 委託研究費"),
+      service: normalizeRows(tc.service, "(3) 委託勞務費"),
+      design: normalizeRows(tc.design, "(4) 委託設計費"),
+    };
+    formData.humanBudget = hb;
+  }
   out.formData = formData;
   return out;
 }

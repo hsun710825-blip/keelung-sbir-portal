@@ -111,6 +111,12 @@ type EquipmentRow = {
   total: string;
 };
 
+type TechCostRow = {
+  item: string;
+  gov: string;
+  self: string;
+};
+
 const TECH_INTRO_SUBJECT = "5. 技術引進及委託研究費";
 
 function migrateBudgetRows(rows: BudgetRow[]): BudgetRow[] {
@@ -136,6 +142,15 @@ function migrateBudgetRows(rows: BudgetRow[]): BudgetRow[] {
   return list;
 }
 
+const makeTechCostRow = (item: string, gov = "", self = ""): TechCostRow => ({ item, gov, self });
+
+const defaultTechIntroCosts = () => ({
+  buy: [makeTechCostRow("(1) 技術或智慧財產權購買費")],
+  research: [makeTechCostRow("(2) 委託研究費")],
+  service: [makeTechCostRow("(3) 委託勞務費")],
+  design: [makeTechCostRow("(4) 委託設計費")],
+});
+
 export type HumanBudgetDraft = {
   govAllocPct: Record<string, string>;
   piProfile: typeof piProfileInit;
@@ -149,6 +164,12 @@ export type HumanBudgetDraft = {
   consultantCosts: PersonnelCostRow[];
   consumables: ConsumableRow[];
   equipments: { existing: EquipmentRow[]; new: EquipmentRow[] };
+  techIntroCosts?: {
+    buy: TechCostRow[];
+    research: TechCostRow[];
+    service: TechCostRow[];
+    design: TechCostRow[];
+  };
 };
 
 const piProfileInit = {
@@ -285,6 +306,7 @@ export default function HumanBudgetRequirementsForm({
     existing: [{ name: "一、已有設備", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
     new: [{ name: "二、計畫新增設備", assetId: "", valueA: "", countB: "", remainingYears: "", monthlyFee: "", months: "", total: "" } satisfies EquipmentRow],
   });
+  const [techIntroCosts, setTechIntroCosts] = useState(defaultTechIntroCosts);
 
   const didInitFromValue = React.useRef(false);
   useEffect(() => {
@@ -301,6 +323,14 @@ export default function HumanBudgetRequirementsForm({
     setConsultantCosts(value.consultantCosts);
     setConsumables(value.consumables);
     setEquipments(value.equipments);
+    setTechIntroCosts(
+      value.techIntroCosts ?? {
+        buy: [makeTechCostRow("(1) 技術或智慧財產權購買費", value.budgetRows?.find((r) => r.item.includes("(1)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(1)"))?.self ?? "")],
+        research: [makeTechCostRow("(2) 委託研究費", value.budgetRows?.find((r) => r.item.includes("(2)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(2)"))?.self ?? "")],
+        service: [makeTechCostRow("(3) 委託勞務費", value.budgetRows?.find((r) => r.item.includes("(3)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(3)"))?.self ?? "")],
+        design: [makeTechCostRow("(4) 委託設計費", value.budgetRows?.find((r) => r.item.includes("(4)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(4)"))?.self ?? "")],
+      }
+    );
     didInitFromValue.current = true;
   }, [value]);
 
@@ -330,6 +360,7 @@ export default function HumanBudgetRequirementsForm({
       consultantCosts,
       consumables,
       equipments,
+      techIntroCosts,
     });
   }, [
     govAllocPct,
@@ -344,6 +375,7 @@ export default function HumanBudgetRequirementsForm({
     consultantCosts,
     consumables,
     equipments,
+    techIntroCosts,
     onChange,
   ]);
 
@@ -371,6 +403,8 @@ export default function HumanBudgetRequirementsForm({
 
   // ---------- 自動計算：設備使用費 ----------
   const computeExistingMonthlyFee = (r: EquipmentRow) => {
+    const manual = toNum(r.monthlyFee);
+    if (manual > 0) return manual;
     const A = toNum(r.valueA);
     const B = toNum(r.countB);
     const years = toNum(r.remainingYears);
@@ -378,6 +412,8 @@ export default function HumanBudgetRequirementsForm({
     return (A * B) / (years * 12);
   };
   const computeNewMonthlyFee = (r: EquipmentRow) => {
+    const manual = toNum(r.monthlyFee);
+    if (manual > 0) return manual;
     const A = toNum(r.valueA);
     const B = toNum(r.countB);
     if (A <= 0 || B <= 0) return 0;
@@ -395,6 +431,27 @@ export default function HumanBudgetRequirementsForm({
   });
   const equipmentsExistingSum = equipmentsExistingComputed.reduce((acc, r) => acc + r.totalNum, 0);
   const equipmentsNewSum = equipmentsNewComputed.reduce((acc, r) => acc + r.totalNum, 0);
+  const techSectionSums = useMemo(() => {
+    const sumRows = (rows: TechCostRow[]) =>
+      (rows ?? []).reduce(
+        (acc, r) => ({ gov: acc.gov + toNum(r.gov), self: acc.self + toNum(r.self) }),
+        { gov: 0, self: 0 }
+      );
+    const buy = sumRows(techIntroCosts.buy);
+    const research = sumRows(techIntroCosts.research);
+    const service = sumRows(techIntroCosts.service);
+    const design = sumRows(techIntroCosts.design);
+    return {
+      buy,
+      research,
+      service,
+      design,
+      total: {
+        gov: buy.gov + research.gov + service.gov + design.gov,
+        self: buy.self + research.self + service.self + design.self,
+      },
+    };
+  }, [techIntroCosts, toNum]);
 
   // ---------- 自動計算：經費需求總表 ----------
   const idxPersonnel = budgetRows.findIndex((r) => r.subject === "1. 人事費" && r.item === "計畫人員");
@@ -416,6 +473,10 @@ export default function HumanBudgetRequirementsForm({
 
   const getGovSelf = (idx: number) => {
     if (idx < 0) return { gov: 0, self: 0 };
+    if (idx === idxTechBuy) return techSectionSums.buy;
+    if (idx === idxTechResearch) return techSectionSums.research;
+    if (idx === idxTechService) return techSectionSums.service;
+    if (idx === idxTechDesign) return techSectionSums.design;
     return { gov: toNum(budgetRows[idx].gov), self: toNum(budgetRows[idx].self) };
   };
 
@@ -438,11 +499,7 @@ export default function HumanBudgetRequirementsForm({
     return { gov: aGov + bGov, self: aSelf + bSelf, total: personnelTotal + consultantTotal };
   })();
   const techSum = (() => {
-    const a = getGovSelf(idxTechBuy);
-    const b = getGovSelf(idxTechResearch);
-    const c = getGovSelf(idxTechService);
-    const d = getGovSelf(idxTechDesign);
-    return { gov: a.gov + b.gov + c.gov + d.gov, self: a.self + b.self + c.self + d.self };
+    return { gov: techSectionSums.total.gov, self: techSectionSums.total.self };
   })();
 
   const getRowGovSelf = (idx: number) => {
@@ -527,24 +584,45 @@ export default function HumanBudgetRequirementsForm({
     const idx = budgetRows.indexOf(row);
     const computed = getRowGovSelf(idx);
     if (key === "gov") {
-      if (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse) return fmtInt(computed.gov);
+      if (
+        idx === idxPersonnel ||
+        idx === idxConsultant ||
+        idx === idxConsumables ||
+        idx === idxEquipUse ||
+        idx === idxTechBuy ||
+        idx === idxTechResearch ||
+        idx === idxTechService ||
+        idx === idxTechDesign
+      )
+        return fmtInt(computed.gov);
       return row.gov;
     }
     if (key === "self") {
-      if (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse) return fmtInt(computed.self);
+      if (
+        idx === idxPersonnel ||
+        idx === idxConsultant ||
+        idx === idxConsumables ||
+        idx === idxEquipUse ||
+        idx === idxTechBuy ||
+        idx === idxTechResearch ||
+        idx === idxTechService ||
+        idx === idxTechDesign
+      )
+        return fmtInt(computed.self);
       return row.self;
     }
     if (key === "total") return fmtInt(computed.total);
     return grandTotal > 0 ? fmtPct((computed.total / grandTotal) * 100) : "0.0";
   };
 
-  const techDetailRows = useMemo(
-    () => [
-      { idx: idxTechBuy, label: "(1) 技術或智慧財產權購買費" },
-      { idx: idxTechResearch, label: "(2) 委託研究費" },
-      { idx: idxTechService, label: "(3) 委託勞務費" },
-      { idx: idxTechDesign, label: "(4) 委託設計費" },
-    ],
+  const techSections = useMemo(
+    () =>
+      [
+        { key: "buy", label: "(1) 技術或智慧財產權購買費", idx: idxTechBuy },
+        { key: "research", label: "(2) 委託研究費", idx: idxTechResearch },
+        { key: "service", label: "(3) 委託勞務費", idx: idxTechService },
+        { key: "design", label: "(4) 委託設計費", idx: idxTechDesign },
+      ] as const,
     [idxTechBuy, idxTechResearch, idxTechService, idxTechDesign]
   );
 
@@ -1266,7 +1344,11 @@ export default function HumanBudgetRequirementsForm({
                               isGrandTotalRow(r) ||
                               isPercentRow(r) ||
                               k === "self" ||
-                              (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse))
+                              (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse)) ||
+                              idx === idxTechBuy ||
+                              idx === idxTechResearch ||
+                              idx === idxTechService ||
+                              idx === idxTechDesign
                             }
                             onChange={(e) => {
                               if (
@@ -1275,7 +1357,11 @@ export default function HumanBudgetRequirementsForm({
                                 isSubtotalRow(r) ||
                                 isGrandTotalRow(r) ||
                                 isPercentRow(r) ||
-                                (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse))
+                                (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse)) ||
+                                idx === idxTechBuy ||
+                                idx === idxTechResearch ||
+                                idx === idxTechService ||
+                                idx === idxTechDesign
                               )
                                 return;
                               const next = [...budgetRows];
@@ -1604,7 +1690,7 @@ export default function HumanBudgetRequirementsForm({
                     return (
                     <tr key={`ex-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       {(["name", "assetId", "valueA", "countB", "remainingYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "monthlyFee" || k === "total";
+                        const isComputed = k === "total";
                         const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
                         return (
                         <td key={k} className={`p-2 ${cIdx < 7 ? "border-r border-gray-200" : ""}`}>
@@ -1690,7 +1776,7 @@ export default function HumanBudgetRequirementsForm({
                     return (
                     <tr key={`new-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       {(["name", "assetId", "valueA", "countB", "remainingYears", "monthlyFee", "months", "total"] as const).map((k, cIdx) => {
-                        const isComputed = k === "monthlyFee" || k === "total";
+                        const isComputed = k === "total";
                         const computedValue = k === "monthlyFee" ? fmtInt(monthly) : k === "total" ? fmtInt(total) : r[k];
                         return (
                         <td key={k} className={`p-2 ${cIdx < 7 ? "border-r border-gray-200" : ""}`}>
@@ -1768,42 +1854,103 @@ export default function HumanBudgetRequirementsForm({
                   </tr>
                 </thead>
                 <tbody>
-                  {techDetailRows.map(({ idx, label }, rowIdx) => {
-                    const row = idx >= 0 ? budgetRows[idx] : null;
-                    const gov = row ? toNum(row.gov) : 0;
-                    const self = row ? toNum(row.self) : 0;
-                    const total = gov + self;
+                  {techSections.map((sec) => {
+                    const rows = techIntroCosts[sec.key];
                     return (
-                      <tr key={`tech-${rowIdx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
-                        <td className="p-2 border-r border-gray-200 text-left font-medium text-gray-700">{label}</td>
-                        <td className="p-2 border-r border-gray-200">
-                          <input
-                            className="w-full bg-transparent outline-none px-2 py-1 text-right"
-                            value={idx >= 0 ? budgetRows[idx]?.gov ?? "" : ""}
-                            onChange={(e) => {
-                              if (idx < 0) return;
-                              const next = [...budgetRows];
-                              next[idx] = { ...next[idx], gov: e.target.value } as BudgetRow;
-                              setBudgetRows(next);
-                            }}
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="p-2 border-r border-gray-200">
-                          <input
-                            className="w-full bg-transparent outline-none px-2 py-1 text-right"
-                            value={idx >= 0 ? budgetRows[idx]?.self ?? "" : ""}
-                            onChange={(e) => {
-                              if (idx < 0) return;
-                              const next = [...budgetRows];
-                              next[idx] = { ...next[idx], self: e.target.value } as BudgetRow;
-                              setBudgetRows(next);
-                            }}
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="p-2 text-right font-medium text-gray-700">{Math.round(total).toLocaleString()}</td>
-                      </tr>
+                      <React.Fragment key={`tech-sec-${sec.key}`}>
+                        <tr className="bg-gray-50 font-medium">
+                          <td className="px-4 py-3 border-r border-gray-200 text-left" colSpan={4}>
+                            {sec.label}
+                          </td>
+                        </tr>
+                        {rows.map((row, idx) => {
+                          const total = toNum(row.gov) + toNum(row.self);
+                          return (
+                            <tr key={`tech-${sec.key}-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                              <td className="p-2 border-r border-gray-200 text-left">
+                                <input
+                                  className="w-full bg-transparent outline-none px-2 py-1 text-left"
+                                  value={row.item}
+                                  onChange={(e) =>
+                                    setTechIntroCosts((prev) => ({
+                                      ...prev,
+                                      [sec.key]: prev[sec.key].map((r, i) => (i === idx ? { ...r, item: e.target.value } : r)),
+                                    }))
+                                  }
+                                  placeholder="請填寫費用項目"
+                                />
+                              </td>
+                              <td className="p-2 border-r border-gray-200">
+                                <input
+                                  className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                                  value={row.gov}
+                                  onChange={(e) =>
+                                    setTechIntroCosts((prev) => ({
+                                      ...prev,
+                                      [sec.key]: prev[sec.key].map((r, i) => (i === idx ? { ...r, gov: e.target.value } : r)),
+                                    }))
+                                  }
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="p-2 border-r border-gray-200">
+                                <input
+                                  className="w-full bg-transparent outline-none px-2 py-1 text-right"
+                                  value={row.self}
+                                  onChange={(e) =>
+                                    setTechIntroCosts((prev) => ({
+                                      ...prev,
+                                      [sec.key]: prev[sec.key].map((r, i) => (i === idx ? { ...r, self: e.target.value } : r)),
+                                    }))
+                                  }
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="p-2 text-right font-medium text-gray-700">
+                                <div className="flex items-center justify-end gap-3">
+                                  <span>{Math.round(total).toLocaleString()}</span>
+                                  <button
+                                    type="button"
+                                    disabled={rows.length <= 1}
+                                    onClick={() =>
+                                      setTechIntroCosts((prev) => ({
+                                        ...prev,
+                                        [sec.key]: prev[sec.key].filter((_, i) => i !== idx),
+                                      }))
+                                    }
+                                    className="text-xs text-red-600 hover:text-red-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                                  >
+                                    − 刪除
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                          <td className="p-2 border-r border-gray-200 text-left">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTechIntroCosts((prev) => ({
+                                  ...prev,
+                                  [sec.key]: [...prev[sec.key], makeTechCostRow(sec.label)],
+                                }))
+                              }
+                              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                            >
+                              + 新增項目
+                            </button>
+                          </td>
+                          <td className="p-2 border-r border-gray-200" />
+                          <td className="p-2 border-r border-gray-200" />
+                          <td className="p-2 text-right font-medium">
+                            {Math.round(
+                              rows.reduce((acc, r) => acc + toNum(r.gov) + toNum(r.self), 0)
+                            ).toLocaleString()}
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     );
                   })}
                   <tr className="bg-gray-50 font-medium">
