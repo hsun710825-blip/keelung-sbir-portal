@@ -236,18 +236,35 @@ type BoundWorkItem = {
   item: string;
 };
 
+function fingerprintScheduleDraft(v: ScheduleCheckpointsDraft | undefined): string {
+  if (!v) return "__empty__";
+  try {
+    return JSON.stringify({
+      rows: v.rows,
+      kpis: v.kpis,
+      notes: v.notes,
+      testReportImages: v.testReportImages ?? [],
+    });
+  } catch {
+    return `__err_${Date.now()}__`;
+  }
+}
+
 export default function ScheduleCheckpointsForm({
   projectStartDate = "",
   projectEndDate = "",
   boundWorkItems,
   value,
   onChange,
+  draftHydrated = true,
 }: {
   projectStartDate?: string;
   projectEndDate?: string;
   boundWorkItems?: BoundWorkItem[];
   value?: ScheduleCheckpointsDraft;
   onChange?: (next: ScheduleCheckpointsDraft) => void;
+  /** 等 `/api/draft` 載入完成後再同步到父層，避免尚未載入草稿時以預設表格覆寫父狀態 */
+  draftHydrated?: boolean;
 }) {
   const fid = useId();
   const f = (key: string) => `${fid}-${key}`;
@@ -306,8 +323,13 @@ export default function ScheduleCheckpointsForm({
 
   const [kpis, setKpis] = useState<KpiRow[]>(() => (value?.kpis ?? []).map(normalizeKpiPeriod));
 
-  const [notes, setNotes] = useState({ progressNote: "", kpiNote: "" });
-  const [testReportImages, setTestReportImages] = useState<{ id: string; name: string; size: string; url: string }[]>([]);
+  const [notes, setNotes] = useState(() => ({
+    progressNote: value?.notes?.progressNote ?? "",
+    kpiNote: value?.notes?.kpiNote ?? "",
+  }));
+  const [testReportImages, setTestReportImages] = useState<{ id: string; name: string; size: string; url: string }[]>(
+    () => value?.testReportImages ?? []
+  );
 
   const rocYearRange = useMemo(() => getProjectRocYearRange(projectStartDate, projectEndDate), [projectStartDate, projectEndDate]);
   const rocYears = useMemo(() => Array.from({ length: rocYearRange.max - rocYearRange.min + 1 }, (_, i) => rocYearRange.min + i), [rocYearRange]);
@@ -327,26 +349,35 @@ export default function ScheduleCheckpointsForm({
     return normalized;
   };
 
-  const hadValueRef = useRef(!!value);
+  const valueFingerprint = useMemo(() => fingerprintScheduleDraft(value), [value]);
+
   useLayoutEffect(() => {
-    const now = !!value;
-    const had = hadValueRef.current;
-    if (!had && now && value) {
+    if (!draftHydrated || !value) return;
+    const labels = getMonthLabelsFromRange(projectStartDate, projectEndDate);
+    const alias = buildMonthAliasMap(labels);
+    const emptyM = Object.fromEntries(labels.map((m) => [m, { progress: false, checkpoint: false }])) as Record<
+      string,
+      { progress: boolean; checkpoint: boolean }
+    >;
+
+    if (normalizedBoundItems.length === 0) {
       const incomingRows = value.rows ?? [];
       setRows(
-        incomingRows.map((r) => {
-          const raw = (r.months ?? {}) as Record<string, unknown>;
-          return { ...r, months: normalizeMonthsByCurrentLabels(raw) };
-        })
+        incomingRows.length
+          ? incomingRows.map((r) => ({
+              ...r,
+              months: normalizeIncomingRowMonths((r.months ?? {}) as Record<string, unknown>, labels, alias),
+            }))
+          : DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }))
       );
-      setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
-      setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
-      setTestReportImages(value.testReportImages ?? []);
     }
-    hadValueRef.current = now;
-    // 僅在「父層 value 由無到有」時灌入草稿（例如登入後載入）；避免每次父層物件參考變動就覆寫本地編輯。
+
+    setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
+    setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
+    setTestReportImages(value.testReportImages ?? []);
+    // 依草稿內容指紋同步：登入後載入、或父層合併新草稿時可覆寫本地（bound 列仍由下方 effect 維持列結構）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [valueFingerprint, draftHydrated, projectStartDate, projectEndDate, normalizedBoundItems.length]);
 
   useEffect(() => {
     if (!hasBoundItems) return;
@@ -468,9 +499,9 @@ export default function ScheduleCheckpointsForm({
   }, [rows, monthLabels.join(",")]);
 
   useEffect(() => {
-    if (!onChange) return;
+    if (!onChange || !draftHydrated) return;
     onChange({ rows, kpis, notes, testReportImages });
-  }, [rows, kpis, notes, testReportImages, onChange]);
+  }, [rows, kpis, notes, testReportImages, onChange, draftHydrated]);
 
   const toggleMonth = (rowIdx: number, month: string) => {
     setRows((prev) => {

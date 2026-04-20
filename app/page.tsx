@@ -783,6 +783,29 @@ async function buildDraftPayload(input: unknown): Promise<unknown> {
   return out;
 }
 
+/** 草稿 POST：遇冷啟／暫時性錯誤時重試；小 payload 時使用 keepalive 降低切換分頁被瀏覽器中止的機率 */
+async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Response> {
+  const serialized = JSON.stringify(body);
+  const useKeepalive = serialized.length > 0 && serialized.length < 55_000;
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    last = await fetch("/api/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: serialized,
+      credentials: "include",
+      keepalive: useKeepalive,
+    });
+    if (last.ok) return last;
+    const retry =
+      attempt < maxAttempts - 1 &&
+      (last.status === 502 || last.status === 503 || last.status === 504 || last.status === 0);
+    if (!retry) return last;
+    await new Promise((r) => setTimeout(r, 1600));
+  }
+  return last!;
+}
+
 function formatApiErrorForAlert(prefix: string, err: unknown): string {
   const e = (err || {}) as {
     error?: string;
@@ -826,6 +849,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const lastAutoPreviewKeyRef = useRef<string>("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showSidebarHint, setShowSidebarHint] = useState(true);
+  const [showIdleModal, setShowIdleModal] = useState(false);
+  const lastActivityRef = useRef(Date.now());
 
   const refreshMyApplications = useCallback(() => {
     fetch("/api/applications/me", { credentials: "include" })
@@ -841,6 +866,24 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   useEffect(() => {
     refreshMyApplications();
   }, [refreshMyApplications]);
+
+  const IDLE_MS = 15 * 60 * 1000;
+  useEffect(() => {
+    if (isPlanLocked || !draftLoaded) return;
+    const bump = () => {
+      lastActivityRef.current = Date.now();
+      setShowIdleModal(false);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "wheel"] as const;
+    events.forEach((ev) => window.addEventListener(ev, bump, { passive: true }));
+    const id = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= IDLE_MS) setShowIdleModal(true);
+    }, 30_000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, bump));
+      window.clearInterval(id);
+    };
+  }, [isPlanLocked, draftLoaded]);
 
   useEffect(() => {
     const syncSidebarByViewport = () => {
@@ -990,11 +1033,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     setIsSaving(true);
     try {
       const draftPayload = (await buildDraftPayload(formData)) as ApplicationFormData;
-      const res = await fetch('/api/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData: draftPayload }),
-      });
+      const res = await postDraftWithRetry({ formData: draftPayload });
       if (!res.ok) {
         const err = await res.json().catch(async () => ({ error: await res.text().catch(() => "草稿儲存失敗") }));
         alert(`草稿儲存失敗：${err?.error || "未知錯誤"}`);
@@ -1014,9 +1053,9 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   };
 
   const handleSaveDraft = async (opts?: { autoDownload?: boolean }): Promise<boolean> => {
-    setStatusToast("草稿儲存中");
     const ok = await saveDraftCore();
     if (!ok) return false;
+    setStatusToast("草稿已儲存");
     if (opts?.autoDownload) {
       await handleGeneratePdf({ download: true, openPreview: true });
     }
@@ -1222,6 +1261,52 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
   return (
     <div className="min-h-screen bg-[#fafafa] font-sans text-slate-800 flex flex-col">
+      {isSaving && (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-6"
+          role="alertdialog"
+          aria-live="assertive"
+          aria-busy="true"
+          aria-label="草稿儲存中"
+        >
+          <div className="pointer-events-auto max-w-md rounded-2xl bg-white px-8 py-10 shadow-xl text-center space-y-4 border border-slate-100">
+            <div className="text-3xl" aria-hidden>
+              ⏳
+            </div>
+            <p className="text-lg font-semibold text-slate-800">草稿儲存中，請稍候...</p>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              （您可以先喝口茶🍵稍作休息或進行別的工作稍後再回來繼續喔）
+            </p>
+          </div>
+        </div>
+      )}
+      {showIdleModal && !isPlanLocked && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="idle-modal-title"
+        >
+          <div className="pointer-events-auto max-w-lg rounded-2xl bg-amber-50 border-2 border-amber-300 px-8 py-8 shadow-xl space-y-4">
+            <h2 id="idle-modal-title" className="text-lg font-bold text-amber-900">
+              ⚠️ 您已閒置一段時間，為避免資料遺失，請先點擊儲存草稿。
+            </h2>
+            <p className="text-sm text-amber-900/90 leading-relaxed">
+              系統偵測到您超過 15 分鐘未操作。若您剛完成編輯，請儲存草稿後再離開或休息。
+            </p>
+            <button
+              type="button"
+              className="w-full rounded-xl bg-amber-600 px-4 py-3 text-white font-medium hover:bg-amber-700"
+              onClick={() => {
+                lastActivityRef.current = Date.now();
+                setShowIdleModal(false);
+              }}
+            >
+              我知道了
+            </button>
+          </div>
+        </div>
+      )}
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center shadow-sm sticky top-0 z-50">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-sm">K</div>
@@ -1706,15 +1791,19 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                     onChange={(next) => setFormData((p) => ({ ...p, expectedBenefits: next }))}
                   />
                 )}
-                {activeTab === 6 && (
-                  <ScheduleCheckpointsForm
-                    projectStartDate={formData.projectStartDate}
-                    projectEndDate={formData.projectEndDate}
-                    boundWorkItems={scheduleBoundWorkItems}
-                    value={formData.scheduleCheckpoints || undefined}
-                    onChange={(next) => setFormData((p) => ({ ...p, scheduleCheckpoints: next }))}
-                  />
-                )}
+                {activeTab === 6 &&
+                  (draftLoaded ? (
+                    <ScheduleCheckpointsForm
+                      draftHydrated={draftLoaded}
+                      projectStartDate={formData.projectStartDate}
+                      projectEndDate={formData.projectEndDate}
+                      boundWorkItems={scheduleBoundWorkItems}
+                      value={formData.scheduleCheckpoints || undefined}
+                      onChange={(next) => setFormData((p) => ({ ...p, scheduleCheckpoints: next }))}
+                    />
+                  ) : (
+                    <div className="py-16 text-center text-slate-500 text-sm">載入草稿中，請稍候…</div>
+                  ))}
                 {activeTab === 7 && (
                   <HumanBudgetRequirementsForm
                     companyName={formData.companyName}

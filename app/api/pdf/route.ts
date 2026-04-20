@@ -2382,7 +2382,7 @@ export async function POST(req: Request) {
         ["2.消耗性器材及原材料費", "", "", "", String(consumablesTotal), consumablesTotal && grandTotal ? ((consumablesTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["3.研發設備使用費", "", "", "", String(equipmentTotal), equipmentTotal && grandTotal ? ((equipmentTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
         ["4.研發設備維護費", "", "", "", "", ""],
-        ["5.技術移轉費", "", "", "", "", ""],
+        ["5.技術引進及委託研究費", "", "", "", "", ""],
         ["合 計", "", "", "", String(grandTotal), "100%"],
       ];
     };
@@ -3489,9 +3489,10 @@ export async function POST(req: Request) {
       "(1) 技術或智慧財產權購買費": 446,
       "(2) 委託研究費": 426,
       "(3) 委託勞務費": 406,
-      "小計_技轉": 386,
-      "合計": 364,
-      "百分比": 338,
+      "(4)委託設計費": 386,
+      "小計_技轉": 366,
+      "合計": 344,
+      "百分比": 318,
     };
     const pickY = (r: { subject: string; item: string }) => {
       if (r.subject.includes("1.") && r.item.includes("計畫人員")) return yMap["計畫人員"];
@@ -3503,6 +3504,7 @@ export async function POST(req: Request) {
       if (r.subject.startsWith("5.") && r.item.includes("(1)")) return yMap["(1) 技術或智慧財產權購買費"];
       if (r.subject.startsWith("5.") && r.item.includes("(2)")) return yMap["(2) 委託研究費"];
       if (r.subject.startsWith("5.") && r.item.includes("(3)")) return yMap["(3) 委託勞務費"];
+      if (r.subject.startsWith("5.") && r.item.includes("(4)")) return yMap["(4)委託設計費"];
       if (r.subject.startsWith("5.") && r.item.includes("小計")) return yMap["小計_技轉"];
       if (r.subject === "合計") return yMap["合計"];
       if (r.subject === "百分比") return yMap["百分比"];

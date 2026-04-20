@@ -5,6 +5,7 @@ import {
   Role,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { withPrismaRetry } from "@/lib/prismaRetry";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -18,26 +19,28 @@ export async function ensureApplicantDbUser(email: string, name?: string | null)
     throw new Error("Missing email");
   }
 
-  const existing = await prisma.user.findFirst({
-    where: { email: { equals: trimmed, mode: "insensitive" } },
-  });
+  return withPrismaRetry(async () => {
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: trimmed, mode: "insensitive" } },
+    });
 
-  if (existing) {
-    if (name && name !== existing.name) {
-      return prisma.user.update({
-        where: { id: existing.id },
-        data: { name },
-      });
+    if (existing) {
+      if (name && name !== existing.name) {
+        return prisma.user.update({
+          where: { id: existing.id },
+          data: { name },
+        });
+      }
+      return existing;
     }
-    return existing;
-  }
 
-  return prisma.user.create({
-    data: {
-      email: trimmed,
-      name: name ?? null,
-      role: Role.USER,
-    },
+    return prisma.user.create({
+      data: {
+        email: trimmed,
+        name: name ?? null,
+        role: Role.USER,
+      },
+    });
   });
 }
 
@@ -74,46 +77,48 @@ export async function upsertApplicationFromDraftSave(input: {
   const periodYear = parsePeriodYearFromForm(formData);
   const description = summarySnippet(formData);
 
-  const existing = await prisma.application.findUnique({
-    where: { driveProjectFolderId },
-  });
+  return withPrismaRetry(async () => {
+    const existing = await prisma.application.findUnique({
+      where: { driveProjectFolderId },
+    });
 
-  if (existing) {
-    if (existing.applicantUserId !== applicantUserId) {
-      const err = new Error("Forbidden");
-      (err as Error & { status?: number }).status = 403;
-      throw err;
-    }
+    if (existing) {
+      if (existing.applicantUserId !== applicantUserId) {
+        const err = new Error("Forbidden");
+        (err as Error & { status?: number }).status = 403;
+        throw err;
+      }
 
-    const data: Prisma.ApplicationUpdateInput = {
-      title: title ?? undefined,
-      ...(periodYear != null ? { periodYear } : {}),
-      ...(description != null ? { description } : {}),
-    };
+      const data: Prisma.ApplicationUpdateInput = {
+        title: title ?? undefined,
+        ...(periodYear != null ? { periodYear } : {}),
+        ...(description != null ? { description } : {}),
+      };
 
-    if (existing.status === ApplicationStatus.DRAFT) {
+      if (existing.status === ApplicationStatus.DRAFT) {
+        return prisma.application.update({
+          where: { id: existing.id },
+          data: { ...data, status: ApplicationStatus.DRAFT },
+        });
+      }
+
+      // 已送件或其他狀態：不覆寫 status，僅更新可讀摘要欄位
       return prisma.application.update({
         where: { id: existing.id },
-        data: { ...data, status: ApplicationStatus.DRAFT },
+        data,
       });
     }
 
-    // 已送件或其他狀態：不覆寫 status，僅更新可讀摘要欄位
-    return prisma.application.update({
-      where: { id: existing.id },
-      data,
+    return prisma.application.create({
+      data: {
+        applicantUserId,
+        driveProjectFolderId,
+        title,
+        periodYear: periodYear ?? undefined,
+        description: description ?? undefined,
+        status: ApplicationStatus.DRAFT,
+      },
     });
-  }
-
-  return prisma.application.create({
-    data: {
-      applicantUserId,
-      driveProjectFolderId,
-      title,
-      periodYear: periodYear ?? undefined,
-      description: description ?? undefined,
-      status: ApplicationStatus.DRAFT,
-    },
   });
 }
 
@@ -143,64 +148,66 @@ export async function finalizeApplicationOnSubmit(input: {
   const periodYear = parsePeriodYearFromForm(formData);
   const description = summarySnippet(formData);
 
-  const existing = await prisma.application.findUnique({
-    where: { driveProjectFolderId },
+  return withPrismaRetry(async () => {
+    const existing = await prisma.application.findUnique({
+      where: { driveProjectFolderId },
+    });
+
+    if (existing && existing.applicantUserId !== applicantUserId) {
+      const err = new Error("Forbidden");
+      (err as Error & { status?: number }).status = 403;
+      throw err;
+    }
+
+    if (existing?.status === ApplicationStatus.SUBMITTED) {
+      return existing;
+    }
+
+    const fromStatus = existing?.status ?? null;
+
+    const app = existing
+      ? await prisma.application.update({
+          where: { id: existing.id },
+          data: {
+            status: ApplicationStatus.SUBMITTED,
+            title: title ?? existing.title,
+            ...(periodYear != null ? { periodYear } : {}),
+            ...(description != null ? { description } : {}),
+          },
+        })
+      : await prisma.application.create({
+          data: {
+            applicantUserId,
+            driveProjectFolderId,
+            status: ApplicationStatus.SUBMITTED,
+            title,
+            periodYear: periodYear ?? undefined,
+            description: description ?? undefined,
+          },
+        });
+
+    await prisma.applicationStatusHistory.create({
+      data: {
+        applicationId: app.id,
+        fromStatus,
+        toStatus: ApplicationStatus.SUBMITTED,
+        changedByUserId: applicantUserId,
+        note: "申請者於線上系統確認送件",
+      },
+    });
+
+    await prisma.applicationAttachment.create({
+      data: {
+        applicationId: app.id,
+        uploadedByUserId: applicantUserId,
+        driveFileId: pdfDriveFileId,
+        fileName: pdfDisplayName,
+        mimeType: "application/pdf",
+        sizeBytes: BigInt(Math.max(0, pdfByteLength)),
+        category: AttachmentCategory.DRAFT_PDF,
+      },
+    });
+
+    return app;
   });
-
-  if (existing && existing.applicantUserId !== applicantUserId) {
-    const err = new Error("Forbidden");
-    (err as Error & { status?: number }).status = 403;
-    throw err;
-  }
-
-  if (existing?.status === ApplicationStatus.SUBMITTED) {
-    return existing;
-  }
-
-  const fromStatus = existing?.status ?? null;
-
-  const app = existing
-    ? await prisma.application.update({
-        where: { id: existing.id },
-        data: {
-          status: ApplicationStatus.SUBMITTED,
-          title: title ?? existing.title,
-          ...(periodYear != null ? { periodYear } : {}),
-          ...(description != null ? { description } : {}),
-        },
-      })
-    : await prisma.application.create({
-        data: {
-          applicantUserId,
-          driveProjectFolderId,
-          status: ApplicationStatus.SUBMITTED,
-          title,
-          periodYear: periodYear ?? undefined,
-          description: description ?? undefined,
-        },
-      });
-
-  await prisma.applicationStatusHistory.create({
-    data: {
-      applicationId: app.id,
-      fromStatus,
-      toStatus: ApplicationStatus.SUBMITTED,
-      changedByUserId: applicantUserId,
-      note: "申請者於線上系統確認送件",
-    },
-  });
-
-  await prisma.applicationAttachment.create({
-    data: {
-      applicationId: app.id,
-      uploadedByUserId: applicantUserId,
-      driveFileId: pdfDriveFileId,
-      fileName: pdfDisplayName,
-      mimeType: "application/pdf",
-      sizeBytes: BigInt(Math.max(0, pdfByteLength)),
-      category: AttachmentCategory.DRAFT_PDF,
-    },
-  });
-
-  return app;
 }

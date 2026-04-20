@@ -220,17 +220,22 @@ export async function POST(req: Request) {
 
     const projectFolderId = folderMeta?.project?.id;
     if (projectFolderId && payload?.formData) {
-      const dbUser = await ensureApplicantDbUser(email, session.user?.name);
-      const projectTitle =
-        typeof (payload.formData as Record<string, unknown>)?.projectName === "string"
-          ? String((payload.formData as Record<string, unknown>).projectName).trim()
-          : "";
-      await upsertApplicationFromDraftSave({
-        applicantUserId: dbUser.id,
-        driveProjectFolderId: projectFolderId,
-        projectTitle: projectTitle || "未命名計畫",
-        formData: payload.formData as Record<string, unknown>,
-      });
+      try {
+        const dbUser = await ensureApplicantDbUser(email, session.user?.name);
+        const projectTitle =
+          typeof (payload.formData as Record<string, unknown>)?.projectName === "string"
+            ? String((payload.formData as Record<string, unknown>).projectName).trim()
+            : "";
+        await upsertApplicationFromDraftSave({
+          applicantUserId: dbUser.id,
+          driveProjectFolderId: projectFolderId,
+          projectTitle: projectTitle || "未命名計畫",
+          formData: payload.formData as Record<string, unknown>,
+        });
+      } catch (dbErr) {
+        console.error("[draft.POST] Drive 已寫入，但 Prisma 同步失敗（ensureApplicantDbUser / upsertApplicationFromDraftSave 內含重試）", dbErr);
+        throw dbErr;
+      }
     }
 
     const mail = session?.user?.email?.trim();

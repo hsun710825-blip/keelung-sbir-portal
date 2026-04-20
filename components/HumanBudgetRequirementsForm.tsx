@@ -111,6 +111,31 @@ type EquipmentRow = {
   total: string;
 };
 
+const TECH_INTRO_SUBJECT = "5. 技術引進及委託研究費";
+
+function migrateBudgetRows(rows: BudgetRow[]): BudgetRow[] {
+  if (!rows?.length) return rows;
+  let list = rows.map((r) => ({
+    ...r,
+    subject:
+      r.subject === "5. 技術移轉費" || r.subject.startsWith("5. 技術移轉")
+        ? TECH_INTRO_SUBJECT
+        : r.subject,
+  }));
+  const subIdx = list.findIndex((r) => r.subject.startsWith("5.") && r.item === "小計");
+  const hasDesign = list.some(
+    (r) => r.subject.startsWith("5.") && r.item.includes("(4)") && (r.item.includes("設計") || r.item.includes("設計費"))
+  );
+  if (!hasDesign && subIdx >= 0) {
+    list = [
+      ...list.slice(0, subIdx),
+      { subject: TECH_INTRO_SUBJECT, item: "(4)委託設計費", gov: "", self: "", total: "", ratio: "" },
+      ...list.slice(subIdx),
+    ];
+  }
+  return list;
+}
+
 export type HumanBudgetDraft = {
   govAllocPct: Record<string, string>;
   piProfile: typeof piProfileInit;
@@ -232,10 +257,11 @@ export default function HumanBudgetRequirementsForm({
       { subject: "2. 消耗性器材及原材料費", item: "2. 消耗性器材及原材料費", gov: "", self: "", total: "", ratio: "" },
       { subject: "3. 研發設備使用費", item: "3. 研發設備使用費", gov: "", self: "", total: "", ratio: "" },
       { subject: "4. 研發設備維護費", item: "4. 研發設備維護費", gov: "", self: "", total: "", ratio: "" },
-      { subject: "5. 技術移轉費", item: "(1) 技術或智慧財產權購買費", gov: "", self: "", total: "", ratio: "" },
-      { subject: "5. 技術移轉費", item: "(2) 委託研究費", gov: "", self: "", total: "", ratio: "" },
-      { subject: "5. 技術移轉費", item: "(3) 委託勞務費", gov: "", self: "", total: "", ratio: "" },
-      { subject: "5. 技術移轉費", item: "小計", gov: "", self: "", total: "", ratio: "" },
+      { subject: TECH_INTRO_SUBJECT, item: "(1) 技術或智慧財產權購買費", gov: "", self: "", total: "", ratio: "" },
+      { subject: TECH_INTRO_SUBJECT, item: "(2) 委託研究費", gov: "", self: "", total: "", ratio: "" },
+      { subject: TECH_INTRO_SUBJECT, item: "(3) 委託勞務費", gov: "", self: "", total: "", ratio: "" },
+      { subject: TECH_INTRO_SUBJECT, item: "(4)委託設計費", gov: "", self: "", total: "", ratio: "" },
+      { subject: TECH_INTRO_SUBJECT, item: "小計", gov: "", self: "", total: "", ratio: "" },
       { subject: "合計", item: "合計", gov: "", self: "", total: "", ratio: "" },
       { subject: "百分比", item: "百分比", gov: "", self: "", total: "", ratio: "100%" },
     ],
@@ -270,7 +296,7 @@ export default function HumanBudgetRequirementsForm({
     setPiProjects(value.piProjects);
     setTeam(value.team);
     setManpowerStats(value.manpowerStats);
-    setBudgetRows(value.budgetRows);
+    setBudgetRows(migrateBudgetRows(value.budgetRows));
     setPersonnelCosts(value.personnelCosts);
     setConsultantCosts(value.consultantCosts);
     setConsumables(value.consumables);
@@ -378,9 +404,10 @@ export default function HumanBudgetRequirementsForm({
   const idxEquipUse = budgetRows.findIndex((r) => r.subject.startsWith("3.") && r.item.startsWith("3."));
   const idxEquipMaintain = budgetRows.findIndex((r) => r.subject.startsWith("4.") && r.item.startsWith("4."));
 
-  const idxTechBuy = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("購買費"));
-  const idxTechResearch = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("委託研究費"));
-  const idxTechService = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("委託勞務費"));
+  const idxTechBuy = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(1)"));
+  const idxTechResearch = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(2)"));
+  const idxTechService = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(3)"));
+  const idxTechDesign = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(4)"));
 
   const isSubtotalRow = (r: BudgetRow) =>
     (r.subject === "1. 人事費" && r.item === "小計") || (r.subject.startsWith("5.") && r.item === "小計");
@@ -414,7 +441,8 @@ export default function HumanBudgetRequirementsForm({
     const a = getGovSelf(idxTechBuy);
     const b = getGovSelf(idxTechResearch);
     const c = getGovSelf(idxTechService);
-    return { gov: a.gov + b.gov + c.gov, self: a.self + b.self + c.self };
+    const d = getGovSelf(idxTechDesign);
+    return { gov: a.gov + b.gov + c.gov + d.gov, self: a.self + b.self + c.self + d.self };
   })();
 
   const getRowGovSelf = (idx: number) => {
@@ -449,7 +477,17 @@ export default function HumanBudgetRequirementsForm({
     return { gov, self, total: gov + self };
   };
 
-  const leafIdxs = [idxPersonnel, idxConsultant, idxConsumables, idxEquipUse, idxEquipMaintain, idxTechBuy, idxTechResearch, idxTechService].filter((i) => i >= 0);
+  const leafIdxs = [
+    idxPersonnel,
+    idxConsultant,
+    idxConsumables,
+    idxEquipUse,
+    idxEquipMaintain,
+    idxTechBuy,
+    idxTechResearch,
+    idxTechService,
+    idxTechDesign,
+  ].filter((i) => i >= 0);
   const leaf = leafIdxs.map((i) => getRowGovSelf(i));
   const grandGov = leaf.reduce((acc, r) => acc + r.gov, 0);
   const grandSelf = leaf.reduce((acc, r) => acc + r.self, 0);
