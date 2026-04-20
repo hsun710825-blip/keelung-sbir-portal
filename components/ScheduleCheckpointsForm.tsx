@@ -54,6 +54,7 @@ type ProgressRow = {
 };
 
 type KpiRow = {
+  id?: string;
   code: string;
   description: string;
   period: string;
@@ -120,6 +121,30 @@ function normalizeKpiPeriod(k: KpiRow): KpiRow {
   const m = k?.period?.match(/^(\d+)\/(\d+)~(\d+)\/(\d+)$/);
   if (m) return { ...k, periodStartYear: m[1], periodStartMonth: m[2], periodEndYear: m[3], periodEndMonth: m[4] };
   return k;
+}
+
+function normalizeKpiRow(input: unknown, fallbackId: string): KpiRow {
+  const raw = (input && typeof input === "object" ? (input as Partial<KpiRow>) : {}) as Partial<KpiRow>;
+  const safe = normalizeKpiPeriod({
+    id: typeof raw.id === "string" && raw.id.trim() ? raw.id : fallbackId,
+    code: typeof raw.code === "string" ? raw.code : "",
+    description: typeof raw.description === "string" ? raw.description : "",
+    period: typeof raw.period === "string" ? raw.period : "",
+    weight: typeof raw.weight === "string" ? raw.weight : "0",
+    staffCode: typeof raw.staffCode === "string" ? raw.staffCode : "",
+    workKey: typeof raw.workKey === "string" ? raw.workKey : "",
+    periodStartYear: typeof raw.periodStartYear === "string" ? raw.periodStartYear : undefined,
+    periodStartMonth: typeof raw.periodStartMonth === "string" ? raw.periodStartMonth : undefined,
+    periodEndYear: typeof raw.periodEndYear === "string" ? raw.periodEndYear : undefined,
+    periodEndMonth: typeof raw.periodEndMonth === "string" ? raw.periodEndMonth : undefined,
+  });
+  return safe;
+}
+
+function normalizeKpiList(input: unknown[]): KpiRow[] {
+  return (input ?? [])
+    .map((k, idx) => normalizeKpiRow(k, `kpi-${idx + 1}`))
+    .filter((k) => Boolean(k?.id));
 }
 
 type TestReportImage = { id: string; name: string; size: string; url: string };
@@ -321,7 +346,7 @@ export default function ScheduleCheckpointsForm({
     }));
   });
 
-  const [kpis, setKpis] = useState<KpiRow[]>(() => (value?.kpis ?? []).map(normalizeKpiPeriod));
+  const [kpis, setKpis] = useState<KpiRow[]>(() => normalizeKpiList((value?.kpis ?? []) as unknown[]));
 
   const [notes, setNotes] = useState(() => ({
     progressNote: value?.notes?.progressNote ?? "",
@@ -372,7 +397,7 @@ export default function ScheduleCheckpointsForm({
       );
     }
 
-    setKpis((value.kpis ?? []).map(normalizeKpiPeriod));
+    setKpis(normalizeKpiList((value.kpis ?? []) as unknown[]));
     setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
     setTestReportImages(value.testReportImages ?? []);
     // 依草稿內容指紋同步：登入後載入、或父層合併新草稿時可覆寫本地（bound 列仍由下方 effect 維持列結構）
@@ -445,6 +470,7 @@ export default function ScheduleCheckpointsForm({
           derived.push({
             key: `${workKey}|${mk}`,
             row: {
+              id: `${workKey}|${mk}`,
               workKey,
               code: String(workName || workKey),
               description: "",
@@ -453,7 +479,7 @@ export default function ScheduleCheckpointsForm({
               periodStartMonth: hasYmo ? mo : undefined,
               periodEndYear: hasYmo ? y : undefined,
               periodEndMonth: hasYmo ? mo : undefined,
-              weight: "",
+              weight: "0",
               staffCode: "",
             },
           });
@@ -489,17 +515,18 @@ export default function ScheduleCheckpointsForm({
           prevMap.set(`${wk}|${mk}`, k);
         }
 
-        return derived.map((d) => {
+        const next = derived.map((d) => {
           const existing = prevMap.get(d.key);
-          if (!existing) return d.row;
+          if (!existing) return normalizeKpiRow(d.row, d.row.id || d.key);
           return {
-            ...d.row,
+            ...normalizeKpiRow(d.row, d.row.id || d.key),
             workKey: existing?.workKey ?? d.row.workKey,
             description: existing?.description ?? "",
-            weight: existing?.weight ?? "",
+            weight: existing?.weight ?? "0",
             staffCode: existing?.staffCode ?? "",
           };
         });
+        return normalizeKpiList(next as unknown[]);
       });
       prevDerivedCountRef.current = derived.length;
     } catch (err) {
@@ -521,7 +548,7 @@ export default function ScheduleCheckpointsForm({
         const months = row?.months ?? {};
         const cur = months?.[month] ?? { progress: false, checkpoint: false };
         next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, progress: !cur?.progress } } };
-        return next;
+        return next.filter(Boolean);
       });
     } catch (err) {
       console.error("[ScheduleCheckpointsForm] toggleMonth failed", err);
@@ -537,7 +564,7 @@ export default function ScheduleCheckpointsForm({
         const months = row?.months ?? {};
         const cur = months?.[month] ?? { progress: false, checkpoint: false };
         next[rowIdx] = { ...row, months: { ...months, [month]: { ...cur, checkpoint: !cur?.checkpoint } } };
-        return next;
+        return next.filter(Boolean);
       });
     } catch (err) {
       console.error("[ScheduleCheckpointsForm] toggleCheckpoint failed", err);
@@ -724,12 +751,14 @@ export default function ScheduleCheckpointsForm({
                   </tr>
                 </thead>
                 <tbody>
-                  {kpis.map((k, idx) => (
-                    <tr key={`${k.code}-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
+                  {(kpis ?? []).map((k, idx) => {
+                    const safeK = normalizeKpiRow(k, `kpi-${idx + 1}`);
+                    return (
+                    <tr key={safeK?.id || `${safeK?.code || "kpi"}-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                       <td className="p-2 border-r border-gray-200 font-medium text-gray-700">
                         <input
                           className="w-full bg-transparent outline-none px-2 py-1 text-center"
-                          value={k.code}
+                          value={safeK?.code || ""}
                           placeholder="A1"
                           readOnly
                         />
@@ -737,10 +766,10 @@ export default function ScheduleCheckpointsForm({
                       <td className="p-2 border-r border-gray-200 text-left">
                         <input
                           className="w-full bg-transparent outline-none px-2 py-1"
-                          value={k.description}
+                          value={safeK?.description || ""}
                           onChange={(e) => {
                             const next = [...kpis];
-                            next[idx] = { ...next[idx], description: e.target.value };
+                            next[idx] = { ...safeK, description: e.target.value };
                             setKpis(next);
                           }}
                           placeholder="例如：完成原型驗證（功能X、效能Y、通過測試Z）並提供測試報告"
@@ -750,11 +779,11 @@ export default function ScheduleCheckpointsForm({
                         <div className="flex flex-wrap items-center gap-1 justify-center">
                           <select
                             className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
-                            value={k.periodStartYear ?? ""}
+                            value={safeK?.periodStartYear ?? ""}
                             disabled
                             onChange={(e) => {
                               const v = e.target.value;
-                              const next = kpis.map((r, i) => i === idx ? { ...r, periodStartYear: v, period: buildKpiPeriod(r, v, r.periodStartMonth, r.periodEndYear, r.periodEndMonth) } : r);
+                              const next = kpis.map((r, i) => i === idx ? { ...normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), periodStartYear: v, period: buildKpiPeriod(normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), v, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartMonth, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndYear, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndMonth) } : normalizeKpiRow(r, `kpi-${i + 1}`));
                               setKpis(next);
                             }}
                           >
@@ -766,11 +795,11 @@ export default function ScheduleCheckpointsForm({
                           <span className="text-gray-400">/</span>
                           <select
                             className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
-                            value={k.periodStartMonth ?? ""}
+                            value={safeK?.periodStartMonth ?? ""}
                             disabled
                             onChange={(e) => {
                               const v = e.target.value;
-                              const next = kpis.map((r, i) => i === idx ? { ...r, periodStartMonth: v, period: buildKpiPeriod(r, r.periodStartYear, v, r.periodEndYear, r.periodEndMonth) } : r);
+                              const next = kpis.map((r, i) => i === idx ? { ...normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), periodStartMonth: v, period: buildKpiPeriod(normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartYear, v, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndYear, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndMonth) } : normalizeKpiRow(r, `kpi-${i + 1}`));
                               setKpis(next);
                             }}
                           >
@@ -782,11 +811,11 @@ export default function ScheduleCheckpointsForm({
                           <span className="text-gray-400">~</span>
                           <select
                             className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
-                            value={k.periodEndYear ?? ""}
+                            value={safeK?.periodEndYear ?? ""}
                             disabled
                             onChange={(e) => {
                               const v = e.target.value;
-                              const next = kpis.map((r, i) => i === idx ? { ...r, periodEndYear: v, period: buildKpiPeriod(r, r.periodStartYear, r.periodStartMonth, v, r.periodEndMonth) } : r);
+                              const next = kpis.map((r, i) => i === idx ? { ...normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), periodEndYear: v, period: buildKpiPeriod(normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartYear, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartMonth, v, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndMonth) } : normalizeKpiRow(r, `kpi-${i + 1}`));
                               setKpis(next);
                             }}
                           >
@@ -798,11 +827,11 @@ export default function ScheduleCheckpointsForm({
                           <span className="text-gray-400">/</span>
                           <select
                             className="border border-gray-200 rounded bg-white text-xs py-1 outline-none"
-                            value={k.periodEndMonth ?? ""}
+                            value={safeK?.periodEndMonth ?? ""}
                             disabled
                             onChange={(e) => {
                               const v = e.target.value;
-                              const next = kpis.map((r, i) => i === idx ? { ...r, periodEndMonth: v, period: buildKpiPeriod(r, r.periodStartYear, r.periodStartMonth, r.periodEndYear, v) } : r);
+                              const next = kpis.map((r, i) => i === idx ? { ...normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), periodEndMonth: v, period: buildKpiPeriod(normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`), normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartYear, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodStartMonth, normalizeKpiRow(r, safeK.id || `kpi-${idx + 1}`).periodEndYear, v) } : normalizeKpiRow(r, `kpi-${i + 1}`));
                               setKpis(next);
                             }}
                           >
@@ -817,10 +846,10 @@ export default function ScheduleCheckpointsForm({
                         <input
                           type="number"
                           className="w-full bg-transparent outline-none px-2 py-1 text-right"
-                          value={k.weight}
+                          value={safeK?.weight ?? "0"}
                           onChange={(e) => {
                             const next = [...kpis];
-                            next[idx] = { ...next[idx], weight: e.target.value };
+                            next[idx] = { ...safeK, weight: e.target.value || "0" };
                             setKpis(next);
                           }}
                           placeholder="0"
@@ -829,10 +858,10 @@ export default function ScheduleCheckpointsForm({
                       <td className="p-2 border-r border-gray-200">
                         <input
                           className="w-full bg-transparent outline-none px-2 py-1 text-center"
-                          value={k.staffCode}
+                          value={safeK?.staffCode || ""}
                           onChange={(e) => {
                             const next = [...kpis];
-                            next[idx] = { ...next[idx], staffCode: e.target.value };
+                            next[idx] = { ...safeK, staffCode: e.target.value };
                             setKpis(next);
                           }}
                           placeholder="例如：1 / 2 / A / PM"
@@ -843,9 +872,9 @@ export default function ScheduleCheckpointsForm({
                           type="button"
                           disabled={false}
                           onClick={() => {
-                            const mk = getMonthKeyFromKpi(k);
+                            const mk = getMonthKeyFromKpi(safeK);
                             if (!mk) return;
-                            const workKey = k?.workKey ?? extractWorkCode(k?.code ?? "");
+                            const workKey = safeK?.workKey ?? extractWorkCode(safeK?.code ?? "");
                             setRows((prev) =>
                               (prev ?? []).map((r) => {
                                 if (r?.id !== workKey) return r;
@@ -862,7 +891,8 @@ export default function ScheduleCheckpointsForm({
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                   <tr className="bg-gray-50 font-medium">
                     <td className="px-4 py-3 border-r border-gray-200">合計</td>
                     <td className="px-4 py-3 border-r border-gray-200 text-left text-gray-500">─</td>
