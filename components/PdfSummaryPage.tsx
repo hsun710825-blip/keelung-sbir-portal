@@ -329,17 +329,17 @@ const TreeBranch = ({
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 156,
-            marginVertical: 20,
-            padding: 12,
+            width: 182,
+            marginVertical: 18,
+            padding: 14,
             borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
           }}
         >
-          <Text style={{ fontSize: 13.5, fontWeight: "bold", marginBottom: 6, lineHeight: 1.25 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: 11.5, color: "#444", lineHeight: 1.25 }}>
+          <Text style={{ fontSize: 15, fontWeight: "bold", marginBottom: 7, lineHeight: 1.3 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: 12.8, color: "#444", lineHeight: 1.3 }}>
             {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
           </Text>
         </View>
@@ -381,8 +381,8 @@ function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
 
 function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
-    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 22, paddingVertical: 18 }}>
-      <View style={{ padding: 20, flexDirection: "column", width: "100%" }}>
+    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 8, paddingVertical: 8 }}>
+      <View style={{ padding: 12, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>
@@ -394,8 +394,8 @@ export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
   // Use a larger, dynamic canvas-like page to prevent truncation and keep sharp rendering.
-  const pageWidth = Math.max(1190, Math.min(2400, 360 + depth * 290));
-  const pageHeight = Math.max(842, Math.min(3200, 240 + leaves * 120));
+  const pageWidth = Math.max(1480, Math.min(3000, 420 + depth * 360));
+  const pageHeight = Math.max(980, Math.min(3600, 320 + leaves * 140));
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />

@@ -1237,11 +1237,11 @@ export async function POST(req: Request) {
     const colCount = headers.length;
     const totalW = contentW;
     const w = colWidths && colWidths.length === colCount ? colWidths : Array.from({ length: colCount }, () => totalW / colCount);
-    const baseRowH = 16;
-    const cellLineH = 14;
+    const baseRowH = 18;
+    const cellLineH = 15;
     const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, 9.5).slice(0, 4));
     const maxHeaderLines = Math.max(1, ...headerLinesByCol.map((ls) => ls.length || 1));
-    const headerH = 10 + maxHeaderLines * cellLineH;
+    const headerH = 12 + maxHeaderLines * cellLineH;
     const rowHeights: number[] = [];
     for (const row of rows) {
       let maxLines = 1;
@@ -1251,7 +1251,7 @@ export async function POST(req: Request) {
       }
       rowHeights.push(
         opts?.topDownText
-          ? 10 + maxLines * cellLineH // top-down 模式需預留上下邊距，避免壓線/超框
+          ? 12 + maxLines * cellLineH // top-down 模式需預留上下邊距，避免壓線/超框
           : baseRowH + (maxLines - 1) * cellLineH
       );
     }
@@ -1284,7 +1284,7 @@ export async function POST(req: Request) {
         const cellLines = wrapText(row[c] ?? "", cw - 8, font, 9).slice(0, 30);
         const numLines = cellLines.length || 1;
         const contentH = numLines * cellLineH;
-        const topPad = opts?.topDownText ? 5 : Math.max(5, (rh - contentH) / 2);
+        const topPad = opts?.topDownText ? 6 : Math.max(6, (rh - contentH) / 2);
         for (let li = 0; li < cellLines.length; li++) {
           const yy =
             opts?.topDownText
@@ -2088,24 +2088,27 @@ export async function POST(req: Request) {
       };
       const leafCount = countLeaves(root);
       const requiresDedicatedPage = leafCount > 8 || root.children.length > 3;
-      const treeBlockHeight = requiresDedicatedPage ? 640 : 420;
-      ensure(requiresDedicatedPage ? 9999 : treeBlockHeight + 20);
+      const baseTreeBlockHeight = requiresDedicatedPage ? 680 : 460;
+      ensure(requiresDedicatedPage ? 9999 : baseTreeBlockHeight + 20);
       if (requiresDedicatedPage) drawSubHeading("樹枝圖（完整顯示）");
 
       const treePdfBytes = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
       const treeDoc = await PDFDocument.load(treePdfBytes);
       const treePage = treeDoc.getPage(0);
       const embeddedTree = await pdfDoc.embedPage(treePage);
-      const boxX = M.left + 6;
-      const boxW = contentW - 12;
-      const boxY = y - treeBlockHeight;
+      const boxX = M.left;
+      const boxW = contentW;
       const tw = treePage.getSize().width;
       const th = treePage.getSize().height;
-      const fitScale = Math.min(boxW / Math.max(1, tw), treeBlockHeight / Math.max(1, th));
-      const drawW = Math.max(1, tw * fitScale);
-      const drawH = Math.max(1, th * fitScale);
+      const widthScale = boxW / Math.max(1, tw);
+      const widthFillHeight = Math.max(1, th * widthScale);
+      const treeBlockHeight = Math.max(baseTreeBlockHeight, widthFillHeight + 14);
+      if (!requiresDedicatedPage) ensure(treeBlockHeight + 20);
+      const boxY = y - treeBlockHeight;
+      const drawW = boxW;
+      const drawH = Math.max(1, th * widthScale);
       cur.drawPage(embeddedTree, {
-        x: boxX + (boxW - drawW) / 2,
+        x: boxX,
         y: boxY + (treeBlockHeight - drawH) / 2,
         width: drawW,
         height: drawH,
@@ -2132,7 +2135,7 @@ export async function POST(req: Request) {
       { item: "委託研究", target: "", budget: "", content: "", period: "" },
       { item: "委託勞務", target: "", budget: "", content: "", period: "" },
     ]).map((r) => [asString(r.item), asString(r.target), asString(r.budget), asString(r.content), asString(r.period)]);
-    drawTableFlow(["項目", "對象", "經費（仟元）", "內容", "起迄期間"], ttRows, [contentW * 0.15, contentW * 0.2, contentW * 0.16, contentW * 0.29, contentW * 0.2]);
+    drawTableFlow(["項目", "對象", "經費（仟元）", "內容", "起迄期間"], ttRows, [contentW * 0.24, contentW * 0.18, contentW * 0.14, contentW * 0.26, contentW * 0.18]);
     drawPara(
       "註：各項引進計畫及委託研究計畫均應將明確對象註明，並附契約書、協議書或專利證書（如為外文請附中譯本）等相關必要資料影本，如尚未完成簽約，須附雙方簽署之合作意願書（備忘錄）。"
     );
@@ -2396,6 +2399,16 @@ export async function POST(req: Request) {
     const buildBudgetRows = (): string[][] => {
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
       if (fromForm.length && fromForm.some((r) => asString(r.gov).trim() || asString(r.self).trim() || asString(r.total).trim())) {
+        const govSumFromRows = fromForm
+          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
+          .reduce((s, r) => s + num(r.gov), 0);
+        const selfSumFromRows = fromForm
+          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
+          .reduce((s, r) => s + num(r.self), 0);
+        const totalSumFromRows = fromForm
+          .filter((r) => asString(r.subject) !== "合計" && asString(r.subject) !== "百分比")
+          .reduce((s, r) => s + num(r.total), 0);
+        const computedGrand = totalSumFromRows || grandTotal;
         let lastSubject = "";
         return fromForm.map((r) => {
           const subjectRaw = asString(r.subject).replace(/\s+/g, "");
@@ -2412,13 +2425,17 @@ export async function POST(req: Request) {
               r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
               r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
               r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
-              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) : ""),
+              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) :
+              r.subject === "合計" ? String(govSumFromRows) :
+              r.subject === "百分比" ? (computedGrand ? `${((govSumFromRows / computedGrand) * 100).toFixed(1)}%` : "") : ""),
             asString(r.self) ||
               (r.item === "計畫人員" ? "0" :
               r.item === "顧問" ? "0" :
               r.subject.startsWith("4.") ? String(maintenanceSelf) :
               r.item.includes("(1)") || r.item.includes("(2)") || r.item.includes("(3)") || r.item.includes("(4)") ? "0" :
-              r.item === "小計" && r.subject.includes("5.") ? "0" : ""),
+              r.item === "小計" && r.subject.includes("5.") ? "0" :
+              r.subject === "合計" ? String(selfSumFromRows) :
+              r.subject === "百分比" ? (computedGrand ? `${((selfSumFromRows / computedGrand) * 100).toFixed(1)}%` : "") : ""),
             asString(r.total) ||
               (r.item === "計畫人員" ? String(personnelTotal) :
               r.item === "顧問" ? String(consultantTotal) :
@@ -2428,7 +2445,9 @@ export async function POST(req: Request) {
               r.item.includes("(2)") ? String(sumTechRows(tech?.research)) :
               r.item.includes("(3)") ? String(sumTechRows(tech?.service)) :
               r.item.includes("(4)") ? String(sumTechRows(tech?.design)) :
-              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) : ""),
+              r.item === "小計" && r.subject.includes("5.") ? String(techTotal) :
+              r.subject === "合計" ? String(computedGrand) :
+              r.subject === "百分比" ? (computedGrand ? "100%" : "") : ""),
             asString(r.ratio) ||
               (() => {
                 const t =
@@ -2443,8 +2462,9 @@ export async function POST(req: Request) {
                   r.item.includes("(3)") ? sumTechRows(tech?.service) :
                   r.item.includes("(4)") ? sumTechRows(tech?.design) :
                   r.item === "小計" && r.subject.includes("5.") ? techTotal :
-                  r.subject.includes("合計") ? grandTotal : 0;
-                return t && grandTotal ? `${((t / grandTotal) * 100).toFixed(1)}%` : "";
+                  r.subject.includes("合計") ? computedGrand :
+                  r.subject === "百分比" ? computedGrand : 0;
+                return t && computedGrand ? `${((t / computedGrand) * 100).toFixed(1)}%` : "";
               })(),
           ];
         });
@@ -2502,13 +2522,15 @@ export async function POST(req: Request) {
       if (exList2.length) {
         drawSubHeading("（三）研發設備使用費（一、已有設備）");
         const exRows = exList2.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
-        drawTableFlow(["設備名稱", "財產編號", "取得金額", "數量", "剩餘年限", "月攤提", "使用月數", "小計"], exRows, Array(8).fill(contentW / 8));
+        const exRowsWithSubtotal = [...exRows, ["小計", "", "", "", "", "", "", String(Math.round(exList2.reduce((s, r) => s + num(r.total), 0)))].map(asString)];
+        drawTableFlow(["設備名稱", "財產編號", "單套帳面價值A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "全程費用概算"], exRowsWithSubtotal, Array(8).fill(contentW / 8));
       }
       const nwList = Array.isArray(eq.new) ? eq.new : [];
       if (nwList.length) {
         drawSubHeading("（三）研發設備使用費（二、計畫新增設備）");
         const nwRows = nwList.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
-        drawTableFlow(["設備名稱", "財產編號", "取得金額", "數量", "剩餘年限", "月攤提", "使用月數", "小計"], nwRows, Array(8).fill(contentW / 8));
+        const nwRowsWithSubtotal = [...nwRows, ["小計", "", "", "", "", "", "", String(Math.round(nwList.reduce((s, r) => s + num(r.total), 0)))].map(asString)];
+        drawTableFlow(["設備名稱", "財產編號", "單套購置金額A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "全程費用概算"], nwRowsWithSubtotal, Array(8).fill(contentW / 8));
       }
       if (exList2.length || nwList.length) {
         drawPara(EQUIPMENT_USE_TABLE_NOTE);
