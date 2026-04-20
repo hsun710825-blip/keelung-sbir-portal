@@ -36,6 +36,78 @@ function draftName(key: string) {
 
 type DriveClient = ReturnType<typeof getDriveOauthClient>;
 
+function normalizeScheduleCheckpointsDraft(input: unknown) {
+  if (!input || typeof input !== "object") return undefined;
+  const raw = input as {
+    rows?: Array<{ id?: unknown; item?: unknown; weight?: unknown; manMonths?: unknown; months?: Record<string, unknown> }>;
+    kpis?: Array<Record<string, unknown>>;
+    notes?: { progressNote?: unknown; kpiNote?: unknown };
+    testReportImages?: Array<{ id?: unknown; name?: unknown; size?: unknown; url?: unknown }>;
+  };
+  const rows = Array.isArray(raw.rows)
+    ? raw.rows
+        .map((r) => {
+          const id = String(r?.id ?? "").trim();
+          if (!id) return null;
+          const item = String(r?.item ?? "").trim();
+          const monthsRaw = r?.months && typeof r.months === "object" ? r.months : {};
+          const months = Object.fromEntries(
+            Object.entries(monthsRaw).map(([k, v]) => {
+              const o = v && typeof v === "object" ? (v as { progress?: unknown; checkpoint?: unknown }) : {};
+              return [k, { progress: !!o.progress, checkpoint: !!o.checkpoint }];
+            })
+          );
+          return {
+            id,
+            item,
+            weight: String(r?.weight ?? ""),
+            manMonths: String(r?.manMonths ?? ""),
+            months,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  const kpis = Array.isArray(raw.kpis)
+    ? raw.kpis.map((k, idx) => ({
+        id: String((k as { id?: unknown })?.id ?? `kpi-${idx + 1}`),
+        code: String((k as { code?: unknown })?.code ?? ""),
+        description: String((k as { description?: unknown })?.description ?? ""),
+        period: String((k as { period?: unknown })?.period ?? ""),
+        weight: String((k as { weight?: unknown })?.weight ?? "0"),
+        staffCode: String((k as { staffCode?: unknown })?.staffCode ?? ""),
+        workKey: String((k as { workKey?: unknown })?.workKey ?? ""),
+        periodStartYear: (k as { periodStartYear?: unknown })?.periodStartYear != null ? String((k as { periodStartYear?: unknown }).periodStartYear) : undefined,
+        periodStartMonth: (k as { periodStartMonth?: unknown })?.periodStartMonth != null ? String((k as { periodStartMonth?: unknown }).periodStartMonth) : undefined,
+        periodEndYear: (k as { periodEndYear?: unknown })?.periodEndYear != null ? String((k as { periodEndYear?: unknown }).periodEndYear) : undefined,
+        periodEndMonth: (k as { periodEndMonth?: unknown })?.periodEndMonth != null ? String((k as { periodEndMonth?: unknown }).periodEndMonth) : undefined,
+      }))
+    : [];
+  const notes = {
+    progressNote: String(raw.notes?.progressNote ?? ""),
+    kpiNote: String(raw.notes?.kpiNote ?? ""),
+  };
+  const testReportImages = Array.isArray(raw.testReportImages)
+    ? raw.testReportImages
+        .map((img, idx) => ({
+          id: String(img?.id ?? `img-${idx + 1}`),
+          name: String(img?.name ?? ""),
+          size: String(img?.size ?? ""),
+          url: String(img?.url ?? ""),
+        }))
+        .filter((img) => !!img.url)
+    : [];
+  return { rows, kpis, notes, testReportImages };
+}
+
+function normalizeDraftFormDataShape(payload: Record<string, unknown>) {
+  const out = { ...payload } as Record<string, unknown>;
+  const formData = (out.formData && typeof out.formData === "object" ? { ...(out.formData as Record<string, unknown>) } : {}) as Record<string, unknown>;
+  const schedule = normalizeScheduleCheckpointsDraft(formData.scheduleCheckpoints);
+  if (schedule) formData.scheduleCheckpoints = schedule;
+  out.formData = formData;
+  return out;
+}
+
 async function findDraftFileId(drive: DriveClient, sid: string) {
   const name = draftName(sid);
   const res = await drive.files.list({
@@ -126,7 +198,8 @@ export async function GET() {
       return NextResponse.json({ ok: true, draft: null, meta: { emailKey, usedFileId: fileId, deleted: true } });
     }
 
-    return NextResponse.json({ ok: true, draft: parsed, meta: { emailKey, usedFileId: fileId, lock } });
+    const normalized = normalizeDraftFormDataShape((parsed as Record<string, unknown>) || {});
+    return NextResponse.json({ ok: true, draft: normalized, meta: { emailKey, usedFileId: fileId, lock } });
     });
   } catch (e) {
     const errObj = e as unknown as {
@@ -158,7 +231,7 @@ export async function POST(req: Request) {
   }
   const { emailKey: key } = getDraftKeysByEmail(email);
   // 進入儲存層前做遞迴字串淨化（XSS 風險降低）。
-  const payload = sanitizeDeepInput({ ...body, updatedAt: new Date().toISOString() });
+  const payload = normalizeDraftFormDataShape(sanitizeDeepInput({ ...body, updatedAt: new Date().toISOString() }) as Record<string, unknown>);
 
   try {
     type SaveResult = {
@@ -172,7 +245,10 @@ export async function POST(req: Request) {
       let parentId = DRIVE_FOLDER_ID;
       let folderMeta: SaveResult["folderMeta"] = null;
       const userFolder = await ensureUserFolder(drive, session);
-      const projectName = sanitizeProjectNameForFolder(payload?.formData?.projectName);
+      const formDataRecord = (payload?.formData && typeof payload.formData === "object"
+        ? (payload.formData as Record<string, unknown>)
+        : {}) as Record<string, unknown>;
+      const projectName = sanitizeProjectNameForFolder(formDataRecord.projectName);
       const projectFolder = await ensureProjectFolder({ drive, userFolderId: userFolder.folderId, projectName });
       parentId = projectFolder.folderId;
       folderMeta = {

@@ -334,13 +334,29 @@ export default function ScheduleCheckpointsForm({
       string,
       { progress: boolean; checkpoint: boolean }
     >;
+    const incomingRows = value?.rows ?? [];
     if (normalizedBoundItems.length > 0) {
-      return normalizedBoundItems.map((w) => ({ ...w, weight: "", manMonths: "", months: { ...emptyM } }));
+      const incomingMap = new Map<string, ProgressRow>();
+      for (const r of incomingRows) {
+        const key = String(r?.id || "").trim();
+        if (key) incomingMap.set(key, r);
+      }
+      return normalizedBoundItems.map((w) => {
+        const fromDraft = incomingMap.get(w.id);
+        const rawMonths = (fromDraft?.months ?? {}) as Record<string, unknown>;
+        return {
+          id: w.id,
+          item: w.item,
+          weight: fromDraft?.weight ?? "",
+          manMonths: fromDraft?.manMonths ?? "",
+          months: normalizeIncomingRowMonths(rawMonths, labels, alias) || { ...emptyM },
+        };
+      });
     }
-    if (!value?.rows?.length) {
+    if (!incomingRows.length) {
       return DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }));
     }
-    return value.rows.map((r) => ({
+    return incomingRows.map((r) => ({
       ...r,
       months: normalizeIncomingRowMonths((r.months ?? {}) as Record<string, unknown>, labels, alias),
     }));
@@ -394,17 +410,33 @@ export default function ScheduleCheckpointsForm({
       { progress: boolean; checkpoint: boolean }
     >;
 
-    if (normalizedBoundItems.length === 0) {
-      const incomingRows = value.rows ?? [];
-      setRows(
-        incomingRows.length
-          ? incomingRows.map((r) => ({
-              ...r,
-              months: normalizeIncomingRowMonths((r.months ?? {}) as Record<string, unknown>, labels, alias),
-            }))
-          : DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }))
-      );
+    const incomingRows = value.rows ?? [];
+    const incomingMap = new Map<string, ProgressRow>();
+    for (const r of incomingRows) {
+      const key = String(r?.id || "").trim();
+      if (key) incomingMap.set(key, r);
     }
+
+    setRows(() => {
+      if (normalizedBoundItems.length > 0) {
+        return normalizedBoundItems.map((w) => {
+          const fromDraft = incomingMap.get(w.id);
+          return {
+            id: w.id,
+            item: w.item,
+            weight: fromDraft?.weight ?? "",
+            manMonths: fromDraft?.manMonths ?? "",
+            months: normalizeIncomingRowMonths((fromDraft?.months ?? {}) as Record<string, unknown>, labels, alias),
+          };
+        });
+      }
+      return incomingRows.length
+        ? incomingRows.map((r) => ({
+            ...r,
+            months: normalizeIncomingRowMonths((r.months ?? {}) as Record<string, unknown>, labels, alias),
+          }))
+        : DEFAULT_PROGRESS_ROWS.map((r) => ({ ...r, months: { ...emptyM } }));
+    });
 
     setKpis(normalizeKpiList((value.kpis ?? []) as unknown[]));
     setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
