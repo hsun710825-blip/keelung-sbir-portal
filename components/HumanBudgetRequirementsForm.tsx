@@ -508,7 +508,7 @@ export default function HumanBudgetRequirementsForm({
         if (key === "total") return fmtInt(personnelSum.total);
         return grandTotal > 0 ? fmtPct((personnelSum.total / grandTotal) * 100) : "0.0";
       }
-      // 技術移轉小計
+      // 技術引進及委託研究費小計
       const s = techSum;
       if (key === "gov") return fmtInt(s.gov);
       if (key === "self") return fmtInt(s.self);
