@@ -329,17 +329,17 @@ const TreeBranch = ({
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 182,
-            marginVertical: 18,
-            padding: 14,
+            width: 196,
+            marginVertical: 16,
+            padding: 16,
             borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
           }}
         >
-          <Text style={{ fontSize: 15, fontWeight: "bold", marginBottom: 7, lineHeight: 1.3 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: 12.8, color: "#444", lineHeight: 1.3 }}>
+          <Text style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8, lineHeight: 1.32 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: 13.5, color: "#444", lineHeight: 1.32 }}>
             {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
           </Text>
         </View>
@@ -381,8 +381,8 @@ function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
 
 function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
-    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 8, paddingVertical: 8 }}>
-      <View style={{ padding: 12, flexDirection: "column", width: "100%" }}>
+    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 6, paddingVertical: 6 }}>
+      <View style={{ padding: 10, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>

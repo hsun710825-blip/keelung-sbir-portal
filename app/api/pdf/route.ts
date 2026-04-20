@@ -2096,8 +2096,9 @@ export async function POST(req: Request) {
       const treeDoc = await PDFDocument.load(treePdfBytes);
       const treePage = treeDoc.getPage(0);
       const embeddedTree = await pdfDoc.embedPage(treePage);
-      const boxX = M.left;
-      const boxW = contentW;
+      const pageW = cur.getSize().width;
+      const boxX = 20;
+      const boxW = Math.max(1, pageW - 40);
       const tw = treePage.getSize().width;
       const th = treePage.getSize().height;
       const widthScale = boxW / Math.max(1, tw);
@@ -2270,7 +2271,11 @@ export async function POST(req: Request) {
     if (kpiTableRows.length) {
       const kpiWeightSum = kpiRows.reduce((s, k) => s + (Number((k as AnyRecord).weight) || 0), 0);
       const kpiRowsWithTotal = [...kpiTableRows, ["合計", "—", "—", `${kpiWeightSum.toFixed(1)}%`, ""]];
-      drawTableFlow(["查核點編號", "查核點KPI量化說明", "起訖時間", "分配權重%", "計畫人員編號"], kpiRowsWithTotal, [contentW * 0.12, contentW * 0.38, contentW * 0.2, contentW * 0.15, contentW * 0.15]);
+      drawTableFlow(
+        ["查核點編號", "查核點KPI量化說明", "起訖時間", "分配權重%", "計畫人員編號"],
+        kpiRowsWithTotal,
+        [contentW * 0.25, contentW * 0.31, contentW * 0.19, contentW * 0.12, contentW * 0.13]
+      );
     }
     drawPara(SCHEDULE_KPI_TABLE_NOTE);
     if (schedule.notes?.progressNote) {
@@ -2521,16 +2526,30 @@ export async function POST(req: Request) {
       const exList2 = Array.isArray(eq.existing) ? eq.existing : [];
       if (exList2.length) {
         drawSubHeading("（三）研發設備使用費（一、已有設備）");
-        const exRows = exList2.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
-        const exRowsWithSubtotal = [...exRows, ["小計", "", "", "", "", "", "", String(Math.round(exList2.reduce((s, r) => s + num(r.total), 0)))].map(asString)];
-        drawTableFlow(["設備名稱", "財產編號", "單套帳面價值A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "全程費用概算"], exRowsWithSubtotal, Array(8).fill(contentW / 8));
+        const exRows = exList2.map((r) => {
+          const countB = Math.max(1, num(r.countB) || 1);
+          const months = Math.max(0, num(r.months));
+          const totalFallback = Math.round(num(r.monthlyFee) * countB * months);
+          const total = asString(r.total) || String(totalFallback || "");
+          return [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), total];
+        });
+        const exSubtotal = Math.round(exRows.reduce((s, r) => s + num(r[7]), 0));
+        const exRowsWithSubtotal = [...exRows, ["小計", "", "", "", "", "", "", String(exSubtotal)].map(asString)];
+        drawTableFlow(["設備名稱", "財產編號", "單套帳面價值A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "小計"], exRowsWithSubtotal, Array(8).fill(contentW / 8));
       }
       const nwList = Array.isArray(eq.new) ? eq.new : [];
       if (nwList.length) {
         drawSubHeading("（三）研發設備使用費（二、計畫新增設備）");
-        const nwRows = nwList.map((r) => [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), asString(r.total)]);
-        const nwRowsWithSubtotal = [...nwRows, ["小計", "", "", "", "", "", "", String(Math.round(nwList.reduce((s, r) => s + num(r.total), 0)))].map(asString)];
-        drawTableFlow(["設備名稱", "財產編號", "單套購置金額A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "全程費用概算"], nwRowsWithSubtotal, Array(8).fill(contentW / 8));
+        const nwRows = nwList.map((r) => {
+          const countB = Math.max(1, num(r.countB) || 1);
+          const months = Math.max(0, num(r.months));
+          const totalFallback = Math.round(num(r.monthlyFee) * countB * months);
+          const total = asString(r.total) || String(totalFallback || "");
+          return [asString(r.name), asString(r.assetId), asString(r.valueA), asString(r.countB), asString(r.remainingYears), asString(r.monthlyFee), asString(r.months), total];
+        });
+        const nwSubtotal = Math.round(nwRows.reduce((s, r) => s + num(r[7]), 0));
+        const nwRowsWithSubtotal = [...nwRows, ["小計", "", "", "", "", "", "", String(nwSubtotal)].map(asString)];
+        drawTableFlow(["設備名稱", "財產編號", "單套購置金額A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "小計"], nwRowsWithSubtotal, Array(8).fill(contentW / 8));
       }
       if (exList2.length || nwList.length) {
         drawPara(EQUIPMENT_USE_TABLE_NOTE);
