@@ -375,9 +375,18 @@ export default function ScheduleCheckpointsForm({
   };
 
   const valueFingerprint = useMemo(() => fingerprintScheduleDraft(value), [value]);
+  const localDraft = useMemo<ScheduleCheckpointsDraft>(
+    () => ({ rows, kpis, notes, testReportImages }),
+    [rows, kpis, notes, testReportImages]
+  );
+  const localFingerprint = useMemo(() => fingerprintScheduleDraft(localDraft), [localDraft]);
+  const lastEmittedFingerprintRef = useRef<string>("");
 
   useLayoutEffect(() => {
     if (!draftHydrated || !value) return;
+    // Parent value often immediately echoes this component's latest onChange payload.
+    // Skip re-hydration for echoed payloads to prevent update ping-pong loops.
+    if (valueFingerprint === lastEmittedFingerprintRef.current) return;
     const labels = getMonthLabelsFromRange(projectStartDate, projectEndDate);
     const alias = buildMonthAliasMap(labels);
     const emptyM = Object.fromEntries(labels.map((m) => [m, { progress: false, checkpoint: false }])) as Record<
@@ -400,6 +409,7 @@ export default function ScheduleCheckpointsForm({
     setKpis(normalizeKpiList((value.kpis ?? []) as unknown[]));
     setNotes(value.notes ?? { progressNote: "", kpiNote: "" });
     setTestReportImages(value.testReportImages ?? []);
+    lastEmittedFingerprintRef.current = valueFingerprint;
     // 依草稿內容指紋同步：登入後載入、或父層合併新草稿時可覆寫本地（bound 列仍由下方 effect 維持列結構）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valueFingerprint, draftHydrated, projectStartDate, projectEndDate, normalizedBoundItems.length]);
@@ -536,8 +546,9 @@ export default function ScheduleCheckpointsForm({
 
   useEffect(() => {
     if (!onChange || !draftHydrated) return;
-    onChange({ rows, kpis, notes, testReportImages });
-  }, [rows, kpis, notes, testReportImages, onChange, draftHydrated]);
+    lastEmittedFingerprintRef.current = localFingerprint;
+    onChange(localDraft);
+  }, [localDraft, localFingerprint, onChange, draftHydrated]);
 
   const toggleMonth = (rowIdx: number, month: string) => {
     try {
