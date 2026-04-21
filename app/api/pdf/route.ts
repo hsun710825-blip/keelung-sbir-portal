@@ -2121,7 +2121,8 @@ export async function POST(req: Request) {
     await drawParaThenImages(asString((plan.formData as AnyRecord)?.feasibility ?? ""), planImgs?.feasibility ?? []);
     drawSubHeading("三、創新性說明");
     await drawParaThenImages(plan.formData?.innovation ?? "", planImgs?.innovation ?? []);
-    drawSubHeading("四、計畫架構與實施方式");
+    ensure(680);
+    drawSubHeading("四、計畫架構與實施方式", 620);
     drawSubHeading("（一）計畫架構", 560);
 
     const treeJson = asString((plan as AnyRecord).architectureTreeJson);
@@ -2185,7 +2186,7 @@ export async function POST(req: Request) {
       { item: "委託研究", target: "", budget: "", content: "", period: "" },
       { item: "委託勞務", target: "", budget: "", content: "", period: "" },
     ]).map((r) => [asString(r.item), asString(r.target), asString(r.budget), asString(r.content), asString(r.period)]);
-    drawTableFlow(["項目", "對象", "經費（仟元）", "內容", "起迄期間"], ttRows, [contentW * 0.24, contentW * 0.18, contentW * 0.14, contentW * 0.26, contentW * 0.18]);
+    drawTableFlow(["項目", "對象", "經費(仟元)", "內容", "起迄期間"], ttRows, [contentW * 0.24, contentW * 0.18, contentW * 0.16, contentW * 0.24, contentW * 0.18]);
     drawAuxText(
       "註：各項引進計畫及委託研究計畫均應將明確對象註明，並附契約書、協議書或專利證書（如為外文請附中譯本）等相關必要資料影本，如尚未完成簽約，須附雙方簽署之合作意願書（備忘錄）。"
     );
@@ -2241,13 +2242,19 @@ export async function POST(req: Request) {
     const monthLabelsAll = (() => {
       if (!monthKeys.length) return ["115/1", "115/2", "115/3", "115/4", "115/5", "115/6", "115/7", "115/8", "115/9", "115/10", "115/11", "115/12"];
       const hasYearMonth = monthKeys.some((k) => /^\d+\/\d+$/.test(k));
-      if (hasYearMonth) return monthKeys;
+      if (hasYearMonth) {
+        return monthKeys.map((k) => {
+          const [yy, mm] = String(k).split("/");
+          const mm2 = String(Number(mm || "0") || 0).padStart(2, "0");
+          return `${yy}/${mm2}`;
+        });
+      }
       // Fallback: source keys are "7月" style; rebuild with ROC year/month from project start.
       const s = parseYmd(startRaw);
       let yRoc = s ? toRocYear(s.y) : "115";
       let m = s ? s.mo : 1;
       return monthKeys.map(() => {
-        const label = `${yRoc}/${m}`;
+        const label = `${yRoc}/${String(m).padStart(2, "0")}`;
         m += 1;
         if (m > 12) {
           m = 1;
@@ -2281,11 +2288,11 @@ export async function POST(req: Request) {
       ];
     });
     if (progressTableRows.length) {
-      const fixedCols = [contentW * 0.32, contentW * 0.08, contentW * 0.1];
+      const fixedCols = [contentW * 0.22, contentW * 0.08, contentW * 0.1];
       const remainW = Math.max(60, contentW - fixedCols.reduce((a, b) => a + b, 0));
       const perMonthW = remainW / Math.max(1, monthLabels.length);
       drawTableFlow(
-        ["月份／進度／工作項目", "計畫權重（%）", "預定投入人月", ...monthLabels],
+        ["工作項目", "權重(%)", "人月", ...monthLabels],
         progressTableRows,
         [...fixedCols, ...Array(monthLabels.length).fill(perMonthW)]
       );
@@ -2490,26 +2497,14 @@ export async function POST(req: Request) {
         const rTech3 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(3)"));
         const rTech4 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(4)"));
         const rTechSubtotal = findRow((r) => r.subject.startsWith("5.") && r.item.includes("小"));
-        const rGrand = findRow((r) => r.subject === "合計" || r.item === "合計");
-        const rPercent = findRow((r) => r.subject === "百分比" || r.item === "百分比");
-        const nonEmpty = (s: string) => String(s ?? "").trim() !== "";
-        const grandCell = (() => {
-          const f = rowFunds(rGrand as AnyRecord | undefined);
-          if (nonEmpty(f.gov) && nonEmpty(f.self) && nonEmpty(f.total)) return [f.gov, f.self, f.total, f.ratio || "100%"];
-          const leafRows = [rPersonnel, rConsultant, rConsumables, rEquipment, rMaintenance, rTechSubtotal]
-            .map((x) => rowFunds(x as AnyRecord | undefined));
-          const gov = leafRows.reduce((s, x) => s + num(x.gov), 0);
-          const self = leafRows.reduce((s, x) => s + num(x.self), 0);
-          const total = leafRows.reduce((s, x) => s + num(x.total), 0);
-          return [String(Math.round(gov)), String(Math.round(self)), String(Math.round(total)), "100%"];
-        })();
-        const percentCell = (() => {
-          const f = rowFunds(rPercent as AnyRecord | undefined);
-          if (nonEmpty(f.gov) || nonEmpty(f.self) || nonEmpty(f.total) || nonEmpty(f.ratio)) {
-            return [f.gov || "0", f.self || "0", f.total || "0", f.ratio || "100%"];
-          }
-          return ["0", "0", "0", "100%"];
-        })();
+        const leafRows = [rPersonnel, rConsultant, rConsumables, rEquipment, rMaintenance, rTechSubtotal]
+          .map((x) => rowFunds(x as AnyRecord | undefined));
+        const grandGov = leafRows.reduce((s, x) => s + num(x.gov), 0);
+        const grandSelf = leafRows.reduce((s, x) => s + num(x.self), 0);
+        const grandTotal2 = leafRows.reduce((s, x) => s + num(x.total), 0);
+        const grandCell = [String(Math.round(grandGov)), String(Math.round(grandSelf)), String(Math.round(grandTotal2)), "100%"];
+        const pct = (part: number) => (grandTotal2 > 0 ? ((part / grandTotal2) * 100).toFixed(1) + "%" : "0.0%");
+        const percentCell = [pct(grandGov), pct(grandSelf), "100.0%", "100%"];
 
         return [
           ["1.人事費", "計畫人員", ...cell(rPersonnel as AnyRecord)],
