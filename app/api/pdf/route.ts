@@ -1187,6 +1187,7 @@ export async function POST(req: Request) {
   const BODY_FONT_SIZE = 14;
   const BODY_LINE_HEIGHT = BODY_FONT_SIZE * 1.15;
   const TABLE_FONT_SIZE = 12;
+  const TABLE_HEADER_FONT_SIZE = 10;
   const TABLE_LINE_HEIGHT = TABLE_FONT_SIZE;
   const lineH = BODY_LINE_HEIGHT;
   let cur = pdfDoc.addPage([pageSize.width, pageSize.height]);
@@ -1271,9 +1272,9 @@ export async function POST(req: Request) {
     const w = colWidths && colWidths.length === colCount ? colWidths : Array.from({ length: colCount }, () => totalW / colCount);
     const baseRowH = 16;
     const cellLineH = TABLE_LINE_HEIGHT;
-    const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_FONT_SIZE).slice(0, 8));
+    const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_HEADER_FONT_SIZE).slice(0, 6));
     const maxHeaderLines = Math.max(1, ...headerLinesByCol.map((ls) => ls.length || 1));
-    const headerH = 12 + maxHeaderLines * cellLineH;
+    const headerH = 10 + maxHeaderLines * cellLineH;
     const rowHeights: number[] = [];
     for (const row of rows) {
       let maxLines = 1;
@@ -1299,7 +1300,7 @@ export async function POST(req: Request) {
           cur.drawText(lines[li]!, {
             x: x + 4,
             y: tableTop - (topPad + (li + 1) * cellLineH),
-            size: TABLE_FONT_SIZE,
+            size: TABLE_HEADER_FONT_SIZE,
             font: fontBold,
             color: rgb(0, 0, 0),
           });
@@ -1329,13 +1330,15 @@ export async function POST(req: Request) {
       x = x0;
       for (let c = 0; c < colCount; c++) {
         const cw = w[c]!;
-        const cellLines = wrapText(row[c] ?? "", cw - 8, font, TABLE_FONT_SIZE).slice(0, 200);
+        const minCellFont = cw < 75 ? 10.5 : TABLE_FONT_SIZE;
+        const cellLines = wrapText(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 200);
         const numLines = cellLines.length || 1;
-        const contentH = numLines * cellLineH;
+        const contentH = numLines * Math.max(10.5, minCellFont);
         const topPad = Math.max(3, (rh - contentH) / 2);
         for (let li = 0; li < cellLines.length; li++) {
-          const yy = y + rh - topPad - (li + 1) * cellLineH;
-          cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: TABLE_FONT_SIZE, font, color: rgb(0, 0, 0) });
+          const lh = Math.max(10.5, minCellFont);
+          const yy = y + rh - topPad - (li + 1) * lh;
+          cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: minCellFont, font, color: rgb(0, 0, 0) });
         }
         x += cw;
       }
@@ -2487,8 +2490,26 @@ export async function POST(req: Request) {
         const rTech3 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(3)"));
         const rTech4 = findRow((r) => r.subject.startsWith("5.") && r.item.includes("(4)"));
         const rTechSubtotal = findRow((r) => r.subject.startsWith("5.") && r.item.includes("小"));
-        const rGrand = findRow((r) => r.subject.includes("合計"));
-        const rPercent = findRow((r) => r.subject.includes("百分比"));
+        const rGrand = findRow((r) => r.subject === "合計" || r.item === "合計");
+        const rPercent = findRow((r) => r.subject === "百分比" || r.item === "百分比");
+        const nonEmpty = (s: string) => String(s ?? "").trim() !== "";
+        const grandCell = (() => {
+          const f = rowFunds(rGrand as AnyRecord | undefined);
+          if (nonEmpty(f.gov) && nonEmpty(f.self) && nonEmpty(f.total)) return [f.gov, f.self, f.total, f.ratio || "100%"];
+          const leafRows = [rPersonnel, rConsultant, rConsumables, rEquipment, rMaintenance, rTechSubtotal]
+            .map((x) => rowFunds(x as AnyRecord | undefined));
+          const gov = leafRows.reduce((s, x) => s + num(x.gov), 0);
+          const self = leafRows.reduce((s, x) => s + num(x.self), 0);
+          const total = leafRows.reduce((s, x) => s + num(x.total), 0);
+          return [String(Math.round(gov)), String(Math.round(self)), String(Math.round(total)), "100%"];
+        })();
+        const percentCell = (() => {
+          const f = rowFunds(rPercent as AnyRecord | undefined);
+          if (nonEmpty(f.gov) || nonEmpty(f.self) || nonEmpty(f.total) || nonEmpty(f.ratio)) {
+            return [f.gov || "0", f.self || "0", f.total || "0", f.ratio || "100%"];
+          }
+          return ["0", "0", "0", "100%"];
+        })();
 
         return [
           ["1.人事費", "計畫人員", ...cell(rPersonnel as AnyRecord)],
@@ -2502,8 +2523,8 @@ export async function POST(req: Request) {
           ["", "(3)委託勞務費", ...cell(rTech3 as AnyRecord)],
           ["", "(4)委託設計費", ...cell(rTech4 as AnyRecord)],
           ["", "小計", ...cell(rTechSubtotal as AnyRecord)],
-          ["合計", "", ...cell(rGrand as AnyRecord)],
-          ["百分比", "", ...cell(rPercent as AnyRecord)],
+          ["合計", "", ...grandCell],
+          ["百分比", "", ...percentCell],
         ];
       }
       const sumTechGovSelf = (rows: Array<Record<string, unknown>> | undefined) =>

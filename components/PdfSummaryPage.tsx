@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
   },
   quantWrap: {
     marginTop: 2,
-    marginLeft: 10,
+    marginLeft: 0,
     width: "100%",
     flexShrink: 0,
   },
@@ -119,6 +119,7 @@ const styles = StyleSheet.create({
   quantTable: {
     border: "1 solid #000",
     width: "100%",
+    alignSelf: "stretch",
   },
   quantRow: {
     flexDirection: "row",
@@ -130,14 +131,16 @@ const styles = StyleSheet.create({
     minHeight: 32,
   },
   quantCell: {
-    flex: 1,
+    flexBasis: "33.333%",
+    maxWidth: "33.333%",
     borderRight: "1 solid #000",
     paddingHorizontal: 6,
     paddingVertical: 2,
     justifyContent: "space-between",
   },
   quantCellLast: {
-    flex: 1,
+    flexBasis: "33.333%",
+    maxWidth: "33.333%",
     paddingHorizontal: 6,
     paddingVertical: 2,
     justifyContent: "space-between",
@@ -155,7 +158,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingBottom: 8,
     marginBottom: 8,
-    marginLeft: 10,
+    marginLeft: 0,
     paddingRight: 10,
     flexDirection: "row",
   },
@@ -177,7 +180,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap" as const,
   },
   quantDeadline: {
-    marginLeft: 10,
+    marginLeft: 0,
     fontSize: 10,
     marginBottom: 2,
     lineHeight: 1.2,
