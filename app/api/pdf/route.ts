@@ -287,36 +287,37 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
   const t = (text || "").replace(/\r\n/g, "\n");
   const lines: string[] = [];
   const paragraphs = t.split("\n");
+  const tokenRegex = /([A-Za-z0-9][A-Za-z0-9\-_/.:%]*|[\u4E00-\u9FFF]|[^\s])/g;
+  const isAsciiWord = (s: string) => /^[A-Za-z0-9][A-Za-z0-9\-_/.:%]*$/.test(s);
   for (const p of paragraphs) {
-    const words = p.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
+    const tokens = p.match(tokenRegex) ?? [];
+    if (!tokens.length) {
       lines.push("");
       continue;
     }
     let line = "";
-    for (const w of words) {
-      const cand = line ? `${line} ${w}` : w;
-      const width = font.widthOfTextAtSize(cand, fontSize);
-      if (width <= maxWidth) {
+    for (const tk of tokens) {
+      const joiner = line && isAsciiWord(line.slice(-1)) && isAsciiWord(tk) ? " " : "";
+      const cand = `${line}${joiner}${tk}`;
+      if (font.widthOfTextAtSize(cand, fontSize) <= maxWidth) {
         line = cand;
-      } else {
-        if (line) lines.push(line);
-        // If a single word is too long, hard break by characters.
-        if (font.widthOfTextAtSize(w, fontSize) <= maxWidth) {
-          line = w;
-        } else {
-          let cur = "";
-          for (const ch of w) {
-            const c2 = cur + ch;
-            if (font.widthOfTextAtSize(c2, fontSize) <= maxWidth) cur = c2;
-            else {
-              if (cur) lines.push(cur);
-              cur = ch;
-            }
-          }
-          line = cur;
+        continue;
+      }
+      if (line) lines.push(line);
+      if (font.widthOfTextAtSize(tk, fontSize) <= maxWidth) {
+        line = tk;
+        continue;
+      }
+      let cur = "";
+      for (const ch of tk) {
+        const c2 = cur + ch;
+        if (font.widthOfTextAtSize(c2, fontSize) <= maxWidth) cur = c2;
+        else {
+          if (cur) lines.push(cur);
+          cur = ch;
         }
       }
+      line = cur;
     }
     if (line) lines.push(line);
   }
@@ -1200,7 +1201,7 @@ export async function POST(req: Request) {
     if (y - need < M.bottom) newPage();
   };
 
-  const drawHeading = (t: string, keepWithNext = 48) => {
+  const drawHeading = (t: string, keepWithNext = 90) => {
     ensure(36 + keepWithNext);
     cur.drawText(t, { x: M.left, y, size: 18, font: fontBold, color: rgb(0, 0, 0) });
     y -= 30;
@@ -1263,7 +1264,7 @@ export async function POST(req: Request) {
     headers: string[],
     rows: string[][],
     colWidths?: number[],
-    opts?: { topDownText?: boolean }
+    _opts?: { topDownText?: boolean }
   ) => {
     const colCount = headers.length;
     const totalW = contentW;
@@ -1280,11 +1281,7 @@ export async function POST(req: Request) {
         const lines = wrapText(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, TABLE_FONT_SIZE);
         maxLines = Math.max(maxLines, Math.min(lines.length, 200));
       }
-      rowHeights.push(
-        opts?.topDownText
-          ? 12 + maxLines * cellLineH // top-down 模式需預留上下邊距，避免壓線/超框
-          : baseRowH + (maxLines - 1) * cellLineH
-      );
+      rowHeights.push(baseRowH + (maxLines - 1) * cellLineH);
     }
     const x0 = M.left;
     let x = x0;
@@ -1335,12 +1332,9 @@ export async function POST(req: Request) {
         const cellLines = wrapText(row[c] ?? "", cw - 8, font, TABLE_FONT_SIZE).slice(0, 200);
         const numLines = cellLines.length || 1;
         const contentH = numLines * cellLineH;
-        const topPad = opts?.topDownText ? 4 : Math.max(3, (rh - contentH) / 2);
+        const topPad = Math.max(3, (rh - contentH) / 2);
         for (let li = 0; li < cellLines.length; li++) {
-          const yy =
-            opts?.topDownText
-              ? y + rh - topPad - (li + 1) * cellLineH
-              : y + topPad + li * cellLineH;
+          const yy = y + rh - topPad - (li + 1) * cellLineH;
           cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: TABLE_FONT_SIZE, font, color: rgb(0, 0, 0) });
         }
         x += cw;
@@ -2142,9 +2136,7 @@ export async function POST(req: Request) {
         return kids.reduce((sum, child) => sum + countLeaves(child), 0);
       };
       const leafCount = countLeaves(root);
-      const requiresDedicatedPage = leafCount > 8 || root.children.length > 3;
-      const baseTreeBlockHeight = requiresDedicatedPage ? 680 : 460;
-      ensure(baseTreeBlockHeight + 20);
+      void leafCount;
 
       const treePdfBytes = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
       const treeDoc = await PDFDocument.load(treePdfBytes);
@@ -2157,7 +2149,7 @@ export async function POST(req: Request) {
       const th = treePage.getSize().height;
       const widthScale = boxW / Math.max(1, tw);
       const widthFillHeight = Math.max(1, th * widthScale);
-      const treeBlockHeight = Math.max(baseTreeBlockHeight, widthFillHeight + 14);
+      const treeBlockHeight = Math.max(120, widthFillHeight + Math.round(BODY_LINE_HEIGHT * 1.5));
       ensure(treeBlockHeight + 20);
       const boxY = y - treeBlockHeight;
       const drawW = boxW;
@@ -2271,9 +2263,12 @@ export async function POST(req: Request) {
         const v = months[k];
         if (v && typeof v === "object") {
           const o = v as { progress?: boolean; checkpoint?: boolean };
-          return o.progress || o.checkpoint ? "[v]" : "";
+          const parts: string[] = [];
+          if (o.progress) parts.push("V");
+          if (o.checkpoint) parts.push("O");
+          return parts.join("/");
         }
-        return v ? "[v]" : "";
+        return v ? "V" : "";
       });
       return [
         asString(row.item ?? row.workItem ?? row.name),
@@ -2308,6 +2303,7 @@ export async function POST(req: Request) {
       );
     }
     drawAuxText(SCHEDULE_PROGRESS_TABLE_NOTE);
+    drawAuxText("符號說明：V=該月份有預定進度；O=該月份有查核點。");
     drawSubHeading("二、預定查核點說明");
     const kpiRows = Array.isArray(schedule.kpis) ? schedule.kpis : [];
     const kpiTableRows = kpiRows.map((k) => {

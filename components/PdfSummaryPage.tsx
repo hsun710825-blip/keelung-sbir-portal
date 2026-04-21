@@ -402,8 +402,8 @@ function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
 
 function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
-    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 6, paddingVertical: 6 }}>
-      <View style={{ padding: 10, flexDirection: "column", width: "100%" }}>
+    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }}>
+      <View style={{ padding: 4, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>
@@ -412,12 +412,12 @@ function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeDa
 
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
-  const scale = 3;
+  const scale = 1;
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
-  // Use a larger, dynamic canvas-like page to prevent truncation and keep sharp rendering.
-  const pageWidth = Math.max(1480, Math.min(9000, (420 + depth * 360) * scale));
-  const pageHeight = Math.max(980, Math.min(10800, (320 + leaves * 140) * scale));
+  // Keep page tightly around actual tree content so PDF embedding can fill width without shrinking the tree body.
+  const pageWidth = Math.max(1100, Math.min(3600, (360 + depth * 280) * scale));
+  const pageHeight = Math.max(720, Math.min(4800, (260 + leaves * 120) * scale));
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
