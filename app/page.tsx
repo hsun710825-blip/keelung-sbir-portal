@@ -654,11 +654,14 @@ function getPlanLockState(formData: Partial<ApplicationFormData>) {
   return { locked, reason };
 }
 
-async function compressImageDataUrl(dataUrl: string): Promise<string> {
+async function compressImageDataUrl(
+  dataUrl: string,
+  opts?: { maxSide?: number; qualitySteps?: number[]; targetChars?: number }
+): Promise<string> {
   const raw = String(dataUrl || "");
   if (!raw.startsWith("data:image/")) return raw;
   // Keep small images untouched.
-  if (raw.length < 900_000) return raw;
+  if (raw.length < 450_000) return raw;
 
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const i = new Image();
@@ -667,7 +670,7 @@ async function compressImageDataUrl(dataUrl: string): Promise<string> {
     i.src = raw;
   });
 
-  const maxSide = 1600;
+  const maxSide = Math.max(900, Math.min(2200, opts?.maxSide ?? 1600));
   const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
   const h = Math.max(1, Math.round(img.height * scale));
@@ -678,10 +681,79 @@ async function compressImageDataUrl(dataUrl: string): Promise<string> {
   if (!ctx) return raw;
   ctx.drawImage(img, 0, 0, w, h);
 
-  let out = canvas.toDataURL("image/jpeg", 0.86);
-  if (out.length > 1_800_000) out = canvas.toDataURL("image/jpeg", 0.76);
-  if (out.length > 2_200_000) out = canvas.toDataURL("image/jpeg", 0.68);
+  const qualitySteps = opts?.qualitySteps ?? [0.84, 0.74, 0.66, 0.58, 0.5, 0.42];
+  let out = raw;
+  for (const q of qualitySteps) {
+    out = canvas.toDataURL("image/jpeg", q);
+    const target = opts?.targetChars ?? 520_000;
+    if (out.length <= target) break;
+  }
   return out;
+}
+
+function stripTransientBlobUrls(input: unknown): unknown {
+  if (Array.isArray(input)) return input.map((v) => stripTransientBlobUrls(v));
+  if (!input || typeof input !== "object") return input;
+  const src = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (k === "url" && typeof v === "string" && v.startsWith("blob:")) {
+      out[k] = "";
+      continue;
+    }
+    out[k] = stripTransientBlobUrls(v);
+  }
+  return out;
+}
+
+function collectDataUrlRefs(input: unknown): Array<{ holder: Record<string, unknown>; key: string }> {
+  const refs: Array<{ holder: Record<string, unknown>; key: string }> = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const rec = node as Record<string, unknown>;
+    for (const [k, v] of Object.entries(rec)) {
+      if (k === "dataUrl" && typeof v === "string" && v.startsWith("data:image/")) {
+        refs.push({ holder: rec, key: k });
+      } else {
+        walk(v);
+      }
+    }
+  };
+  walk(input);
+  return refs;
+}
+
+async function optimizePayloadForTransport<T>(payload: T): Promise<T> {
+  const stripped = stripTransientBlobUrls(payload) as T;
+  let json = JSON.stringify(stripped);
+  // Vercel edge/serverless request body guardrail.
+  const budget = 3_800_000;
+  if (json.length <= budget) return stripped;
+
+  const refs = collectDataUrlRefs(stripped).sort((a, b) => {
+    const al = String(a.holder[a.key] ?? "").length;
+    const bl = String(b.holder[b.key] ?? "").length;
+    return bl - al;
+  });
+  const passes: Array<{ maxSide: number; targetChars: number; qualitySteps: number[] }> = [
+    { maxSide: 1400, targetChars: 420_000, qualitySteps: [0.78, 0.68, 0.58, 0.48] },
+    { maxSide: 1200, targetChars: 320_000, qualitySteps: [0.72, 0.62, 0.52, 0.44] },
+    { maxSide: 1000, targetChars: 240_000, qualitySteps: [0.66, 0.56, 0.48, 0.4] },
+  ];
+  for (const pass of passes) {
+    for (const r of refs) {
+      const cur = String(r.holder[r.key] ?? "");
+      if (!cur.startsWith("data:image/")) continue;
+      r.holder[r.key] = await compressImageDataUrl(cur, pass);
+      json = JSON.stringify(stripped);
+      if (json.length <= budget) return stripped;
+    }
+  }
+  return stripped;
 }
 
 type RawTreeNode = {
@@ -886,6 +958,9 @@ async function buildDraftPayload(input: unknown): Promise<unknown> {
     } else if (k === "dataUrl" && typeof v === "string") {
       // Preserve all applicant-uploaded image content, but compress oversized inline image payloads.
       out[k] = await compressImageDataUrl(v);
+    } else if (k === "url" && typeof v === "string" && v.startsWith("blob:")) {
+      // objectURL 僅在當前瀏覽器 session 有效，存入草稿會造成回載警告與 payload 膨脹。
+      out[k] = "";
     } else {
       out[k] = await buildDraftPayload(v);
     }
@@ -907,6 +982,7 @@ async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Respo
       keepalive: useKeepalive,
     });
     if (last.ok) return last;
+    if (last.status === 413) return last;
     const retry =
       attempt < maxAttempts - 1 &&
       (last.status === 502 || last.status === 503 || last.status === 504 || last.status === 0);
@@ -914,6 +990,16 @@ async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Respo
     await new Promise((r) => setTimeout(r, 1600));
   }
   return last!;
+}
+
+async function buildTransportFormDataPayload(formData: ApplicationFormData): Promise<ApplicationFormData> {
+  const draftPayload = (await buildDraftPayload(formData)) as ApplicationFormData;
+  const optimized = (await optimizePayloadForTransport(draftPayload)) as ApplicationFormData;
+  const serialized = JSON.stringify({ formData: optimized });
+  if (serialized.length > 4_500_000) {
+    throw new Error("草稿內容與圖片總量過大，請減少單張圖片尺寸或張數後再儲存。");
+  }
+  return optimized;
 }
 
 function formatApiErrorForAlert(prefix: string, err: unknown): string {
@@ -1142,9 +1228,13 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     }
     setIsSaving(true);
     try {
-      const draftPayload = (await buildDraftPayload(formData)) as ApplicationFormData;
+      const draftPayload = await buildTransportFormDataPayload(formData);
       const res = await postDraftWithRetry({ formData: draftPayload });
       if (!res.ok) {
+        if (res.status === 413) {
+          alert("草稿儲存失敗：內容或圖片過大（413）。請減少圖片張數或尺寸後重試。");
+          return false;
+        }
         const err = await res.json().catch(async () => ({ error: await res.text().catch(() => "草稿儲存失敗") }));
         alert(`草稿儲存失敗：${err?.error || "未知錯誤"}`);
         return false;
@@ -1203,7 +1293,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     try {
     const saved = await saveDraftCore();
     if (!saved) return;
-    const payloadFormData = (await buildDraftPayload(formData)) as ApplicationFormData;
+    const payloadFormData = await buildTransportFormDataPayload(formData);
     const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
     const filename = `${safeBaseName}.pdf`;
     const res = await fetch('/api/pdf', {
@@ -1310,7 +1400,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       // 先產製 PDF，再送到後端上傳 Drive（需設定 service account 環境變數）
       const saved = await saveDraftCore();
       if (!saved) return;
-      const payloadFormData = (await buildDraftPayload(formData)) as ApplicationFormData;
+      const payloadFormData = await buildTransportFormDataPayload(formData);
 
       const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
       const filename = `${safeBaseName}.pdf`;
