@@ -522,7 +522,7 @@ export default function PlanContentImplementationForm({
               一、背景與說明 (請說明計畫背景、面臨的問題、市場、環境及使用者之需求、未來對客戶層、使用者產生之效益等計畫發展願景)
             </SectionTitle>
             <Label required htmlFor={f("background")}>計畫背景、面臨的問題、市場/環境與使用者需求、發展願景</Label>
-            <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；若需於段落間插入圖片，請在文字中輸入 /p 作為分段標記。</Hint>
+            <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("background")}
               name="background"
@@ -540,7 +540,7 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（一）國內外產業現況與發展方向</SubTitle>
             <Label required htmlFor={f("industryStatus")}>產業現況與趨勢（請註明資料來源）</Label>
-            <Hint>請至少引用 1–3 個可信來源（政府統計/研究報告/論文/產業報告），並說明與本案關聯；需段落內插圖時請輸入 /p。</Hint>
+            <Hint>請至少引用 1–3 個可信來源（政府統計/研究報告/論文/產業報告），並說明與本案關聯；若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("industryStatus")}
               name="industryStatus"
@@ -648,7 +648,7 @@ export default function PlanContentImplementationForm({
               （三）計畫可行性分析 (依計畫屬性與內容，客觀評估分析本案整體之可行性程度，如市場商機、營運模式、系統 技術、商品化 應用或其他優勢等說明。)
             </SubTitle>
             <Label required htmlFor={f("feasibility")}>市場商機、營運模式、系統/技術、商品化/應用或其他優勢</Label>
-            <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策；段落間插圖請使用 /p。</Hint>
+            <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策；若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("feasibility")}
               name="feasibility"
@@ -662,7 +662,7 @@ export default function PlanContentImplementationForm({
           <section className="mb-12 pt-8 border-t border-gray-200">
             <SectionTitle>三、創新性說明</SectionTitle>
             <Label required htmlFor={f("innovation")}>本計畫創意、構想、研發或服務標的之創新性</Label>
-            <Hint>建議聚焦 1–3 個創新點，並用可量測指標描述（例如：成本降低%、效率提升%、準確率）。</Hint>
+            <Hint>建議聚焦 1–3 個創新點，並用可量測指標描述（例如：成本降低%、效率提升%、準確率）。若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("innovation")}
               name="innovation"
@@ -698,7 +698,7 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（二）執行步驟及方法</SubTitle>
             <Label required htmlFor={f("stepsMethod")}>流程、驗證/測試、修正流程與預期結果</Label>
-            <Hint>請以步驟條列：輸入→處理→輸出→驗證；並說明每步驟產出物。若需於段落間插入圖片，請在文字中輸入 /p。</Hint>
+            <Hint>請以步驟條列：輸入→處理→輸出→驗證；並說明每步驟產出物。若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("stepsMethod")}
               name="stepsMethod"
@@ -715,7 +715,7 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（三）技術移轉來源分析：擬與業界、學術界及其他研究機構合作計畫</SubTitle>
             <Label htmlFor={f("techTransferAnalysis")}>合作/引進/委外來源背景與合作方式</Label>
-            <Hint>若有委外/引進，請說明對象背景、合作範圍、交付物與驗收方式；並於表格填入起迄期間與預算。</Hint>
+            <Hint>若有委外/引進，請說明對象背景、合作範圍、交付物與驗收方式；並於表格填入起迄期間與預算。若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
             <Textarea
               id={f("techTransferAnalysis")}
               name="techTransferAnalysis"
@@ -854,7 +854,7 @@ export default function PlanContentImplementationForm({
 
             <div className="mt-6">
               <Label htmlFor={f("ipRisk")}>專利/智慧財產權風險與對策（含檢索分析）</Label>
-              <Hint>請說明是否做專利檢索、是否可能侵權、關鍵智財布局（申請/授權/規避策略）。</Hint>
+              <Hint>請說明是否做專利檢索、是否可能侵權、關鍵智財布局（申請/授權/規避策略）。若需於段落間插入圖片，請於文字中輸入 /p，系統將依序替換為上傳之圖片。未輸入則統一置於段落底部。</Hint>
               <Textarea
                 id={f("ipRisk")}
                 name="ipRisk"
