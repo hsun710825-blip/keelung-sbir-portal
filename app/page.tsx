@@ -1126,6 +1126,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     const summaryOver = Array.from(formData.summary || "").length > 110 || Array.from(formData.innovationFocus || "").length > 110;
     return planTooLong || summaryOver;
   }, [formData]);
+  const executionAdvantageChars = Array.from(formData.executionAdvantage || "").length;
 
   const scheduleBoundWorkItems = useMemo(
     () => buildScheduleBoundWorkItems(formData.planContent),
@@ -1819,7 +1820,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       required
                       hint="建議條列：團隊能力（技術/產業）、資源（資料/設備/合作夥伴）、通路（客戶/場域）、過往成果（案例/專利/認證）。"
                     >
+                      <p className="text-[10pt] text-slate-500 mb-1">💡 提醒：為確保匯出之計畫摘要表符合單頁規範，本段建議字數約 350-400 字以內。</p>
                       <textarea name="executionAdvantage" value={formData.executionAdvantage} onChange={handleInputChange} className="form-textarea h-24" placeholder="例如團隊技術背景、市場通路掌握度等..." />
+                      <p className={`text-xs mt-1 ${executionAdvantageChars > 400 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                        {executionAdvantageChars} 字（建議 350-400 字）
+                      </p>
                     </InputGroup>
                   </div>
 

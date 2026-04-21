@@ -1200,8 +1200,8 @@ export async function POST(req: Request) {
     if (y - need < M.bottom) newPage();
   };
 
-  const drawHeading = (t: string) => {
-    ensure(36);
+  const drawHeading = (t: string, keepWithNext = 48) => {
+    ensure(36 + keepWithNext);
     cur.drawText(t, { x: M.left, y, size: 18, font: fontBold, color: rgb(0, 0, 0) });
     y -= 30;
   };
@@ -1226,6 +1226,19 @@ export async function POST(req: Request) {
       y -= lineH;
     }
     y -= 10;
+  };
+
+  const drawAuxText = (t: string) => {
+    const text = asString(t);
+    if (!text) return;
+    y -= Math.round(BODY_LINE_HEIGHT * 1.5);
+    const lines = wrapText(text, contentW, font, 10);
+    for (const ln of lines) {
+      ensure(14);
+      cur.drawText(ln, { x: M.left, y, size: 10, font, color: rgb(0, 0, 0) });
+      y -= 12;
+    }
+    y -= 8;
   };
 
   const drawKV = (label: string, value: string) => {
@@ -1369,10 +1382,11 @@ export async function POST(req: Request) {
             const boxW = contentW;
             const scale = boxW / Math.max(1, embedded.width);
             const boxH = Math.max(120, embedded.height * scale);
-            ensure(boxH + 14);
+            y -= 12;
+            ensure(boxH + 36);
             const yy = y - boxH;
             cur.drawImage(embedded, { x: M.left, y: yy, width: boxW, height: boxH });
-            y = yy - 10;
+            y = yy - 24;
           } catch {
             // ignore invalid image
           }
@@ -1740,8 +1754,8 @@ export async function POST(req: Request) {
       yy -= rh;
     }
     y = top - totalH - 8;
-    drawPara("註：1. 員工人數請與勞保人數（最近一期「勞保繳費清單之投保人數資料」）相符。");
-    drawPara("    2. 請填寫通訊地址，除註明縣市別外，應有鄉鎮市區與詳細門牌資訊。");
+    drawAuxText("註：1. 員工人數請與勞保人數（最近一期「勞保繳費清單之投保人數資料」）相符。");
+    drawAuxText("註：2. 請填寫通訊地址，除註明縣市別外，應有鄉鎮市區與詳細門牌資訊。");
   };
 
   const drawManpowerStatsTable = (
@@ -2035,8 +2049,7 @@ export async function POST(req: Request) {
         "計畫人年數",
       ],
       pastRows,
-      [contentW * 0.11, contentW * 0.11, contentW * 0.12, contentW * 0.09, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.09],
-      { topDownText: true }
+      [contentW * 0.11, contentW * 0.11, contentW * 0.12, contentW * 0.09, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.08, contentW * 0.09]
     );
   }
   const future = Array.isArray(companyProfile?.futureProjects) ? companyProfile.futureProjects : [];
@@ -2055,8 +2068,7 @@ export async function POST(req: Request) {
     drawTableFlow(
       ["主辦單位", "計畫類別", "欲申請之計畫名稱", "計畫執行期間", "年度", "政府補助款", "計畫總經費", "計畫人年數"],
       futureRows,
-      [contentW * 0.12, contentW * 0.1, contentW * 0.22, contentW * 0.12, contentW * 0.06, contentW * 0.1, contentW * 0.12, contentW * 0.08],
-      { topDownText: true }
+      [contentW * 0.12, contentW * 0.1, contentW * 0.22, contentW * 0.12, contentW * 0.06, contentW * 0.1, contentW * 0.12, contentW * 0.08]
     );
   }
 
@@ -2113,7 +2125,7 @@ export async function POST(req: Request) {
     drawSubHeading("三、創新性說明");
     await drawParaThenImages(plan.formData?.innovation ?? "", planImgs?.innovation ?? []);
     drawSubHeading("四、計畫架構與實施方式");
-    drawSubHeading("（一）計畫架構");
+    drawSubHeading("（一）計畫架構", 560);
 
     const treeJson = asString((plan as AnyRecord).architectureTreeJson);
     const treeObjFromJson = parseTreeFromJson(treeJson);
@@ -2121,7 +2133,8 @@ export async function POST(req: Request) {
     const root = treeObj ? asTreeNode(treeObj) : null;
     const treeText = parseTreeTextFromJson(treeJson) || (root ? flattenTreeText(root) : "");
     if (root || treeText) {
-      drawSubHeading("樹枝圖（含權重與執行單位）");
+      y -= Math.round(BODY_LINE_HEIGHT * 1.5);
+      drawSubHeading("樹枝圖（含權重與執行單位）", 520);
       if (root && root.children && root.children.length > 0) {
       const countLeaves = (n: TreeNodeView): number => {
         const kids = n.children.map(asTreeNode).filter(Boolean) as TreeNodeView[];
@@ -2131,8 +2144,7 @@ export async function POST(req: Request) {
       const leafCount = countLeaves(root);
       const requiresDedicatedPage = leafCount > 8 || root.children.length > 3;
       const baseTreeBlockHeight = requiresDedicatedPage ? 680 : 460;
-      ensure(requiresDedicatedPage ? 9999 : baseTreeBlockHeight + 20);
-      if (requiresDedicatedPage) drawSubHeading("樹枝圖（完整顯示）");
+      ensure(baseTreeBlockHeight + 20);
 
       const treePdfBytes = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
       const treeDoc = await PDFDocument.load(treePdfBytes);
@@ -2146,7 +2158,7 @@ export async function POST(req: Request) {
       const widthScale = boxW / Math.max(1, tw);
       const widthFillHeight = Math.max(1, th * widthScale);
       const treeBlockHeight = Math.max(baseTreeBlockHeight, widthFillHeight + 14);
-      if (!requiresDedicatedPage) ensure(treeBlockHeight + 20);
+      ensure(treeBlockHeight + 20);
       const boxY = y - treeBlockHeight;
       const drawW = boxW;
       const drawH = Math.max(1, th * widthScale);
@@ -2162,12 +2174,12 @@ export async function POST(req: Request) {
       }
     }
 
-    drawPara(
+    drawAuxText(
       "請註明下列資料：\n1.開發計畫中各分項計畫及所開發技術依開發經費占總開發費用之百分比。\n2.執行該分項計畫 開發技術之單位。\n3.若有委託研究或技術引進請一併列入計畫架構。"
     );
     drawSubHeading("（二）執行步驟及方法");
     await drawParaThenImages(asString((plan.formData as AnyRecord)?.implementation ?? (plan.formData?.stepsMethod ?? "")), planImgs?.stepsMethod ?? planImgs?.implementation ?? []);
-    drawPara(
+    drawAuxText(
       "※本項撰寫參考建議\n技術開發：以計畫架構項目用流程圖示逐項說明本計畫進行步驟與實施方式，並有驗證測試、商品化開發之修正流程等之具體性與結果。\n創新服務: 從需求端以服務流、資訊流、金流等等表達計畫架構項目，用流程圖示逐項說明本計畫進行步驟與實施方式，並有試營運 服務模式等機制，以驗證該商業模式、電子商務或服務模式之可行性與結果。"
     );
     drawSubHeading("（三）技術移轉來源分析：擬與業界、學術界及其他研究機構合作計畫");
@@ -2179,7 +2191,7 @@ export async function POST(req: Request) {
       { item: "委託勞務", target: "", budget: "", content: "", period: "" },
     ]).map((r) => [asString(r.item), asString(r.target), asString(r.budget), asString(r.content), asString(r.period)]);
     drawTableFlow(["項目", "對象", "經費（仟元）", "內容", "起迄期間"], ttRows, [contentW * 0.24, contentW * 0.18, contentW * 0.14, contentW * 0.26, contentW * 0.18]);
-    drawPara(
+    drawAuxText(
       "註：各項引進計畫及委託研究計畫均應將明確對象註明，並附契約書、協議書或專利證書（如為外文請附中譯本）等相關必要資料影本，如尚未完成簽約，須附雙方簽署之合作意願書（備忘錄）。"
     );
     drawSubHeading("2.技術及智慧財產權來源對象背景、能力及合作方式說明");
@@ -2295,7 +2307,7 @@ export async function POST(req: Request) {
         [contentW * 0.5, contentW * 0.5]
       );
     }
-    drawPara(SCHEDULE_PROGRESS_TABLE_NOTE);
+    drawAuxText(SCHEDULE_PROGRESS_TABLE_NOTE);
     drawSubHeading("二、預定查核點說明");
     const kpiRows = Array.isArray(schedule.kpis) ? schedule.kpis : [];
     const kpiTableRows = kpiRows.map((k) => {
@@ -2317,7 +2329,7 @@ export async function POST(req: Request) {
         [contentW * 0.25, contentW * 0.31, contentW * 0.19, contentW * 0.12, contentW * 0.13]
       );
     }
-    drawPara(SCHEDULE_KPI_TABLE_NOTE);
+    drawAuxText(SCHEDULE_KPI_TABLE_NOTE);
     if (schedule.notes?.progressNote) {
       drawSubHeading("備註（進度表）");
       drawPara(schedule.notes.progressNote);
@@ -2364,7 +2376,7 @@ export async function POST(req: Request) {
         asString(r.months),
       ]);
       drawTeamProfileTable(teamRows);
-      drawPara(HUMAN_TEAM_TABLE_NOTE);
+      drawAuxText(HUMAN_TEAM_TABLE_NOTE);
     }
     const stats = Array.isArray(humanBudget.manpowerStats) ? humanBudget.manpowerStats : [];
     if (stats.length) {
@@ -2533,7 +2545,7 @@ export async function POST(req: Request) {
       budgetTableRows,
       [contentW * 0.22, contentW * 0.24, contentW * 0.11, contentW * 0.11, contentW * 0.11, contentW * 0.21]
     );
-    drawPara(BUDGET_SUMMARY_TABLE_NOTE);
+    drawAuxText(BUDGET_SUMMARY_TABLE_NOTE);
     if (pcs.length) {
       drawSubHeading("（一）人事費");
       const personnelRows = pcs.map((r) => {
@@ -2551,7 +2563,7 @@ export async function POST(req: Request) {
       drawTableFlow(["姓名", "平均月薪(A)", "人月數(B)", "全程費用概算（A×B）"], consultantRows, [contentW * 0.22, contentW * 0.26, contentW * 0.2, contentW * 0.32]);
     }
     if (pcs.length || ccs.length) {
-      drawPara(PERSONNEL_FEE_TABLE_NOTE);
+      drawAuxText(PERSONNEL_FEE_TABLE_NOTE);
     }
     if (cons.length) {
       drawSubHeading("（二）消耗性器材及原材料費");
@@ -2560,7 +2572,7 @@ export async function POST(req: Request) {
         return [asString(r.item), asString(r.unit), asString(r.qty), asString(r.price), total];
       });
       drawTableFlow(["項目", "單位", "預估需求數量", "預估單價", "全程費用概算"], consRows, [contentW * 0.28, contentW * 0.12, contentW * 0.14, contentW * 0.18, contentW * 0.28]);
-      drawPara(CONSUMABLES_TABLE_NOTE);
+      drawAuxText(CONSUMABLES_TABLE_NOTE);
     }
     if (eq) {
       const exList2 = Array.isArray(eq.existing) ? eq.existing : [];
@@ -2580,7 +2592,7 @@ export async function POST(req: Request) {
         drawTableFlow(["設備名稱", "財產編號", "單套購置金額A", "套數B", "剩餘使用年限Y", "月使用費", "投入月數", "小計"], nwRowsWithSubtotal, Array(8).fill(contentW / 8));
       }
       if (exList2.length || nwList.length) {
-        drawPara(EQUIPMENT_USE_TABLE_NOTE);
+        drawAuxText(EQUIPMENT_USE_TABLE_NOTE);
       }
     }
     if (maintenance.length) {

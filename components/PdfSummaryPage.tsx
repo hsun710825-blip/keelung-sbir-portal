@@ -61,21 +61,26 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   outer: {
     border: "1 solid #000",
-    paddingTop: 8,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingTop: 3,
+    paddingBottom: 3,
+    paddingHorizontal: 4,
+    minHeight: 760,
+  },
+  outerMain: {
+    flex: 1,
+    justifyContent: "space-between",
   },
   companySectionTitle: {
     fontWeight: "bold",
-    marginBottom: 3,
+    marginBottom: 2,
   },
   companyRow: {
     flexDirection: "row",
-    marginBottom: 2,
+    marginBottom: 1,
     alignItems: "flex-start",
   },
   companyLabel: {
@@ -85,25 +90,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionBlock: {
-    marginTop: 6,
+    marginTop: 3,
   },
   secTitle: {
     fontWeight: "bold",
-    marginBottom: 2,
+    marginBottom: 1,
   },
   subTitle: {
-    marginTop: 2,
+    marginTop: 1,
     marginLeft: 10,
     fontWeight: "bold",
+    marginBottom: 2,
   },
   content: {
     marginLeft: 24,
-    marginTop: 2,
+    marginTop: 1,
   },
   quantWrap: {
     marginTop: 2,
     marginLeft: 10,
     width: "100%",
+    flexShrink: 0,
   },
   quantSubTitle: {
     fontWeight: "bold",
@@ -126,13 +133,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRight: "1 solid #000",
     paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingVertical: 2,
     justifyContent: "space-between",
   },
   quantCellLast: {
     flex: 1,
     paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingVertical: 2,
     justifyContent: "space-between",
   },
   quantLabel: {
@@ -145,27 +152,35 @@ const styles = StyleSheet.create({
   },
   noteWrap: {
     width: "100%",
-    marginTop: 4,
-    paddingBottom: 4,
+    marginTop: 12,
+    paddingBottom: 8,
+    marginBottom: 8,
     marginLeft: 10,
     paddingRight: 10,
     flexDirection: "row",
   },
   noteMark: {
-    fontSize: 14,
+    fontSize: 10,
     marginRight: 2,
   },
   noteText: {
-    fontSize: 14,
+    fontSize: 10,
     flex: 1,
     lineHeight: 1.3,
     flexWrap: "wrap",
   },
   footerHelp: {
-    marginTop: 8,
+    marginTop: 12,
     width: "100%",
-    fontSize: 8.6,
-    lineHeight: 1.35,
+    fontSize: 10,
+    lineHeight: 1.25,
+    flexWrap: "wrap" as const,
+  },
+  quantDeadline: {
+    marginLeft: 10,
+    fontSize: 10,
+    marginBottom: 2,
+    lineHeight: 1.2,
     flexWrap: "wrap" as const,
   },
 });
@@ -176,6 +191,8 @@ function n(v: string) {
 }
 
 function SummaryPage({ data }: { data: PdfSummaryPageData }) {
+  const execChars = Array.from(String(data.executionAdvantage || "")).length;
+  const execFontSize = execChars > 520 ? 10 : execChars > 420 ? 11 : 12;
   const quantRows = [
     [
       { label: "1. 增加產值（千元）", value: data.benefitValue },
@@ -200,74 +217,78 @@ function SummaryPage({ data }: { data: PdfSummaryPageData }) {
   ];
 
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" style={styles.page} wrap={false}>
       <Text style={styles.topSmallTitle}>115年度基隆市政府地方產業創新研發推動計畫（地方型 SBIR）</Text>
       <Text style={styles.title}>計畫書摘要表</Text>
       <View style={styles.outer}>
-        <Text style={styles.companySectionTitle}>一、公司簡介</Text>
-        <View style={styles.companyRow}>
-          <Text style={styles.companyLabel}>（一）公司名稱：</Text>
-          <Text style={styles.companyValue}>{data.companyName}</Text>
-        </View>
-        <View style={styles.companyRow}>
-          <Text style={styles.companyLabel}>（二）設立日期：</Text>
-          <Text style={styles.companyValue}>{data.foundingDate}</Text>
-        </View>
-        <View style={styles.companyRow}>
-          <Text style={styles.companyLabel}>（三）負責人：</Text>
-          <Text style={styles.companyValue}>{data.leaderName}</Text>
-        </View>
-        <View style={styles.companyRow}>
-          <Text style={styles.companyLabel}>（四）主要營業項目：</Text>
-          <Text style={styles.companyValue}>{data.mainBusinessItems}</Text>
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <Text style={styles.secTitle}>二、計畫摘要（此摘要內容屬可公開部份）</Text>
-          <Text style={styles.subTitle}>（一）計畫內容摘要（110字以內）</Text>
-          <Text style={styles.content}>{data.summary}</Text>
-          <Text style={styles.subTitle}>（二）計畫創新重點（110字以內）</Text>
-          <Text style={styles.content}>{data.innovationFocus}</Text>
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <Text style={styles.secTitle}>三、執行優勢（請說明公司執行本計畫優勢為何？）</Text>
-          <Text style={styles.content}>{data.executionAdvantage}</Text>
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <Text style={styles.secTitle}>四、預期效益（結案三年內產出）</Text>
-          <View style={styles.quantWrap}>
-            <Text style={styles.quantSubTitle}>（一）量化效益</Text>
-            {data.quantBenefitDeadlineLine ? (
-              <Text style={{ marginLeft: 10, fontSize: 14, marginBottom: 4, lineHeight: 1.15, flexWrap: "wrap" }}>
-                {wrapCJK(data.quantBenefitDeadlineLine)}
-              </Text>
-            ) : null}
-            <View style={styles.quantTable}>
-              {quantRows.map((row, idx) => (
-                <View key={idx} style={idx === quantRows.length - 1 ? styles.quantRowLast : styles.quantRow}>
-                  {row.map((cell, ci) => (
-                    <View key={`${idx}-${ci}`} style={ci === row.length - 1 ? styles.quantCellLast : styles.quantCell}>
-                      <Text style={styles.quantLabel}>{cell.label}</Text>
-                      <Text style={styles.quantValue}>{cell.label ? n(cell.value) : ""}</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
+        <View style={styles.outerMain}>
+          <View>
+            <Text style={styles.companySectionTitle}>一、公司簡介</Text>
+            <View style={styles.companyRow}>
+              <Text style={styles.companyLabel}>（一）公司名稱：</Text>
+              <Text style={styles.companyValue}>{data.companyName}</Text>
             </View>
-            <View style={styles.noteWrap}>
-              <Text style={styles.noteMark}>※</Text>
-              <Text style={styles.noteText}>
-                {wrapCJK(
-                  "增加產值(因本計畫產生之營業額)、額外投入研發費用(不含政府補助款與自籌款)、促成投資額(自行增資或吸引外在投資)、增加就業人數(需加保勞保，若其為計畫編列之待聘人員需聘用超過3個月)"
-                )}
-              </Text>
+            <View style={styles.companyRow}>
+              <Text style={styles.companyLabel}>（二）設立日期：</Text>
+              <Text style={styles.companyValue}>{data.foundingDate}</Text>
             </View>
-            <Text style={styles.subTitle}>
-              {wrapCJK("（二）非量化效益（請以敘述性方式說明，例如對公司的影響等）")}
-            </Text>
-            <Text style={styles.content}>{data.qualitativeBenefits}</Text>
+            <View style={styles.companyRow}>
+              <Text style={styles.companyLabel}>（三）負責人：</Text>
+              <Text style={styles.companyValue}>{data.leaderName}</Text>
+            </View>
+            <View style={styles.companyRow}>
+              <Text style={styles.companyLabel}>（四）主要營業項目：</Text>
+              <Text style={styles.companyValue}>{data.mainBusinessItems}</Text>
+            </View>
+
+            <View style={styles.sectionBlock}>
+              <Text style={styles.secTitle}>二、計畫摘要（此摘要內容屬可公開部份）</Text>
+              <Text style={styles.subTitle}>（一）計畫內容摘要（110字以內）</Text>
+              <Text style={styles.content}>{data.summary}</Text>
+              <Text style={styles.subTitle}>（二）計畫創新重點（110字以內）</Text>
+              <Text style={styles.content}>{data.innovationFocus}</Text>
+            </View>
+
+            <View style={styles.sectionBlock}>
+              <Text style={styles.secTitle}>三、執行優勢（請說明公司執行本計畫優勢為何？）</Text>
+              <Text style={{ ...styles.content, fontSize: execFontSize, lineHeight: 1.2 }}>{data.executionAdvantage}</Text>
+            </View>
+          </View>
+
+          <View style={styles.sectionBlock}>
+            <Text style={styles.secTitle}>四、預期效益（結案三年內產出）</Text>
+            <View style={styles.quantWrap}>
+              <Text style={styles.quantSubTitle}>（一）量化效益</Text>
+              {data.quantBenefitDeadlineLine ? (
+                <Text style={styles.quantDeadline}>
+                  {wrapCJK(data.quantBenefitDeadlineLine)}
+                </Text>
+              ) : null}
+              <View style={styles.quantTable}>
+                {quantRows.map((row, idx) => (
+                  <View key={idx} style={idx === quantRows.length - 1 ? styles.quantRowLast : styles.quantRow}>
+                    {row.map((cell, ci) => (
+                      <View key={`${idx}-${ci}`} style={ci === row.length - 1 ? styles.quantCellLast : styles.quantCell}>
+                        <Text style={styles.quantLabel}>{cell.label}</Text>
+                        <Text style={styles.quantValue}>{cell.label ? n(cell.value) : ""}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <View style={styles.noteWrap}>
+                <Text style={styles.noteMark}>※</Text>
+                <Text style={styles.noteText}>
+                  {wrapCJK(
+                    "增加產值(因本計畫產生之營業額)、額外投入研發費用(不含政府補助款與自籌款)、促成投資額(自行增資或吸引外在投資)、增加就業人數(需加保勞保，若其為計畫編列之待聘人員需聘用超過3個月)"
+                  )}
+                </Text>
+              </View>
+              <Text style={styles.subTitle}>
+                {wrapCJK("（二）非量化效益（請以敘述性方式說明，例如對公司的影響等）")}
+              </Text>
+              <Text style={styles.content}>{data.qualitativeBenefits}</Text>
+            </View>
           </View>
         </View>
       </View>
