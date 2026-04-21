@@ -522,7 +522,7 @@ export default function PlanContentImplementationForm({
               一、背景與說明 (請說明計畫背景、面臨的問題、市場、環境及使用者之需求、未來對客戶層、使用者產生之效益等計畫發展願景)
             </SectionTitle>
             <Label required htmlFor={f("background")}>計畫背景、面臨的問題、市場/環境與使用者需求、發展願景</Label>
-            <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；避免只描述產品功能，請說清楚為何需要做這個計畫。</Hint>
+            <Hint>建議用「痛點→原因→目標→受益者→願景」寫法；若需於段落間插入圖片，請在文字中輸入 /p 作為分段標記。</Hint>
             <Textarea
               id={f("background")}
               name="background"
@@ -540,7 +540,7 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（一）國內外產業現況與發展方向</SubTitle>
             <Label required htmlFor={f("industryStatus")}>產業現況與趨勢（請註明資料來源）</Label>
-            <Hint>請至少引用 1–3 個可信來源（政府統計/研究報告/論文/產業報告），並說明與本案關聯。</Hint>
+            <Hint>請至少引用 1–3 個可信來源（政府統計/研究報告/論文/產業報告），並說明與本案關聯；需段落內插圖時請輸入 /p。</Hint>
             <Textarea
               id={f("industryStatus")}
               name="industryStatus"
@@ -648,7 +648,7 @@ export default function PlanContentImplementationForm({
               （三）計畫可行性分析 (依計畫屬性與內容，客觀評估分析本案整體之可行性程度，如市場商機、營運模式、系統 技術、商品化 應用或其他優勢等說明。)
             </SubTitle>
             <Label required htmlFor={f("feasibility")}>市場商機、營運模式、系統/技術、商品化/應用或其他優勢</Label>
-            <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策。</Hint>
+            <Hint>請把「可行性」寫成可驗證：市場假設、驗證方法、里程碑、風險與對策；段落間插圖請使用 /p。</Hint>
             <Textarea
               id={f("feasibility")}
               name="feasibility"
@@ -698,7 +698,7 @@ export default function PlanContentImplementationForm({
 
             <SubTitle>（二）執行步驟及方法</SubTitle>
             <Label required htmlFor={f("stepsMethod")}>流程、驗證/測試、修正流程與預期結果</Label>
-            <Hint>請以步驟條列：輸入→處理→輸出→驗證；並說明每步驟的產出物（文件/原型/測試報告）。</Hint>
+            <Hint>請以步驟條列：輸入→處理→輸出→驗證；並說明每步驟產出物。若需於段落間插入圖片，請在文字中輸入 /p。</Hint>
             <Textarea
               id={f("stepsMethod")}
               name="stepsMethod"

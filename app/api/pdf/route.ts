@@ -243,6 +243,19 @@ function asString(v: unknown) {
     .replace(/[\uFEFF\u200B-\u200D\u2060]/g, "");
 }
 
+function normalizeStockStatus(raw: unknown) {
+  const s = asString(raw);
+  if (!s) return "";
+  const hasPublic = s.includes("公開發行");
+  const hasPrivate = s.includes("未公開發行");
+  if (hasPublic && hasPrivate) return "未公開發行";
+  if (hasPrivate) return "未公開發行";
+  if (hasPublic) return "公開發行";
+  if (s.includes("上市")) return "上市";
+  if (s.includes("上櫃")) return "上櫃";
+  return s.trim();
+}
+
 function getFormData(body: AnyRecord) {
   return (body.formData as AnyRecord) || {};
 }
@@ -1170,7 +1183,11 @@ export async function POST(req: Request) {
   const pageSize = p2.getSize();
   const M = { left: 60, right: 60, top: 70, bottom: 70 };
   const contentW = pageSize.width - M.left - M.right;
-  const lineH = 14;
+  const BODY_FONT_SIZE = 14;
+  const BODY_LINE_HEIGHT = BODY_FONT_SIZE * 1.15;
+  const TABLE_FONT_SIZE = 12;
+  const TABLE_LINE_HEIGHT = TABLE_FONT_SIZE;
+  const lineH = BODY_LINE_HEIGHT;
   let cur = pdfDoc.addPage([pageSize.width, pageSize.height]);
   let y = pageSize.height - M.top;
 
@@ -1184,30 +1201,31 @@ export async function POST(req: Request) {
   };
 
   const drawHeading = (t: string) => {
-    ensure(30);
-    cur.drawText(t, { x: M.left, y, size: 16, font: fontBold, color: rgb(0, 0, 0) });
-    y -= 26;
+    ensure(36);
+    cur.drawText(t, { x: M.left, y, size: 18, font: fontBold, color: rgb(0, 0, 0) });
+    y -= 30;
   };
 
-  const drawSubHeading = (t: string) => {
-    const lines = wrapText(asString(t), contentW, fontBold, 12.5);
+  const drawSubHeading = (t: string, keepWithNext = 26) => {
+    const lines = wrapText(asString(t), contentW, fontBold, 14.5);
+    ensure(lines.length * 22 + keepWithNext);
     for (const ln of lines) {
       ensure(22);
-      cur.drawText(ln, { x: M.left, y, size: 12.5, font: fontBold, color: rgb(0, 0, 0) });
-      y -= 20;
+      cur.drawText(ln, { x: M.left, y, size: 14.5, font: fontBold, color: rgb(0, 0, 0) });
+      y -= 21;
     }
   };
 
   const drawPara = (t: string) => {
     const text = asString(t);
     if (!text) return;
-    const lines = wrapText(text, contentW, font, 10.5);
+    const lines = wrapText(text, contentW, font, BODY_FONT_SIZE);
     for (const ln of lines) {
       ensure(lineH + 2);
-      cur.drawText(ln, { x: M.left, y, size: 10.5, font, color: rgb(0, 0, 0) });
+      cur.drawText(ln, { x: M.left, y, size: BODY_FONT_SIZE, font, color: rgb(0, 0, 0) });
       y -= lineH;
     }
-    y -= 8;
+    y -= 10;
   };
 
   const drawKV = (label: string, value: string) => {
@@ -1215,17 +1233,17 @@ export async function POST(req: Request) {
     if (!v) return;
     ensure(lineH + 4);
     const l = `${label}：`;
-    cur.drawText(l, { x: M.left, y, size: 10.5, font: fontBold, color: rgb(0, 0, 0) });
-    const lx = M.left + fontBold.widthOfTextAtSize(l, 10.5) + 6;
-    const lines = wrapText(v, contentW - (lx - M.left), font, 10.5);
-    cur.drawText(lines[0] || "", { x: lx, y, size: 10.5, font, color: rgb(0, 0, 0) });
+    cur.drawText(l, { x: M.left, y, size: BODY_FONT_SIZE, font: fontBold, color: rgb(0, 0, 0) });
+    const lx = M.left + fontBold.widthOfTextAtSize(l, BODY_FONT_SIZE) + 6;
+    const lines = wrapText(v, contentW - (lx - M.left), font, BODY_FONT_SIZE);
+    cur.drawText(lines[0] || "", { x: lx, y, size: BODY_FONT_SIZE, font, color: rgb(0, 0, 0) });
     y -= lineH;
     for (let i = 1; i < lines.length; i++) {
       ensure(lineH + 2);
-      cur.drawText(lines[i]!, { x: lx, y, size: 10.5, font, color: rgb(0, 0, 0) });
+      cur.drawText(lines[i]!, { x: lx, y, size: BODY_FONT_SIZE, font, color: rgb(0, 0, 0) });
       y -= lineH;
     }
-    y -= 4;
+    y -= 6;
   };
 
   const drawTableFlow = (
@@ -1237,17 +1255,17 @@ export async function POST(req: Request) {
     const colCount = headers.length;
     const totalW = contentW;
     const w = colWidths && colWidths.length === colCount ? colWidths : Array.from({ length: colCount }, () => totalW / colCount);
-    const baseRowH = 18;
-    const cellLineH = 15;
-    const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, 9.5).slice(0, 4));
+    const baseRowH = 16;
+    const cellLineH = TABLE_LINE_HEIGHT;
+    const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_FONT_SIZE).slice(0, 8));
     const maxHeaderLines = Math.max(1, ...headerLinesByCol.map((ls) => ls.length || 1));
     const headerH = 12 + maxHeaderLines * cellLineH;
     const rowHeights: number[] = [];
     for (const row of rows) {
       let maxLines = 1;
       for (let c = 0; c < colCount; c++) {
-        const lines = wrapText(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, 9);
-        maxLines = Math.max(maxLines, Math.min(lines.length, 30));
+        const lines = wrapText(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, TABLE_FONT_SIZE);
+        maxLines = Math.max(maxLines, Math.min(lines.length, 200));
       }
       rowHeights.push(
         opts?.topDownText
@@ -1255,42 +1273,62 @@ export async function POST(req: Request) {
           : baseRowH + (maxLines - 1) * cellLineH
       );
     }
-    const totalRowH = rowHeights.reduce((a, b) => a + b, 0);
-    ensure(headerH + totalRowH + 30);
-    const tableTop = y;
     const x0 = M.left;
     let x = x0;
-    cur.drawLine({ start: { x: x0, y: tableTop }, end: { x: x0 + totalW, y: tableTop }, thickness: 0.5, color: rgb(0, 0, 0) });
-    for (let c = 0; c < colCount; c++) {
-      const cw = w[c]!;
-      const lines = headerLinesByCol[c] ?? [""];
-      const headerContentH = (lines.length || 1) * cellLineH;
-      const topPad = Math.max(4, (headerH - headerContentH) / 2);
-      for (let li = 0; li < lines.length; li++) {
-        cur.drawText(lines[li]!, { x: x + 4, y: tableTop - (topPad + (li + 1) * cellLineH), size: 9.5, font: fontBold, color: rgb(0, 0, 0) });
+    const drawHeader = () => {
+      ensure(headerH + 2);
+      const tableTop = y;
+      x = x0;
+      cur.drawLine({ start: { x: x0, y: tableTop }, end: { x: x0 + totalW, y: tableTop }, thickness: 0.5, color: rgb(0, 0, 0) });
+      for (let c = 0; c < colCount; c++) {
+        const cw = w[c]!;
+        const lines = headerLinesByCol[c] ?? [""];
+        const headerContentH = (lines.length || 1) * cellLineH;
+        const topPad = Math.max(2, (headerH - headerContentH) / 2);
+        for (let li = 0; li < lines.length; li++) {
+          cur.drawText(lines[li]!, {
+            x: x + 4,
+            y: tableTop - (topPad + (li + 1) * cellLineH),
+            size: TABLE_FONT_SIZE,
+            font: fontBold,
+            color: rgb(0, 0, 0),
+          });
+        }
+        x += cw;
       }
-      x += cw;
-    }
-    y -= headerH;
-    cur.drawLine({ start: { x: x0, y }, end: { x: x0 + totalW, y }, thickness: 0.5, color: rgb(0, 0, 0) });
+      y -= headerH;
+      cur.drawLine({ start: { x: x0, y }, end: { x: x0 + totalW, y }, thickness: 0.5, color: rgb(0, 0, 0) });
+      return tableTop;
+    };
+    let tableTop = drawHeader();
     for (let ri = 0; ri < rows.length; ri++) {
       const row = rows[ri]!;
       const rh = rowHeights[ri] ?? baseRowH;
+      if (y - rh < M.bottom) {
+        const tableBottom = y;
+        x = x0;
+        for (let c = 0; c < colCount; c++) {
+          cur.drawLine({ start: { x, y: tableTop }, end: { x, y: tableBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
+          x += w[c]!;
+        }
+        cur.drawLine({ start: { x: x0 + totalW, y: tableTop }, end: { x: x0 + totalW, y: tableBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
+        newPage();
+        tableTop = drawHeader();
+      }
       y -= rh;
-      ensure(rh + 10);
       x = x0;
       for (let c = 0; c < colCount; c++) {
         const cw = w[c]!;
-        const cellLines = wrapText(row[c] ?? "", cw - 8, font, 9).slice(0, 30);
+        const cellLines = wrapText(row[c] ?? "", cw - 8, font, TABLE_FONT_SIZE).slice(0, 200);
         const numLines = cellLines.length || 1;
         const contentH = numLines * cellLineH;
-        const topPad = opts?.topDownText ? 6 : Math.max(6, (rh - contentH) / 2);
+        const topPad = opts?.topDownText ? 4 : Math.max(3, (rh - contentH) / 2);
         for (let li = 0; li < cellLines.length; li++) {
           const yy =
             opts?.topDownText
               ? y + rh - topPad - (li + 1) * cellLineH
               : y + topPad + li * cellLineH;
-          cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: 9, font, color: rgb(0, 0, 0) });
+          cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: TABLE_FONT_SIZE, font, color: rgb(0, 0, 0) });
         }
         x += cw;
       }
@@ -1303,47 +1341,47 @@ export async function POST(req: Request) {
       x += w[c]!;
     }
     cur.drawLine({ start: { x: x0 + totalW, y: tableTop }, end: { x: x0 + totalW, y: tableBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
-    y -= 28;
+    y -= 18;
   };
 
   const drawParaThenImages = async (text: string, images: unknown[], caption = "說明圖片") => {
-    drawPara(text);
     const imgs = Array.isArray(images) ? (images as UploadedImage[]) : [];
-    if (imgs.length === 0) {
-      drawPara("無");
-      return;
+    const chunks = asString(text)
+      .split("/p")
+      .map((s) => s.trim())
+      .filter((s, idx, arr) => s.length > 0 || idx < arr.length - 1);
+    if (!chunks.length) {
+      if (imgs.length === 0) {
+        drawPara("無");
+        return;
+      }
+    } else {
+      drawPara(chunks[0] ?? "");
     }
-
-    ensure(26);
-    cur.drawText(caption, { x: M.left, y, size: 10.5, font: fontBold, color: rgb(0, 0, 0) });
-    y -= 18;
-
-    const gap = 8;
-    const cols = 2;
-    const cellW = (contentW - gap * (cols - 1)) / cols;
-    const cellH = cellW * 0.68;
-    for (let i = 0; i < imgs.length; i += cols) {
-      const rowImgs = imgs.slice(i, i + cols);
-      ensure(cellH + 12);
-      const rowBottom = y - cellH;
-      for (let c = 0; c < rowImgs.length; c++) {
-        const img = rowImgs[c]!;
+    const maxSteps = Math.max(imgs.length, Math.max(0, chunks.length - 1));
+    for (let i = 0; i < maxSteps; i++) {
+      const img = imgs[i];
+      if (img) {
         const decoded = img.dataUrl ? dataUrlToBytes(img.dataUrl) : null;
-        if (!decoded) continue;
-        try {
-          const embedded = decoded.mime.includes("png") ? await pdfDoc.embedPng(decoded.bytes) : await pdfDoc.embedJpg(decoded.bytes);
-          const scale = Math.min(cellW / embedded.width, cellH / embedded.height);
-          const w = embedded.width * scale;
-          const h = embedded.height * scale;
-          const x = M.left + c * (cellW + gap) + (cellW - w) / 2;
-          const yy = rowBottom + (cellH - h) / 2;
-          cur.drawImage(embedded, { x, y: yy, width: w, height: h });
-        } catch {
-          // ignore invalid image
+        if (decoded) {
+          try {
+            const embedded = decoded.mime.includes("png") ? await pdfDoc.embedPng(decoded.bytes) : await pdfDoc.embedJpg(decoded.bytes);
+            const boxW = contentW;
+            const scale = boxW / Math.max(1, embedded.width);
+            const boxH = Math.max(120, embedded.height * scale);
+            ensure(boxH + 14);
+            const yy = y - boxH;
+            cur.drawImage(embedded, { x: M.left, y: yy, width: boxW, height: boxH });
+            y = yy - 10;
+          } catch {
+            // ignore invalid image
+          }
         }
       }
-      y = rowBottom - 10;
+      const nextText = chunks[i + 1] ?? "";
+      if (nextText.trim()) drawPara(nextText);
     }
+    if (!chunks.length && imgs.length === 0) drawPara("無");
   };
 
   const drawPiProfileTable = (
@@ -1588,9 +1626,13 @@ export async function POST(req: Request) {
     for (let i = 0; i < cols.length; i++) x.push(x[i]! + cols[i]!);
     const lineHCell = 11;
 
-    const stockStatus = asString(c.stockStatus || "");
+    const stockStatus = normalizeStockStatus(c.stockStatus || "");
     const stockItems = ["上市", "上櫃", "公開發行", "未公開發行"];
-    const stockText = stockItems.map((s) => `[${stockStatus.includes(s) ? "v" : " "}] ${s}`).join("   ");
+    const isStockChecked = (name: string) => {
+      if (name === "公開發行" || name === "未公開發行") return stockStatus === name;
+      return stockStatus.includes(name);
+    };
+    const stockText = stockItems.map((s) => `[${isStockChecked(s) ? "v" : " "}] ${s}`).join("   ");
 
     const awards = Array.isArray(c.awards) ? c.awards.filter(Boolean) : [];
     const awardItems = [
@@ -2217,11 +2259,9 @@ export async function POST(req: Request) {
         const v = months[k];
         if (v && typeof v === "object") {
           const o = v as { progress?: boolean; checkpoint?: boolean };
-          const a = o.progress ? "＊" : "";
-          const b = o.checkpoint ? "✓" : "";
-          return a && b ? `${a}${b}` : a || b || "";
+          return o.progress || o.checkpoint ? "[v]" : "";
         }
-        return v ? "＊" : "";
+        return v ? "[v]" : "";
       });
       return [
         asString(row.item ?? row.workItem ?? row.name),
@@ -2648,7 +2688,7 @@ export async function POST(req: Request) {
     drawRightAlignedFit({ page: p4, xRight: 200, y: 587, text: asString(c.capital), font, fontSize: 10.5, maxWidth: 85 });
     drawTextTopLeft({ page: p4, x: 390, y: 587, text: asString(c.mainBusiness), size: 10.5, font });
 
-    const stock = asString(c.stockStatus);
+    const stock = normalizeStockStatus(c.stockStatus);
     if (stock) {
       const map: Record<string, { x: number; y: number }> = {
         上市: { x: 160, y: 559 },

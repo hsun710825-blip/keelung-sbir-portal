@@ -46,20 +46,20 @@ function ensureFontRegistered() {
 const styles = StyleSheet.create({
   page: {
     fontFamily: "NotoSansTC",
-    fontSize: 10.5,
+    fontSize: 14,
     paddingTop: 20,
     paddingBottom: 20,
     paddingHorizontal: 24,
-    lineHeight: 1.32,
+    lineHeight: 1.15,
   },
   topSmallTitle: {
     textAlign: "center",
-    fontSize: 10,
+    fontSize: 14,
     marginBottom: 4,
   },
   title: {
     textAlign: "center",
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 8,
   },
@@ -116,31 +116,31 @@ const styles = StyleSheet.create({
   quantRow: {
     flexDirection: "row",
     borderBottom: "1 solid #000",
-    minHeight: 24,
+    minHeight: 32,
   },
   quantRowLast: {
     flexDirection: "row",
-    minHeight: 24,
+    minHeight: 32,
   },
   quantCell: {
     flex: 1,
     borderRight: "1 solid #000",
-    paddingHorizontal: 3,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     justifyContent: "space-between",
   },
   quantCellLast: {
     flex: 1,
-    paddingHorizontal: 3,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     justifyContent: "space-between",
   },
   quantLabel: {
-    fontSize: 8.8,
+    fontSize: 12,
   },
   quantValue: {
     textAlign: "right",
-    fontSize: 8.8,
+    fontSize: 12,
     fontWeight: "bold",
   },
   noteWrap: {
@@ -152,11 +152,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   noteMark: {
-    fontSize: 10,
+    fontSize: 14,
     marginRight: 2,
   },
   noteText: {
-    fontSize: 10,
+    fontSize: 14,
     flex: 1,
     lineHeight: 1.3,
     flexWrap: "wrap",
@@ -240,7 +240,7 @@ function SummaryPage({ data }: { data: PdfSummaryPageData }) {
           <View style={styles.quantWrap}>
             <Text style={styles.quantSubTitle}>（一）量化效益</Text>
             {data.quantBenefitDeadlineLine ? (
-              <Text style={{ marginLeft: 10, fontSize: 9.2, marginBottom: 2, lineHeight: 1.35, flexWrap: "wrap" }}>
+              <Text style={{ marginLeft: 10, fontSize: 14, marginBottom: 4, lineHeight: 1.15, flexWrap: "wrap" }}>
                 {wrapCJK(data.quantBenefitDeadlineLine)}
               </Text>
             ) : null}
@@ -329,17 +329,17 @@ const TreeBranch = ({
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 196,
-            marginVertical: 16,
-            padding: 16,
+            width: 240,
+            marginVertical: 20,
+            padding: 18,
             borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8, lineHeight: 1.32 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: 13.5, color: "#444", lineHeight: 1.32 }}>
+          <Text style={{ fontSize: 22, fontWeight: "bold", marginBottom: 8, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: 18, color: "#444", lineHeight: 1.2 }}>
             {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
           </Text>
         </View>
@@ -391,11 +391,12 @@ function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeDa
 
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
+  const scale = 3;
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
   // Use a larger, dynamic canvas-like page to prevent truncation and keep sharp rendering.
-  const pageWidth = Math.max(1480, Math.min(3000, 420 + depth * 360));
-  const pageHeight = Math.max(980, Math.min(3600, 320 + leaves * 140));
+  const pageWidth = Math.max(1480, Math.min(9000, (420 + depth * 360) * scale));
+  const pageHeight = Math.max(980, Math.min(10800, (320 + leaves * 140) * scale));
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
