@@ -2096,8 +2096,9 @@ export async function POST(req: Request) {
       const treeDoc = await PDFDocument.load(treePdfBytes);
       const treePage = treeDoc.getPage(0);
       const embeddedTree = await pdfDoc.embedPage(treePage);
+      const pageDims = cur.getSize();
       const boxX = M.left;
-      const boxW = contentW;
+      const boxW = Math.max(1, pageDims.width - M.left - M.right);
       const tw = treePage.getSize().width;
       const th = treePage.getSize().height;
       const widthScale = boxW / Math.max(1, tw);
@@ -2401,16 +2402,31 @@ export async function POST(req: Request) {
     const personnelSub = personnelTotal + consultantTotal;
     const grandTotal = personnelSub + consumablesTotal + equipmentTotal + maintenanceTotal + techTotal;
     const buildBudgetRows = (): string[][] => {
+      const z0 = (v: unknown) => {
+        const s = String(v ?? "").trim();
+        if (!s || s === "undefined" || s === "null") return "0";
+        return s;
+      };
+      const rowFunds = (r: AnyRecord | undefined) => {
+        if (!r || typeof r !== "object") return { gov: "0", self: "0", total: "0", ratio: "" };
+        const gov = z0(r.gov ?? r.subsidy ?? r.subsidyAmount);
+        const self = z0(r.self ?? r.companyFund ?? r.companySelf);
+        const total = z0(r.total);
+        const rr = r.ratio;
+        const ratio =
+          rr === undefined || rr === null || String(rr).trim() === "" || String(rr).trim() === "undefined" || String(rr).trim() === "null"
+            ? ""
+            : String(rr).trim();
+        return { gov, self, total, ratio };
+      };
       const fromForm = Array.isArray(humanBudget.budgetRows) ? humanBudget.budgetRows : [];
       if (fromForm.length) {
         const findRow = (matcher: (r: { subject: string; item: string }) => boolean) =>
           fromForm.find((r) => matcher({ subject: asString(r.subject), item: asString(r.item) }));
-        const cell = (r: { gov?: string; self?: string; total?: string; ratio?: string } | undefined) => [
-          asString(r?.gov),
-          asString(r?.self),
-          asString(r?.total),
-          asString(r?.ratio),
-        ];
+        const cell = (r: AnyRecord | undefined) => {
+          const f = rowFunds(r);
+          return [f.gov, f.self, f.total, f.ratio];
+        };
 
         const rPersonnel = findRow((r) => r.subject.includes("1.") && r.item.includes("計畫人員"));
         const rConsultant = findRow((r) => r.subject.includes("1.") && r.item.includes("顧問"));
@@ -2427,30 +2443,46 @@ export async function POST(req: Request) {
         const rPercent = findRow((r) => r.subject.includes("百分比"));
 
         return [
-          ["1.人事費", "計畫人員", ...cell(rPersonnel)],
-          ["", "顧問", ...cell(rConsultant)],
-          ["", "小計", ...cell(rPersonnelSubtotal)],
-          ["2.消耗性器材及原材料費", "", ...cell(rConsumables)],
-          ["3.研發設備使用費", "", ...cell(rEquipment)],
-          ["4.研發設備維護費", "", ...cell(rMaintenance)],
-          ["5.技術引進及委託研究費", "(1)技術或智慧財產權購買費", ...cell(rTech1)],
-          ["", "(2)委託研究費", ...cell(rTech2)],
-          ["", "(3)委託勞務費", ...cell(rTech3)],
-          ["", "(4)委託設計費", ...cell(rTech4)],
-          ["", "小計", ...cell(rTechSubtotal)],
-          ["合計", "", ...cell(rGrand)],
-          ["百分比", "", ...cell(rPercent)],
+          ["1.人事費", "計畫人員", ...cell(rPersonnel as AnyRecord)],
+          ["", "顧問", ...cell(rConsultant as AnyRecord)],
+          ["", "小計", ...cell(rPersonnelSubtotal as AnyRecord)],
+          ["2.消耗性器材及原材料費", "", ...cell(rConsumables as AnyRecord)],
+          ["3.研發設備使用費", "", ...cell(rEquipment as AnyRecord)],
+          ["4.研發設備維護費", "", ...cell(rMaintenance as AnyRecord)],
+          ["5.技術引進及委託研究費", "(1)技術或智慧財產權購買費", ...cell(rTech1 as AnyRecord)],
+          ["", "(2)委託研究費", ...cell(rTech2 as AnyRecord)],
+          ["", "(3)委託勞務費", ...cell(rTech3 as AnyRecord)],
+          ["", "(4)委託設計費", ...cell(rTech4 as AnyRecord)],
+          ["", "小計", ...cell(rTechSubtotal as AnyRecord)],
+          ["合計", "", ...cell(rGrand as AnyRecord)],
+          ["百分比", "", ...cell(rPercent as AnyRecord)],
         ];
       }
+      const sumTechGovSelf = (rows: Array<Record<string, unknown>> | undefined) =>
+        (rows ?? []).reduce<{ gov: number; self: number }>(
+          (acc, x) => ({ gov: acc.gov + num(x.gov), self: acc.self + num(x.self) }),
+          { gov: 0, self: 0 }
+        );
+      const t1 = sumTechGovSelf(tech?.buy);
+      const t2 = sumTechGovSelf(tech?.research);
+      const t3 = sumTechGovSelf(tech?.service);
+      const t4 = sumTechGovSelf(tech?.design);
+      const tSub = { gov: t1.gov + t2.gov + t3.gov + t4.gov, self: t1.self + t2.self + t3.self + t4.self };
+      const pct = (part: number) => (part && grandTotal ? ((part / grandTotal) * 100).toFixed(1) + "%" : "");
       return [
-        ["1.人事費", "計畫人員", "", "", String(personnelTotal), ""],
-        ["", "顧問", "", "", String(consultantTotal), ""],
-        ["", "小 計", "", "", String(personnelSub), personnelSub && grandTotal ? ((personnelSub / grandTotal) * 100).toFixed(1) + "%" : ""],
-        ["2.消耗性器材及原材料費", "", "", "", String(consumablesTotal), consumablesTotal && grandTotal ? ((consumablesTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
-        ["3.研發設備使用費", "", "", "", String(equipmentTotal), equipmentTotal && grandTotal ? ((equipmentTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
-        ["4.研發設備維護費", "", String(maintenanceGov), String(maintenanceSelf), String(maintenanceTotal), maintenanceTotal && grandTotal ? ((maintenanceTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
-        ["5.技術引進及委託研究費", "", "", "", String(techTotal || ""), techTotal && grandTotal ? ((techTotal / grandTotal) * 100).toFixed(1) + "%" : ""],
+        ["1.人事費", "計畫人員", "0", "0", String(personnelTotal), ""],
+        ["", "顧問", "0", "0", String(consultantTotal), ""],
+        ["", "小 計", "0", "0", String(personnelSub), pct(personnelSub)],
+        ["2.消耗性器材及原材料費", "", "0", "0", String(consumablesTotal), pct(consumablesTotal)],
+        ["3.研發設備使用費", "", "0", "0", String(equipmentTotal), pct(equipmentTotal)],
+        ["4.研發設備維護費", "", String(Math.round(maintenanceGov)), String(Math.round(maintenanceSelf)), String(maintenanceTotal), pct(maintenanceTotal)],
+        ["5.技術引進及委託研究費", "(1)技術或智慧財產權購買費", String(Math.round(t1.gov)), String(Math.round(t1.self)), String(Math.round(t1.gov + t1.self)), ""],
+        ["", "(2)委託研究費", String(Math.round(t2.gov)), String(Math.round(t2.self)), String(Math.round(t2.gov + t2.self)), ""],
+        ["", "(3)委託勞務費", String(Math.round(t3.gov)), String(Math.round(t3.self)), String(Math.round(t3.gov + t3.self)), ""],
+        ["", "(4)委託設計費", String(Math.round(t4.gov)), String(Math.round(t4.self)), String(Math.round(t4.gov + t4.self)), ""],
+        ["", "小計", String(Math.round(tSub.gov)), String(Math.round(tSub.self)), String(Math.round(tSub.gov + tSub.self)), pct(tSub.gov + tSub.self)],
         ["合 計", "", "", "", String(grandTotal), "100%"],
+        ["百分比", "", "", "", "", ""],
       ];
     };
     drawSubHeading("二、經費需求總表");
@@ -2528,7 +2560,10 @@ export async function POST(req: Request) {
       const rows = sec.rows.map((r) => {
         const gov = asString(r.gov);
         const self = asString(r.self);
-        const total = gov || self ? String(num(gov) + num(self)) : "";
+        const totalFromState = asString((r as AnyRecord).total).trim();
+        // 舊草稿可能未存 total：僅在缺欄時以 gov/self 加總（非乘除），新草稿一律寫入 total。
+        const total =
+          totalFromState || (gov.trim() || self.trim() ? String(Math.round(num(gov) + num(self))) : "0");
         return [asString(r.item), gov, self, total];
       });
       drawTableFlow(["項目", "政府補助款", "公司自籌款", "合計"], rows, [contentW * 0.46, contentW * 0.18, contentW * 0.18, contentW * 0.18]);

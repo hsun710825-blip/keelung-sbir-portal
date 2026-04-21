@@ -693,6 +693,7 @@ type RawTreeNode = {
   unit?: string;
   children?: unknown[];
   subItems?: unknown[];
+  parentId?: string;
 };
 type ScheduleBoundWorkItem = { id: string; item: string };
 
@@ -735,20 +736,62 @@ function sanitizePlanContent(input: unknown): unknown {
   return plan;
 }
 
+function coerceArchitectureTreeForSchedule(parsed: unknown): RawTreeNode | null {
+  if (parsed == null) return null;
+  if (Array.isArray(parsed)) {
+    const arr = parsed.filter((x) => x && typeof x === "object") as RawTreeNode[];
+    if (!arr.length) return null;
+    return { id: "__root_array__", text: "", children: arr };
+  }
+  if (typeof parsed !== "object") return null;
+  const root = parsed as RawTreeNode & { nodes?: unknown[]; wbs?: unknown[]; items?: unknown[] };
+  const nestedKids = Array.isArray(root.children)
+    ? root.children
+    : Array.isArray(root.subItems)
+      ? root.subItems
+      : [];
+  if (nestedKids.length) return root;
+  const flatCandidates = [root.nodes, root.wbs, root.items].find((a) => Array.isArray(a) && a.length) as unknown[] | undefined;
+  if (!flatCandidates?.length) return root;
+  const flat = flatCandidates.filter((x) => x && typeof x === "object") as Array<RawTreeNode & { parentId?: string }>;
+  const hasParentLink = flat.some((n) => String(n.parentId ?? "").trim().length > 0);
+  if (!hasParentLink) {
+    return { id: "__root_flat__", text: "", children: flat };
+  }
+  type TNode = RawTreeNode & { id: string; children: RawTreeNode[] };
+  const nodes: TNode[] = flat.map((n, i) => {
+    const id = String(n.id ?? `__gen_${i}`).trim() || `__gen_${i}`;
+    const text = String(n.text ?? n.name ?? "").trim();
+    return { ...n, id, text, children: [] as RawTreeNode[] };
+  });
+  const byId = new Map<string, TNode>();
+  for (const n of nodes) byId.set(String(n.id), n);
+  const roots: TNode[] = [];
+  for (const n of nodes) {
+    const pid = String(n.parentId ?? "").trim();
+    const p = pid ? byId.get(pid) : undefined;
+    if (p) p.children.push(n);
+    else roots.push(n);
+  }
+  if (roots.length === 0) return { id: "__root_rebuilt__", text: "", children: nodes };
+  if (roots.length === 1) return roots[0]!;
+  return { id: "__root_multi__", text: "", children: roots };
+}
+
 function buildScheduleBoundWorkItems(planContent: PlanContentValue | undefined): ScheduleBoundWorkItem[] {
   if (!planContent || typeof planContent !== "object") return [];
   const rawTree = (planContent as { architectureTree?: unknown; formData?: { architectureTreeJson?: string } }).architectureTree;
   const rawTreeJson = (planContent as { formData?: { architectureTreeJson?: string } }).formData?.architectureTreeJson;
-  let tree: RawTreeNode | null = null;
-  if (rawTree && typeof rawTree === "object") tree = rawTree as RawTreeNode;
-  if (!tree && typeof rawTreeJson === "string" && rawTreeJson.trim()) {
+  let parsed: unknown = null;
+  if (rawTree && typeof rawTree === "object") parsed = rawTree;
+  if (!parsed && typeof rawTreeJson === "string" && rawTreeJson.trim()) {
     try {
-      const parsed = JSON.parse(rawTreeJson);
-      if (parsed && typeof parsed === "object") tree = parsed as RawTreeNode;
+      parsed = JSON.parse(rawTreeJson);
     } catch {
-      tree = null;
+      parsed = null;
     }
   }
+  const tree = coerceArchitectureTreeForSchedule(parsed);
   if (!tree) return [];
 
   const normalizeName = (src: unknown, fallback = "") => {
@@ -777,13 +820,36 @@ function buildScheduleBoundWorkItems(planContent: PlanContentValue | undefined):
     return (m?.[1] || "").toUpperCase();
   };
 
+  const allocUniqueCode = (base: string) => {
+    let b = (base || "W").toUpperCase();
+    if (!b) b = "W";
+    let out = b;
+    let n = 0;
+    while (seen.has(out)) {
+      n += 1;
+      out = `${b}~${n}`;
+    }
+    return out;
+  };
+
   const walk = (node: RawTreeNode | null | undefined, siblingIndex: number, parentCode?: string) => {
     if (!node || typeof node !== "object") return;
     const rawLabel = node.text ?? node.name;
+    const isSyntheticRoot =
+      node.id === "__root_array__" || node.id === "__root_flat__" || node.id === "__root_multi__" || node.id === "__root_rebuilt__";
+    if (isSyntheticRoot && !String(rawLabel ?? "").trim()) {
+      const children = Array.isArray(node.children)
+        ? (node.children as RawTreeNode[])
+        : Array.isArray(node.subItems)
+          ? (node.subItems as RawTreeNode[])
+          : [];
+      for (let i = 0; i < children.length; i++) walk(children[i], i, parentCode);
+      return;
+    }
     const explicitCode = extractCode(rawLabel);
     const computedCode = explicitCode || (parentCode ? `${parentCode}${siblingIndex + 1}` : alphaCode(siblingIndex));
-    const code = String(computedCode || "").trim().toUpperCase();
-    if (!code || seen.has(code)) return;
+    const baseCode = String(computedCode || "").trim().toUpperCase() || "W";
+    const code = allocUniqueCode(baseCode);
     seen.add(code);
 
     const fallback = parentCode ? "工作項目" : "分項計畫";

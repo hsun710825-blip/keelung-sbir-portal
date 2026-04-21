@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import {
   BUDGET_SUMMARY_TABLE_NOTE,
   CONSUMABLES_TABLE_NOTE,
@@ -120,6 +120,8 @@ type TechCostRow = {
   item: string;
   gov: string;
   self: string;
+  /** 與 gov+self 一致，供 PDF 逐欄綁定（不在 PDF 端重算） */
+  total?: string;
 };
 
 type EquipmentMaintenanceRow = {
@@ -153,7 +155,20 @@ function migrateBudgetRows(rows: BudgetRow[]): BudgetRow[] {
   return list;
 }
 
-const makeTechCostRow = (item: string, gov = "", self = ""): TechCostRow => ({ item, gov, self });
+function techCostTotal(gov: string, self: string) {
+  const gn = Number(String(gov ?? "").replace(/,/g, "").trim());
+  const sn = Number(String(self ?? "").replace(/,/g, "").trim());
+  const g = Number.isFinite(gn) ? gn : 0;
+  const s = Number.isFinite(sn) ? sn : 0;
+  return String(Math.round(g + s));
+}
+
+const makeTechCostRow = (item: string, gov = "", self = ""): TechCostRow => ({
+  item,
+  gov,
+  self,
+  total: techCostTotal(gov, self),
+});
 
 const defaultTechIntroCosts = () => ({
   buy: [makeTechCostRow("(1) 技術或智慧財產權購買費")],
@@ -360,13 +375,22 @@ export default function HumanBudgetRequirementsForm({
         ? value.equipmentMaintenanceCosts
         : [{ item: "研發設備維護費", gov: value.budgetRows?.find((r) => r.subject.startsWith("4."))?.gov ?? "", self: value.budgetRows?.find((r) => r.subject.startsWith("4."))?.self ?? "" }]
     );
+    const normTech = (rows: TechCostRow[] | undefined) =>
+      (rows ?? []).map((r) => ({ ...r, total: r.total?.trim() ? r.total : techCostTotal(r.gov, r.self) }));
     setTechIntroCosts(
-      value.techIntroCosts ?? {
-        buy: [makeTechCostRow("(1) 技術或智慧財產權購買費", value.budgetRows?.find((r) => r.item.includes("(1)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(1)"))?.self ?? "")],
-        research: [makeTechCostRow("(2) 委託研究費", value.budgetRows?.find((r) => r.item.includes("(2)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(2)"))?.self ?? "")],
-        service: [makeTechCostRow("(3) 委託勞務費", value.budgetRows?.find((r) => r.item.includes("(3)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(3)"))?.self ?? "")],
-        design: [makeTechCostRow("(4) 委託設計費", value.budgetRows?.find((r) => r.item.includes("(4)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(4)"))?.self ?? "")],
-      }
+      value.techIntroCosts
+        ? {
+            buy: normTech(value.techIntroCosts.buy),
+            research: normTech(value.techIntroCosts.research),
+            service: normTech(value.techIntroCosts.service),
+            design: normTech(value.techIntroCosts.design),
+          }
+        : {
+            buy: [makeTechCostRow("(1) 技術或智慧財產權購買費", value.budgetRows?.find((r) => r.item.includes("(1)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(1)"))?.self ?? "")],
+            research: [makeTechCostRow("(2) 委託研究費", value.budgetRows?.find((r) => r.item.includes("(2)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(2)"))?.self ?? "")],
+            service: [makeTechCostRow("(3) 委託勞務費", value.budgetRows?.find((r) => r.item.includes("(3)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(3)"))?.self ?? "")],
+            design: [makeTechCostRow("(4) 委託設計費", value.budgetRows?.find((r) => r.item.includes("(4)"))?.gov ?? "", value.budgetRows?.find((r) => r.item.includes("(4)"))?.self ?? "")],
+          }
     );
     didInitFromValue.current = true;
   }, [value]);
@@ -521,6 +545,7 @@ export default function HumanBudgetRequirementsForm({
   const idxTechResearch = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(2)"));
   const idxTechService = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(3)"));
   const idxTechDesign = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item.includes("(4)"));
+  const idxTechSubtotal = budgetRows.findIndex((r) => r.subject.startsWith("5.") && r.item === "小計");
 
   const isSubtotalRow = (r: BudgetRow) =>
     (r.subject === "1. 人事費" && r.item === "小計") || (r.subject.startsWith("5.") && r.item === "小計");
@@ -568,6 +593,33 @@ export default function HumanBudgetRequirementsForm({
       return Math.min(100, Math.max(0, n));
     };
 
+    // 技術引進及委託研究費：金額來自明細表 techIntroCosts，不得讀取可能過期的 budgetRows 欄位
+    if (idx === idxTechBuy) {
+      const s = techSectionSums.buy;
+      return { gov: s.gov, self: s.self, total: s.gov + s.self };
+    }
+    if (idx === idxTechResearch) {
+      const s = techSectionSums.research;
+      return { gov: s.gov, self: s.self, total: s.gov + s.self };
+    }
+    if (idx === idxTechService) {
+      const s = techSectionSums.service;
+      return { gov: s.gov, self: s.self, total: s.gov + s.self };
+    }
+    if (idx === idxTechDesign) {
+      const s = techSectionSums.design;
+      return { gov: s.gov, self: s.self, total: s.gov + s.self };
+    }
+    if (idx === idxTechSubtotal) {
+      const s = techSectionSums.total;
+      return { gov: s.gov, self: s.self, total: s.gov + s.self };
+    }
+    if (idx === idxEquipMaintain) {
+      const g = equipmentMaintenanceSum.gov;
+      const s = equipmentMaintenanceSum.self;
+      return { gov: g, self: s, total: g + s };
+    }
+
     // 回填控制：人事費（計畫人員/顧問）、消耗性器材、研發設備使用費 → gov/self 依分攤比例自動帶入
     if (idx === idxPersonnel) {
       const gov = Math.round(personnelTotal * (pct("personnel") / 100));
@@ -606,6 +658,130 @@ export default function HumanBudgetRequirementsForm({
   const grandGov = leaf.reduce((acc, r) => acc + r.gov, 0);
   const grandSelf = leaf.reduce((acc, r) => acc + r.self, 0);
   const grandTotal = leaf.reduce((acc, r) => acc + r.total, 0);
+
+  /** 將明細表即時合計寫回 budgetRows，供草稿儲存／PDF 讀取與畫面一致 */
+  useEffect(() => {
+    setBudgetRows((prev) => {
+      const next = [...prev];
+      let changed = false;
+      const apply = (idx: number, gov: number, self: number) => {
+        if (idx < 0) return;
+        const g = String(Math.round(gov));
+        const sl = String(Math.round(self));
+        const tt = String(Math.round(gov + self));
+        const cur = next[idx];
+        if (!cur) return;
+        if (cur.gov !== g || cur.self !== sl || cur.total !== tt) {
+          next[idx] = { ...cur, gov: g, self: sl, total: tt };
+          changed = true;
+        }
+      };
+      const pct = (key: keyof typeof govAllocPct) => Math.min(100, Math.max(0, toNum(govAllocPct[key])));
+      const idxPersonnelSub = prev.findIndex((r) => r.subject.includes("1.") && r.item.includes("小"));
+      const gP = Math.round(personnelTotal * (pct("personnel") / 100));
+      const gC = Math.round(consultantTotal * (pct("consultant") / 100));
+      apply(idxPersonnel, gP, personnelTotal - gP);
+      apply(idxConsultant, gC, consultantTotal - gC);
+      if (idxPersonnelSub >= 0) apply(idxPersonnelSub, gP + gC, personnelTotal - gP + (consultantTotal - gC));
+      const gCo = Math.round(consumablesTotal * (pct("consumables") / 100));
+      apply(idxConsumables, gCo, consumablesTotal - gCo);
+      const gE = Math.round(equipUseTotal * (pct("equipUse") / 100));
+      apply(idxEquipUse, gE, equipUseTotal - gE);
+      apply(idxEquipMaintain, equipmentMaintenanceSum.gov, equipmentMaintenanceSum.self);
+      apply(idxTechBuy, techSectionSums.buy.gov, techSectionSums.buy.self);
+      apply(idxTechResearch, techSectionSums.research.gov, techSectionSums.research.self);
+      apply(idxTechService, techSectionSums.service.gov, techSectionSums.service.self);
+      apply(idxTechDesign, techSectionSums.design.gov, techSectionSums.design.self);
+      apply(idxTechSubtotal, techSectionSums.total.gov, techSectionSums.total.self);
+      return changed ? next : prev;
+    });
+  }, [
+    personnelTotal,
+    consultantTotal,
+    consumablesTotal,
+    equipUseTotal,
+    equipmentMaintenanceSum.gov,
+    equipmentMaintenanceSum.self,
+    techSectionSums,
+    govAllocPct,
+    idxPersonnel,
+    idxConsultant,
+    idxConsumables,
+    idxEquipUse,
+    idxEquipMaintain,
+    idxTechBuy,
+    idxTechResearch,
+    idxTechService,
+    idxTechDesign,
+    idxTechSubtotal,
+  ]);
+
+  const equipPersistSig = useMemo(
+    () =>
+      JSON.stringify({
+        ex: equipments.existing.map((r) => ({
+          valueA: r.valueA,
+          countB: r.countB,
+          durableYears: r.durableYears,
+          depreciatedYears: r.depreciatedYears,
+          residualValue: r.residualValue,
+          planExecYears: r.planExecYears,
+          months: r.months,
+          name: r.name,
+          assetId: r.assetId,
+        })),
+        nw: equipments.new.map((r) => ({
+          valueA: r.valueA,
+          countB: r.countB,
+          durableYears: r.durableYears,
+          months: r.months,
+          name: r.name,
+          assetId: r.assetId,
+        })),
+      }),
+    [equipments.existing, equipments.new]
+  );
+
+  useLayoutEffect(() => {
+    setEquipments((prev) => {
+      let changed = false;
+      const mergeEx = prev.existing.map((r) => {
+        const d = computeExistingDerived(r);
+        const patch = {
+          remainingYears: String(d.Y),
+          nFactor: String(d.N),
+          monthlyFee: String(d.monthlyDisplay),
+          total: String(d.totalNum),
+        };
+        if (
+          r.remainingYears !== patch.remainingYears ||
+          r.nFactor !== patch.nFactor ||
+          r.monthlyFee !== patch.monthlyFee ||
+          r.total !== patch.total
+        ) {
+          changed = true;
+          return { ...r, ...patch };
+        }
+        return r;
+      });
+      const mergeNw = prev.new.map((r) => {
+        const d = computeNewDerived(r);
+        const patch = {
+          remainingYears: String(d.Y),
+          monthlyFee: String(d.monthlyDisplay),
+          total: String(d.totalNum),
+        };
+        if (r.remainingYears !== patch.remainingYears || r.monthlyFee !== patch.monthlyFee || r.total !== patch.total) {
+          changed = true;
+          return { ...r, ...patch };
+        }
+        return r;
+      });
+      if (!changed) return prev;
+      return { existing: mergeEx, new: mergeNw };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 僅在輸入欄位變更時同步寫回計算欄位，避免與 state 形成循環
+  }, [equipPersistSig]);
 
   const getComputedBudgetCell = (row: BudgetRow, key: keyof Pick<BudgetRow, "gov" | "self" | "total" | "ratio">) => {
     if (isPercentRow(row)) {
@@ -646,6 +822,7 @@ export default function HumanBudgetRequirementsForm({
         idx === idxConsultant ||
         idx === idxConsumables ||
         idx === idxEquipUse ||
+        idx === idxEquipMaintain ||
         idx === idxTechBuy ||
         idx === idxTechResearch ||
         idx === idxTechService ||
@@ -660,6 +837,7 @@ export default function HumanBudgetRequirementsForm({
         idx === idxConsultant ||
         idx === idxConsumables ||
         idx === idxEquipUse ||
+        idx === idxEquipMaintain ||
         idx === idxTechBuy ||
         idx === idxTechResearch ||
         idx === idxTechService ||
@@ -1401,7 +1579,12 @@ export default function HumanBudgetRequirementsForm({
                               isGrandTotalRow(r) ||
                               isPercentRow(r) ||
                               k === "self" ||
-                              (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse)) ||
+                              (k === "gov" &&
+                                (idx === idxPersonnel ||
+                                  idx === idxConsultant ||
+                                  idx === idxConsumables ||
+                                  idx === idxEquipUse ||
+                                  idx === idxEquipMaintain)) ||
                               idx === idxTechBuy ||
                               idx === idxTechResearch ||
                               idx === idxTechService ||
@@ -1414,7 +1597,12 @@ export default function HumanBudgetRequirementsForm({
                                 isSubtotalRow(r) ||
                                 isGrandTotalRow(r) ||
                                 isPercentRow(r) ||
-                                (k === "gov" && (idx === idxPersonnel || idx === idxConsultant || idx === idxConsumables || idx === idxEquipUse)) ||
+                                (k === "gov" &&
+                                  (idx === idxPersonnel ||
+                                    idx === idxConsultant ||
+                                    idx === idxConsumables ||
+                                    idx === idxEquipUse ||
+                                    idx === idxEquipMaintain)) ||
                                 idx === idxTechBuy ||
                                 idx === idxTechResearch ||
                                 idx === idxTechService ||
@@ -2020,7 +2208,7 @@ export default function HumanBudgetRequirementsForm({
                           </td>
                         </tr>
                         {rows.map((row, idx) => {
-                          const total = toNum(row.gov) + toNum(row.self);
+                          const total = toNum(row.total ?? "") || toNum(row.gov) + toNum(row.self);
                           return (
                             <tr key={`tech-${sec.key}-${idx}`} className="bg-white border-b border-gray-100 hover:bg-gray-50">
                               <td className="p-2 border-r border-gray-200 text-left">
@@ -2043,7 +2231,9 @@ export default function HumanBudgetRequirementsForm({
                                   onChange={(e) =>
                                     setTechIntroCosts((prev) => ({
                                       ...prev,
-                                      [sec.key]: prev[sec.key].map((r, i) => (i === idx ? { ...r, gov: e.target.value } : r)),
+                                      [sec.key]: prev[sec.key].map((r, i) =>
+                                        i === idx ? { ...r, gov: e.target.value, total: techCostTotal(e.target.value, r.self) } : r
+                                      ),
                                     }))
                                   }
                                   placeholder="0"
@@ -2056,7 +2246,9 @@ export default function HumanBudgetRequirementsForm({
                                   onChange={(e) =>
                                     setTechIntroCosts((prev) => ({
                                       ...prev,
-                                      [sec.key]: prev[sec.key].map((r, i) => (i === idx ? { ...r, self: e.target.value } : r)),
+                                      [sec.key]: prev[sec.key].map((r, i) =>
+                                        i === idx ? { ...r, self: e.target.value, total: techCostTotal(r.gov, e.target.value) } : r
+                                      ),
                                     }))
                                   }
                                   placeholder="0"
