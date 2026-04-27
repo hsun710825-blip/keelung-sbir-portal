@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { AttachmentCategory, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
-import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { ApplicationStatusControl } from "@/components/admin/ApplicationStatusControl";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
@@ -88,8 +87,7 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
   const sheetRow = parsedDesc["試算表列"] ?? null;
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:max-w-5xl lg:px-8">
+    <section className="mx-auto max-w-4xl px-1 py-2 sm:px-2 lg:max-w-5xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <Link
@@ -110,15 +108,6 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
                 <span className="text-xs text-slate-600">年度：{application.periodYear}</span>
               ) : null}
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Link
-              href="/"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              首頁
-            </Link>
-            <AdminSignOutButton />
           </div>
         </header>
 
@@ -264,7 +253,6 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
             )}
           </section>
         </div>
-      </div>
-    </main>
+    </section>
   );
 }

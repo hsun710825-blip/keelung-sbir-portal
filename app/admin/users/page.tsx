@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { Role } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminGrantRoleForm } from "@/components/admin/AdminGrantRoleForm";
-import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { RevokeBackofficeRoleButton } from "@/components/admin/RevokeBackofficeRoleButton";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -55,8 +53,7 @@ export default async function AdminUsersPage() {
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-4xl px-1 py-2 sm:px-2">
         <header className="mb-8 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
@@ -67,21 +64,6 @@ export default async function AdminUsersPage() {
             <p className="mt-2 text-xs text-slate-500">
               預先輸入 Google 登入用 Email 並指定角色；對方首次以該帳號登入時即套用權限。
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/admin/dashboard"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              案件總表
-            </Link>
-            <Link
-              href="/"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              首頁
-            </Link>
-            <AdminSignOutButton />
           </div>
         </header>
 
@@ -145,7 +127,6 @@ export default async function AdminUsersPage() {
             </table>
           </div>
         </section>
-      </div>
-    </main>
+    </section>
   );
 }

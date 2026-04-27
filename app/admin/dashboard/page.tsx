@@ -6,7 +6,6 @@ import { getServerSession } from "next-auth";
 import { Prisma, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
-import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { AdminApplicationsTable, type AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
@@ -148,8 +147,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
   });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-6xl px-1 py-2 sm:px-2">
         <header className="mb-8 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
@@ -163,37 +161,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
               </p>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              返回首頁
-            </Link>
-            <Link
-              href="/admin"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              後台（Sheets）
-            </Link>
-            {isAdmin ? (
-              <Link
-                href="/admin/users"
-                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-900 shadow-sm transition hover:bg-violet-100"
-              >
-                權限管理
-              </Link>
-            ) : null}
-            {isCommittee ? (
-              <Link
-                href="/committee/dashboard"
-                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition hover:bg-sky-100"
-              >
-                委員審查
-              </Link>
-            ) : null}
-            <AdminSignOutButton />
-          </div>
+          {isCommittee ? <p className="text-xs text-sky-800">可至委員區檢視審查任務。</p> : null}
         </header>
 
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
@@ -248,7 +216,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
 
           <AdminApplicationsTable rows={tableRows} isAdmin={isAdmin} searchQuery={searchQuery} />
         </section>
-      </div>
-    </main>
+    </section>
   );
 }
