@@ -324,6 +324,32 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
   return lines;
 }
 
+/** 表格專用換行：等效於 break-all + break-word + pre-wrap，確保不會水平穿牆。 */
+function wrapTextForTable(text: string, maxWidth: number, font: PDFFont, fontSize: number) {
+  const t = (text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines: string[] = [];
+  const paragraphs = t.split("\n");
+  for (const p of paragraphs) {
+    const chars = Array.from(p);
+    if (!chars.length) {
+      lines.push("");
+      continue;
+    }
+    let line = "";
+    for (const ch of chars) {
+      const cand = line + ch;
+      if (font.widthOfTextAtSize(cand, fontSize) <= maxWidth) {
+        line = cand;
+      } else {
+        if (line) lines.push(line);
+        line = ch;
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
 function normalizePdfMultilineText(input: unknown): string {
   return String(input ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
@@ -1269,17 +1295,20 @@ export async function POST(req: Request) {
   ) => {
     const colCount = headers.length;
     const totalW = contentW;
-    const w = colWidths && colWidths.length === colCount ? colWidths : Array.from({ length: colCount }, () => totalW / colCount);
+    const rawW = colWidths && colWidths.length === colCount ? colWidths : Array.from({ length: colCount }, () => totalW / colCount);
+    const rawSum = rawW.reduce((s, x) => s + Math.max(1, Number(x) || 0), 0);
+    // 固定佈局：無論傳入比例如何，統一正規化到 table 可用寬度 100%。
+    const w = rawW.map((x) => (Math.max(1, Number(x) || 0) / Math.max(1, rawSum)) * totalW);
     const baseRowH = 16;
     const cellLineH = TABLE_LINE_HEIGHT;
-    const headerLinesByCol = headers.map((h, i) => wrapText(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_HEADER_FONT_SIZE).slice(0, 6));
+    const headerLinesByCol = headers.map((h, i) => wrapTextForTable(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_HEADER_FONT_SIZE).slice(0, 10));
     const maxHeaderLines = Math.max(1, ...headerLinesByCol.map((ls) => ls.length || 1));
     const headerH = 10 + maxHeaderLines * cellLineH;
     const rowHeights: number[] = [];
     for (const row of rows) {
       let maxLines = 1;
       for (let c = 0; c < colCount; c++) {
-        const lines = wrapText(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, TABLE_FONT_SIZE);
+        const lines = wrapTextForTable(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, TABLE_FONT_SIZE);
         maxLines = Math.max(maxLines, Math.min(lines.length, 200));
       }
       rowHeights.push(baseRowH + (maxLines - 1) * cellLineH);
@@ -1331,7 +1360,7 @@ export async function POST(req: Request) {
       for (let c = 0; c < colCount; c++) {
         const cw = w[c]!;
         const minCellFont = cw < 75 ? 10.5 : TABLE_FONT_SIZE;
-        const cellLines = wrapText(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 200);
+        const cellLines = wrapTextForTable(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 300);
         const numLines = cellLines.length || 1;
         const contentH = numLines * Math.max(10.5, minCellFont);
         const topPad = Math.max(3, (rh - contentH) / 2);
@@ -2332,7 +2361,7 @@ export async function POST(req: Request) {
       drawTableFlow(
         ["查核點編號", "查核點KPI量化說明", "起訖時間", "分配權重%", "計畫人員編號"],
         kpiRowsWithTotal,
-        [contentW * 0.25, contentW * 0.31, contentW * 0.19, contentW * 0.12, contentW * 0.13]
+        [contentW * 0.15, contentW * 0.45, contentW * 0.15, contentW * 0.1, contentW * 0.15]
       );
     }
     drawAuxText(SCHEDULE_KPI_TABLE_NOTE);
