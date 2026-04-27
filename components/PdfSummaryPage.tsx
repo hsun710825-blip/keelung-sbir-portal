@@ -406,7 +406,7 @@ function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
 function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
     <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }}>
-      <View style={{ padding: 4, flexDirection: "column", width: "100%" }}>
+      <View style={{ padding: 12, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>
@@ -415,12 +415,14 @@ function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeDa
 
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
-  const scale = 1;
+  // High-res tree rendering: avoid clipping when branches are wide/deep.
+  const scale = 3;
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
-  // Keep page tightly around actual tree content so PDF embedding can fill width without shrinking the tree body.
-  const pageWidth = Math.max(1100, Math.min(3600, (360 + depth * 280) * scale));
-  const pageHeight = Math.max(720, Math.min(4800, (260 + leaves * 120) * scale));
+  // Capture full logical content size with generous per-level/leaf budget.
+  // Intentionally avoid hard max clamps to prevent right/bottom clipping.
+  const pageWidth = Math.ceil(Math.max(1800, (520 + depth * 420) * scale));
+  const pageHeight = Math.ceil(Math.max(1200, (360 + leaves * 190) * scale));
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
