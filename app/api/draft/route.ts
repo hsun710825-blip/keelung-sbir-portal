@@ -36,6 +36,15 @@ function draftName(key: string) {
 }
 
 type DriveClient = ReturnType<typeof getDriveOauthClient>;
+const MISSING_BASIC_DATA_ERROR = "請先完成並儲存第一步驟的基本資料，再填寫後續內容。";
+
+function logDraftApiEvent(stage: string, payload: Record<string, unknown>) {
+  const safe = {
+    stage,
+    ...payload,
+  };
+  console.error("[draft.API]", JSON.stringify(safe));
+}
 
 function normalizeScheduleCheckpointsDraft(input: unknown) {
   if (!input || typeof input !== "object") return undefined;
@@ -337,6 +346,28 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+  const bodyRecord = (body && typeof body === "object" ? (body as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const formDataRecord =
+    bodyRecord.formData && typeof bodyRecord.formData === "object"
+      ? (bodyRecord.formData as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const draftId = String(bodyRecord.draftId ?? formDataRecord.draftId ?? "").trim();
+  const projectName = String(formDataRecord.projectName ?? "").trim();
+  const hasLaterStepPayload = Boolean(
+    formDataRecord.planContent ||
+      formDataRecord.scheduleCheckpoints ||
+      formDataRecord.expectedBenefits ||
+      formDataRecord.humanBudget
+  );
+  if (hasLaterStepPayload && !draftId && !projectName) {
+    logDraftApiEvent("validation.missing_primary_key", {
+      status: 400,
+      hasLaterStepPayload,
+      topLevelKeys: Object.keys(bodyRecord),
+      formDataKeys: Object.keys(formDataRecord),
+    });
+    return NextResponse.json({ ok: false, error: MISSING_BASIC_DATA_ERROR }, { status: 400 });
+  }
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim();
   if (!session?.user || !email) {
@@ -432,7 +463,13 @@ export async function POST(req: Request) {
         });
       } catch (dbErr) {
         prismaSyncWarning = "Drive draft saved, but Prisma sync failed.";
-        console.error("[draft.POST] Drive 已寫入，但 Prisma 同步失敗（改為不中斷草稿儲存）", dbErr);
+        logDraftApiEvent("prisma.sync_failed_after_drive_saved", {
+          status: 200,
+          projectFolderId,
+          fileId: String(file?.id ?? ""),
+          errorName: dbErr instanceof Error ? dbErr.name : "UnknownError",
+          errorMessage: dbErr instanceof Error ? dbErr.message : String(dbErr),
+        });
       }
     }
 
@@ -464,7 +501,13 @@ export async function POST(req: Request) {
       status === 404
         ? `Drive 找不到目標資料夾（多半是登入的 Drive 帳號沒有權限）。請確認 Refresh Token 所屬帳號對資料夾 ID ${DRIVE_FOLDER_ID} 具備可新增/編輯檔案權限，且該資料夾存在於該帳號的雲端硬碟中。`
         : "請確認已在 .env.local 設定 GOOGLE_CLIENT_ID、GOOGLE_CLIENT_SECRET、GOOGLE_REFRESH_TOKEN，且 Refresh Token 所屬帳號對目標資料夾具備寫入權限。";
-    return NextResponse.json({ ok: false, error: msg, hint }, { status: 500 });
+    const normalizedStatus = status && status >= 400 && status < 600 ? status : 500;
+    logDraftApiEvent("draft.post_exception", {
+      status: normalizedStatus,
+      errorName: e instanceof Error ? e.name : "UnknownError",
+      errorMessage: msg,
+    });
+    return NextResponse.json({ ok: false, error: msg, hint }, { status: normalizedStatus });
   }
 }
 

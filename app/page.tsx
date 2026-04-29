@@ -1237,6 +1237,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           return false;
         }
         const err = await res.json().catch(async () => ({ error: await res.text().catch(() => "草稿儲存失敗") }));
+        if (res.status === 400 && typeof err?.error === "string" && err.error.trim()) {
+          alert(err.error);
+          return false;
+        }
         alert(`草稿儲存失敗：${err?.error || "未知錯誤"}`);
         return false;
       }
