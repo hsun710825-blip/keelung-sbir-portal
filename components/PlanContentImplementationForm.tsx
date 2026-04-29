@@ -465,10 +465,7 @@ export default function PlanContentImplementationForm({
   const didInitFromValue = useRef(false);
   useEffect(() => {
     if (didInitFromValue.current) return;
-    if (!value) {
-      didInitFromValue.current = true;
-      return;
-    }
+    if (!value) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFormData(value.formData);
     const normalized = normalizeTreeNode(value.architectureTree);

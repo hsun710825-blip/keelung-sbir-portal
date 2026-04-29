@@ -136,6 +136,90 @@ function normalizeDraftFormDataShape(payload: Record<string, unknown>) {
   return out;
 }
 
+function hasAnyMeaningfulText(input: unknown): boolean {
+  if (typeof input !== "string") return false;
+  return input.trim().length > 0;
+}
+
+function hasPlanContentData(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const plan = input as Record<string, unknown>;
+  const formData = (plan.formData && typeof plan.formData === "object"
+    ? (plan.formData as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
+  const formHasText = Object.values(formData).some((v) => hasAnyMeaningfulText(v));
+  const hasTree = !!(plan.architectureTree && typeof plan.architectureTree === "object");
+  const competitorRows = Array.isArray(plan.competitorRows) ? plan.competitorRows.length : 0;
+  const techTransferRows = Array.isArray(plan.techTransferRows) ? plan.techTransferRows.length : 0;
+  const images = plan.images && typeof plan.images === "object" ? Object.values(plan.images as Record<string, unknown>) : [];
+  const hasImages = images.some((v) => Array.isArray(v) && v.length > 0);
+  return formHasText || hasTree || competitorRows > 0 || techTransferRows > 0 || hasImages;
+}
+
+function hasScheduleData(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const schedule = input as Record<string, unknown>;
+  const rows = Array.isArray(schedule.rows) ? schedule.rows : [];
+  const kpis = Array.isArray(schedule.kpis) ? schedule.kpis : [];
+  const notes = schedule.notes && typeof schedule.notes === "object" ? (schedule.notes as Record<string, unknown>) : {};
+  const testReportImages = Array.isArray(schedule.testReportImages) ? schedule.testReportImages : [];
+  const rowHasData = rows.some((r) => {
+    if (!r || typeof r !== "object") return false;
+    const row = r as Record<string, unknown>;
+    if (hasAnyMeaningfulText(row.item) || hasAnyMeaningfulText(row.weight) || hasAnyMeaningfulText(row.manMonths)) return true;
+    const months = row.months && typeof row.months === "object" ? Object.values(row.months as Record<string, unknown>) : [];
+    return months.some((m) => {
+      if (!m || typeof m !== "object") return false;
+      const c = m as { progress?: unknown; checkpoint?: unknown };
+      return !!c.progress || !!c.checkpoint;
+    });
+  });
+  const kpiHasData = kpis.some((k) => {
+    if (!k || typeof k !== "object") return false;
+    const row = k as Record<string, unknown>;
+    return (
+      hasAnyMeaningfulText(row.code) ||
+      hasAnyMeaningfulText(row.description) ||
+      hasAnyMeaningfulText(row.period) ||
+      hasAnyMeaningfulText(row.weight) ||
+      hasAnyMeaningfulText(row.staffCode)
+    );
+  });
+  const notesHasData = hasAnyMeaningfulText(notes.progressNote) || hasAnyMeaningfulText(notes.kpiNote);
+  return rowHasData || kpiHasData || notesHasData || testReportImages.length > 0;
+}
+
+function mergeCriticalFormSections(existingPayload: Record<string, unknown> | null, incomingPayload: Record<string, unknown>) {
+  if (!existingPayload || typeof existingPayload !== "object") return incomingPayload;
+  const existingFormData =
+    existingPayload.formData && typeof existingPayload.formData === "object"
+      ? (existingPayload.formData as Record<string, unknown>)
+      : null;
+  const incomingFormData =
+    incomingPayload.formData && typeof incomingPayload.formData === "object"
+      ? ({ ...(incomingPayload.formData as Record<string, unknown>) } as Record<string, unknown>)
+      : null;
+
+  if (!existingFormData || !incomingFormData) return incomingPayload;
+
+  const incomingPlan = incomingFormData.planContent;
+  const existingPlan = existingFormData.planContent;
+  if (!hasPlanContentData(incomingPlan) && hasPlanContentData(existingPlan)) {
+    incomingFormData.planContent = existingPlan;
+  }
+
+  const incomingSchedule = incomingFormData.scheduleCheckpoints;
+  const existingSchedule = existingFormData.scheduleCheckpoints;
+  if (!hasScheduleData(incomingSchedule) && hasScheduleData(existingSchedule)) {
+    incomingFormData.scheduleCheckpoints = existingSchedule;
+  }
+
+  return {
+    ...incomingPayload,
+    formData: incomingFormData,
+  };
+}
+
 async function findDraftFileId(drive: DriveClient, sid: string) {
   const name = draftName(sid);
   const res = await drive.files.list({
@@ -265,6 +349,7 @@ export async function POST(req: Request) {
     type SaveResult = {
       file: { id?: string | null; name?: string | null; webViewLink?: string | null };
       folderMeta: { user?: { id: string; name: string }; project?: { id: string; name: string } } | null;
+      payload: Record<string, unknown>;
     };
 
     const saveResult = (await withGoogleApiRetry("draft.POST", async () => {
@@ -285,14 +370,19 @@ export async function POST(req: Request) {
       };
 
       const name = draftName(key);
-      const bytes = Buffer.from(JSON.stringify(payload, null, 2), "utf-8");
       const existingId =
         parentId === DRIVE_FOLDER_ID ? await findDraftFileId(drive, key) : await findDraftInProjectFolder(drive, parentId, key);
+      let payloadToWrite = payload;
 
       if (existingId) {
         await assertFileOwnershipOrThrow(drive, existingId, userFolder.folderId);
         // 鎖定檢查：submitted/expired/deleted 草稿不可更新。
         await assertDraftUnlocked(drive, existingId, "Plan is locked");
+        const existingDraft = await readDraftJsonByFileId(drive, existingId).catch(() => null);
+        if (existingDraft && typeof existingDraft === "object") {
+          payloadToWrite = mergeCriticalFormSections(existingDraft as Record<string, unknown>, payload);
+        }
+        const bytes = Buffer.from(JSON.stringify(payloadToWrite, null, 2), "utf-8");
         const res = await drive.files.update({
           fileId: existingId,
           media: {
@@ -302,9 +392,10 @@ export async function POST(req: Request) {
           fields: "id,name,webViewLink",
           supportsAllDrives: true,
         });
-        return { file: res.data!, folderMeta };
+        return { file: res.data!, folderMeta, payload: payloadToWrite };
       }
 
+      const bytes = Buffer.from(JSON.stringify(payloadToWrite, null, 2), "utf-8");
       const res = await drive.files.create({
         requestBody: {
           name,
@@ -318,23 +409,23 @@ export async function POST(req: Request) {
         fields: "id,name,webViewLink",
         supportsAllDrives: true,
       });
-      return { file: res.data!, folderMeta };
+      return { file: res.data!, folderMeta, payload: payloadToWrite };
     })) as SaveResult;
-    const { file, folderMeta } = saveResult;
+    const { file, folderMeta, payload: persistedPayload } = saveResult;
 
     const projectFolderId = folderMeta?.project?.id;
-    if (projectFolderId && payload?.formData) {
+    if (projectFolderId && persistedPayload?.formData) {
       try {
         const dbUser = await ensureApplicantDbUser(email, session.user?.name);
         const projectTitle =
-          typeof (payload.formData as Record<string, unknown>)?.projectName === "string"
-            ? String((payload.formData as Record<string, unknown>).projectName).trim()
+          typeof (persistedPayload.formData as Record<string, unknown>)?.projectName === "string"
+            ? String((persistedPayload.formData as Record<string, unknown>).projectName).trim()
             : "";
         await upsertApplicationFromDraftSave({
           applicantUserId: dbUser.id,
           driveProjectFolderId: projectFolderId,
           projectTitle: projectTitle || "未命名計畫",
-          formData: payload.formData as Record<string, unknown>,
+          formData: persistedPayload.formData as Record<string, unknown>,
         });
       } catch (dbErr) {
         console.error("[draft.POST] Drive 已寫入，但 Prisma 同步失敗（ensureApplicantDbUser / upsertApplicationFromDraftSave 內含重試）", dbErr);
@@ -343,8 +434,8 @@ export async function POST(req: Request) {
     }
 
     const mail = session?.user?.email?.trim();
-    if (mail && payload?.formData) {
-      void updateRegistryFromFormData(mail, payload.formData as Record<string, unknown>).catch(() => {});
+    if (mail && persistedPayload?.formData) {
+      void updateRegistryFromFormData(mail, persistedPayload.formData as Record<string, unknown>).catch(() => {});
     }
 
     // 稽核軌跡：記錄草稿寫入操作，供後續責任追蹤。
