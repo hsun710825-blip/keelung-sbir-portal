@@ -974,13 +974,27 @@ async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Respo
   const useKeepalive = serialized.length > 0 && serialized.length < 55_000;
   let last: Response | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    last = await fetch("/api/draft", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: serialized,
-      credentials: "include",
-      keepalive: useKeepalive,
-    });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      last = await fetch("/api/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: serialized,
+        credentials: "include",
+        keepalive: useKeepalive,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const canRetry = attempt < maxAttempts - 1;
+      if (!canRetry) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1600 * (attempt + 1)));
+      continue;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     if (last.ok) return last;
     if (last.status === 413) return last;
     const retry =
@@ -1254,7 +1268,19 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "未知錯誤";
-      alert(`草稿儲存失敗：${message}`);
+      const networkIssue =
+        /Failed to fetch/i.test(message) ||
+        /NetworkError/i.test(message) ||
+        /Load failed/i.test(message) ||
+        /aborted/i.test(message);
+      if (networkIssue) {
+        const hint = navigator.onLine
+          ? "連線逾時或網路不穩，請稍候再按一次儲存。"
+          : "目前偵測為離線狀態，請確認網路後再儲存。";
+        alert(`草稿儲存失敗：${hint}`);
+      } else {
+        alert(`草稿儲存失敗：${message}`);
+      }
       return false;
     } finally {
       setIsSaving(false);
