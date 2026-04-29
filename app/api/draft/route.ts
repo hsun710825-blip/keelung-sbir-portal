@@ -17,6 +17,7 @@ import {
 import { writeAuditLog } from "../../../lib/audit";
 import {
   ensureApplicantDbUser,
+  pickApplicationMetaFormData,
   upsertApplicationFromDraftSave,
 } from "../../../lib/applicantApplicationSync";
 
@@ -412,24 +413,26 @@ export async function POST(req: Request) {
       return { file: res.data!, folderMeta, payload: payloadToWrite };
     })) as SaveResult;
     const { file, folderMeta, payload: persistedPayload } = saveResult;
+    let prismaSyncWarning: string | null = null;
 
     const projectFolderId = folderMeta?.project?.id;
     if (projectFolderId && persistedPayload?.formData) {
       try {
         const dbUser = await ensureApplicantDbUser(email, session.user?.name);
+        const prismaFormData = pickApplicationMetaFormData(persistedPayload.formData as Record<string, unknown>);
         const projectTitle =
-          typeof (persistedPayload.formData as Record<string, unknown>)?.projectName === "string"
-            ? String((persistedPayload.formData as Record<string, unknown>).projectName).trim()
+          typeof prismaFormData?.projectName === "string"
+            ? String(prismaFormData.projectName).trim()
             : "";
         await upsertApplicationFromDraftSave({
           applicantUserId: dbUser.id,
           driveProjectFolderId: projectFolderId,
           projectTitle: projectTitle || "未命名計畫",
-          formData: persistedPayload.formData as Record<string, unknown>,
+          formData: prismaFormData,
         });
       } catch (dbErr) {
-        console.error("[draft.POST] Drive 已寫入，但 Prisma 同步失敗（ensureApplicantDbUser / upsertApplicationFromDraftSave 內含重試）", dbErr);
-        throw dbErr;
+        prismaSyncWarning = "Drive draft saved, but Prisma sync failed.";
+        console.error("[draft.POST] Drive 已寫入，但 Prisma 同步失敗（改為不中斷草稿儲存）", dbErr);
       }
     }
 
@@ -446,7 +449,12 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
       detail: { projectFolderId: folderMeta?.project?.id || null },
     });
-    return NextResponse.json({ ok: true, file, folder: folderMeta });
+    return NextResponse.json({
+      ok: true,
+      file,
+      folder: folderMeta,
+      prismaSyncWarning,
+    });
   } catch (e) {
     const errObj = e as unknown as { code?: number; response?: { status?: number; data?: { error?: { message?: string } } } };
     const status = (e as Error & { status?: number })?.status || errObj?.code || errObj?.response?.status;

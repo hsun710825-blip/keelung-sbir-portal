@@ -22,6 +22,7 @@ import { sendSubmitSuccessEmail } from "../../../lib/mailer";
 import {
   ensureApplicantDbUser,
   finalizeApplicationOnSubmit,
+  pickApplicationMetaFormData,
 } from "../../../lib/applicantApplicationSync";
 
 type AnyRecord = Record<string, unknown>;
@@ -172,11 +173,12 @@ export async function POST(req: Request) {
 
     const dbUser = await ensureApplicantDbUser(email, session.user?.name);
     try {
+      const prismaFormData = pickApplicationMetaFormData((registryFormData ?? null) as AnyRecord | null);
       await finalizeApplicationOnSubmit({
         applicantUserId: dbUser.id,
         driveProjectFolderId: projectFolder.folderId,
         projectTitle: projectName,
-        formData: registryFormData ?? null,
+        formData: prismaFormData,
         pdfDriveFileId: String(file.id || ""),
         pdfDisplayName: displayPdfName,
         pdfByteLength: pdfBytes.byteLength,

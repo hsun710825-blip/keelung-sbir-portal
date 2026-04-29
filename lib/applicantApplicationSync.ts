@@ -9,6 +9,29 @@ import { withPrismaRetry } from "@/lib/prismaRetry";
 
 type AnyRecord = Record<string, unknown>;
 
+function asTrimmedString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/**
+ * 僅保留 Application 同步所需欄位，避免把前端大型巢狀 payload 直接帶入 Prisma 層。
+ * 目前只需要 projectName / submitYear / summary 來同步主表摘要欄位。
+ */
+export function pickApplicationMetaFormData(input: AnyRecord | null | undefined): AnyRecord {
+  if (!input || typeof input !== "object") return {};
+  const projectName = asTrimmedString(input.projectName);
+  const summary = typeof input.summary === "string" ? input.summary : "";
+  const out: AnyRecord = {
+    projectName,
+    summary,
+  };
+  const y = input.submitYear;
+  if (typeof y === "string" || typeof y === "number") {
+    out.submitYear = y;
+  }
+  return out;
+}
+
 /**
  * 登入申請者於 Prisma 的 User 列（依 email）；若尚無則建立為 USER。
  * 已存在之管理員／委員角色不會被降權。
