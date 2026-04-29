@@ -582,6 +582,15 @@ export default function ScheduleCheckpointsForm({
     onChange(localDraft);
   }, [localDraft, localFingerprint, onChange, draftHydrated]);
 
+  const updateKpiAt = (idx: number, updater: (current: KpiRow) => KpiRow) => {
+    setKpis((prev) => {
+      const next = [...(prev ?? [])];
+      const current = normalizeKpiRow(next[idx], `kpi-${idx + 1}`);
+      next[idx] = normalizeKpiRow(updater(current), current.id || `kpi-${idx + 1}`);
+      return next;
+    });
+  };
+
   const toggleMonth = (rowIdx: number, month: string) => {
     try {
       setRows((prev) => {
@@ -807,13 +816,11 @@ export default function ScheduleCheckpointsForm({
                         />
                       </td>
                       <td className="p-2 border-r border-gray-200 text-left">
-                        <input
-                          className="w-full bg-transparent outline-none px-2 py-1"
+                        <textarea
+                          className="w-full bg-transparent outline-none px-2 py-1 min-h-[72px] resize-y whitespace-pre-wrap break-words"
                           value={safeK?.description || ""}
                           onChange={(e) => {
-                            const next = [...kpis];
-                            next[idx] = { ...safeK, description: e.target.value };
-                            setKpis(next);
+                            updateKpiAt(idx, (current) => ({ ...current, description: e.target.value }));
                           }}
                           placeholder="例如：完成原型驗證（功能X、效能Y、通過測試Z）並提供測試報告"
                         />
@@ -891,9 +898,7 @@ export default function ScheduleCheckpointsForm({
                           className="w-full bg-transparent outline-none px-2 py-1 text-right"
                           value={safeK?.weight ?? "0"}
                           onChange={(e) => {
-                            const next = [...kpis];
-                            next[idx] = { ...safeK, weight: e.target.value || "0" };
-                            setKpis(next);
+                            updateKpiAt(idx, (current) => ({ ...current, weight: e.target.value || "0" }));
                           }}
                           placeholder="0"
                         />
@@ -903,9 +908,7 @@ export default function ScheduleCheckpointsForm({
                           className="w-full bg-transparent outline-none px-2 py-1 text-center"
                           value={safeK?.staffCode || ""}
                           onChange={(e) => {
-                            const next = [...kpis];
-                            next[idx] = { ...safeK, staffCode: e.target.value };
-                            setKpis(next);
+                            updateKpiAt(idx, (current) => ({ ...current, staffCode: e.target.value }));
                           }}
                           placeholder="例如：1 / 2 / A / PM"
                         />

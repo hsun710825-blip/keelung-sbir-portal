@@ -1252,6 +1252,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       setLastSaved(formatTaipeiTimeOnly());
       refreshMyApplications();
       return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "未知錯誤";
+      alert(`草稿儲存失敗：${message}`);
+      return false;
     } finally {
       setIsSaving(false);
     }
