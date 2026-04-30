@@ -737,7 +737,7 @@ async function optimizePayloadForTransport<T>(payload: T): Promise<T> {
   const stripped = stripTransientBlobUrls(payload) as T;
   let json = JSON.stringify(stripped);
   // Vercel edge/serverless request body guardrail.
-  const budget = 3_800_000;
+  const budget = 25_000_000;
   if (json.length <= budget) return stripped;
 
   const refs = collectDataUrlRefs(stripped).sort((a, b) => {
@@ -977,11 +977,11 @@ async function buildDraftPayload(input: unknown): Promise<unknown> {
 /** 草稿 POST：遇冷啟／暫時性錯誤時重試；小 payload 時使用 keepalive 降低切換分頁被瀏覽器中止的機率 */
 async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Response> {
   const serialized = JSON.stringify(body);
-  const useKeepalive = serialized.length > 0 && serialized.length < 55_000;
+  const useKeepalive = true;
   let last: Response | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 45_000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 75_000);
     try {
       last = await fetch("/api/draft", {
         method: "POST",
@@ -1016,7 +1016,10 @@ async function buildTransportFormDataPayload(formData: ApplicationFormData): Pro
   const draftPayload = (await buildDraftPayload(formData)) as ApplicationFormData;
   const optimized = (await optimizePayloadForTransport(draftPayload)) as ApplicationFormData;
   const serialized = JSON.stringify({ formData: optimized });
-  if (serialized.length > 4_500_000) {
+  const onlinePayloadLimit = 28_000_000;
+  const uploadPayloadLimit = 8_000_000;
+  const budget = formData.submissionMode === "UPLOAD" ? uploadPayloadLimit : onlinePayloadLimit;
+  if (serialized.length > budget) {
     throw new Error("草稿內容與圖片總量過大，請減少單張圖片尺寸或張數後再儲存。");
   }
   return optimized;
@@ -1481,6 +1484,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       return;
     }
     const blob = await res.blob();
+    if (blob.size > 50 * 1024 * 1024) {
+      alert("PDF 產製失敗：檔案超過 50MB 上限，請減少圖片張數或解析度後重試。");
+      return;
+    }
     setLastPdfBlob(blob);
     setLastPdfFilename(filename);
     if (opts?.openPreview) {
@@ -1607,6 +1614,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           alert(formatApiErrorForAlert("PDF 產製失敗", err));
           return;
         }
+      const pdfBlob = await pdfRes.blob();
+      if (pdfBlob.size > 50 * 1024 * 1024) {
+        alert("送出失敗：系統產製 PDF 已超過 50MB 上限，請減少圖片張數或解析度後再送出。");
+        return;
+      }
         const submitRes = await fetch("/api/submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

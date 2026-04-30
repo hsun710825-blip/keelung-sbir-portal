@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import path from "node:path";
 import xss from "xss";
 
-const MAX_SINGLE_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_GENERAL_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB（一般附件）
+const MAX_SUBMIT_PDF_BYTES = 50 * 1024 * 1024; // 50MB（系統撰寫送件 PDF）
 
 const MIME_EXTENSION_MAP: Record<string, string> = {
   "application/pdf": ".pdf",
@@ -93,14 +94,25 @@ export function ensureAllowedUploadMagic(bytes: Uint8Array, mimeType: string) {
 }
 
 export function ensureFileSizeLimit(size: number) {
-  if (!Number.isFinite(size) || size < 0 || size > MAX_SINGLE_FILE_BYTES) {
+  if (!Number.isFinite(size) || size < 0 || size > MAX_GENERAL_UPLOAD_BYTES) {
     return {
       ok: false as const,
-      error: `File too large (max ${Math.floor(MAX_SINGLE_FILE_BYTES / (1024 * 1024))}MB)`,
-      maxBytes: MAX_SINGLE_FILE_BYTES,
+      error: `File too large (max ${Math.floor(MAX_GENERAL_UPLOAD_BYTES / (1024 * 1024))}MB)`,
+      maxBytes: MAX_GENERAL_UPLOAD_BYTES,
     };
   }
-  return { ok: true as const, maxBytes: MAX_SINGLE_FILE_BYTES };
+  return { ok: true as const, maxBytes: MAX_GENERAL_UPLOAD_BYTES };
+}
+
+export function ensureSubmitPdfSizeLimit(size: number) {
+  if (!Number.isFinite(size) || size < 0 || size > MAX_SUBMIT_PDF_BYTES) {
+    return {
+      ok: false as const,
+      error: `PDF too large (max ${Math.floor(MAX_SUBMIT_PDF_BYTES / (1024 * 1024))}MB)`,
+      maxBytes: MAX_SUBMIT_PDF_BYTES,
+    };
+  }
+  return { ok: true as const, maxBytes: MAX_SUBMIT_PDF_BYTES };
 }
 
 export function buildSafeUploadFilename(mimeType: string) {

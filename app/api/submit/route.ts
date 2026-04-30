@@ -13,6 +13,7 @@ import {
   ensureAllowedUploadMagic,
   ensureAllowedUploadMime,
   ensureFileSizeLimit,
+  ensureSubmitPdfSizeLimit,
   sanitizeDeepInput,
   sanitizeProjectNameForFolder,
 } from "../../../lib/serverSecurity";
@@ -93,7 +94,7 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     const pdfBase64 = typeof body.pdfBase64 === "string" ? body.pdfBase64 : undefined;
     if (!pdfBase64) throw new Error("Missing pdfBase64 or formData");
     const pdfBytes = Buffer.from(pdfBase64, "base64");
-    const sizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
+    const sizeCheck = ensureSubmitPdfSizeLimit(pdfBytes.byteLength);
     if (!sizeCheck.ok) throw new Error(sizeCheck.error);
     return {
       projectName,
@@ -119,7 +120,7 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     if (!extCheck.ok) {
       throw new Error(extCheck.error);
     }
-    const sizeCheck = ensureFileSizeLimit(file.size);
+    const sizeCheck = ensureSubmitPdfSizeLimit(file.size);
     if (!sizeCheck.ok) throw new Error(sizeCheck.error);
     const projectNameField = form.get("projectName");
     const projectName = sanitizeProjectNameForFolder(
@@ -158,7 +159,7 @@ export async function POST(req: Request) {
     const { projectName, pdfBytes, submissionMode, uploadedProposalUrl, formData: registryFormData } = await parseSubmitPayload(req);
     const displayPdfName = buildSafeDisplayPdfName(projectName);
     if (pdfBytes) {
-      const payloadSizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
+      const payloadSizeCheck = ensureSubmitPdfSizeLimit(pdfBytes.byteLength);
       if (!payloadSizeCheck.ok) {
         return NextResponse.json({ ok: false, error: payloadSizeCheck.error, maxBytes: payloadSizeCheck.maxBytes }, { status: 413 });
       }
