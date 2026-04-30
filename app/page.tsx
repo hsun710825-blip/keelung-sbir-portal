@@ -977,7 +977,7 @@ async function buildDraftPayload(input: unknown): Promise<unknown> {
 /** 草稿 POST：遇冷啟／暫時性錯誤時重試；小 payload 時使用 keepalive 降低切換分頁被瀏覽器中止的機率 */
 async function postDraftWithRetry(body: unknown, maxAttempts = 3): Promise<Response> {
   const serialized = JSON.stringify(body);
-  const useKeepalive = true;
+  const useKeepalive = serialized.length < 60_000;
   let last: Response | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const controller = new AbortController();
