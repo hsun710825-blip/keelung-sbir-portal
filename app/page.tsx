@@ -1308,18 +1308,30 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         return;
       }
 
-      const uploadRes = await fetch(String(sessionBody.uploadUrl), {
-        method: "PUT",
-        headers: { "Content-Type": "application/pdf" },
-        body: file,
-      });
-      if (!uploadRes.ok) {
-        const errText = await uploadRes.text().catch(() => "");
-        alert(`PDF 上傳失敗：Google Drive 回應 ${uploadRes.status}${errText ? ` (${errText.slice(0, 200)})` : ""}`);
-        return;
+      const uploadUrl = String(sessionBody.uploadUrl);
+      const chunkSize = 3 * 1024 * 1024;
+      let offset = 0;
+      let uploadedFileId = "";
+      while (offset < file.size) {
+        const endExclusive = Math.min(file.size, offset + chunkSize);
+        const chunkBlob = file.slice(offset, endExclusive);
+        const fd = new FormData();
+        fd.append("uploadUrl", uploadUrl);
+        fd.append("start", String(offset));
+        fd.append("end", String(endExclusive - 1));
+        fd.append("total", String(file.size));
+        fd.append("chunk", chunkBlob, "chunk.pdf");
+        const chunkRes = await fetch("/api/upload-proposal/chunk", { method: "POST", body: fd });
+        const chunkBody = await chunkRes.json().catch(() => ({} as { error?: string; complete?: boolean; fileId?: string }));
+        if (!chunkRes.ok) {
+          alert(`PDF 上傳失敗：${chunkBody?.error || "分段上傳失敗"}`);
+          return;
+        }
+        if (chunkBody.complete && chunkBody.fileId) {
+          uploadedFileId = String(chunkBody.fileId);
+        }
+        offset = endExclusive;
       }
-      const uploadJson = (await uploadRes.json().catch(() => null)) as { id?: string } | null;
-      const uploadedFileId = String(uploadJson?.id || "").trim();
       if (!uploadedFileId) {
         alert("PDF 上傳失敗：未取得雲端檔案識別碼。");
         return;
