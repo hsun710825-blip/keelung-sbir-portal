@@ -143,6 +143,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
       updatedAtLabel: formatTaipeiDateTime(row.updatedAt),
       createdAtLabel: showCreatedSub ? formatTaipeiDateTime(row.createdAt) : null,
       statusLabel: applicationStatusLabel(row.status),
+      submissionMode: row.submissionMode === "UPLOAD" ? "UPLOAD" : "ONLINE",
     };
   });
 

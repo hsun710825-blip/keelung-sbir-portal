@@ -89,6 +89,14 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
   const driveFolder = parsedDesc["Drive"] ?? null;
 
   const existingEval = application.evaluations[0] ?? null;
+  const onlinePdfAttachment = application.attachments.find(
+    (att) => att.category === AttachmentCategory.DRAFT_PDF || att.category === AttachmentCategory.FINAL_APPROVED_PDF
+  );
+  const onlinePdfUrl = googleDriveFileViewUrl(onlinePdfAttachment?.driveFileId);
+  const proposalPreviewUrl =
+    application.submissionMode === "UPLOAD"
+      ? (application.uploadedProposalUrl?.trim() || null)
+      : onlinePdfUrl;
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
@@ -244,16 +252,37 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
           </div>
         </div>
 
-        <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm ring-1 ring-blue-50">
-          <h2 className="text-base font-semibold text-slate-900">評分區</h2>
-          <p className="mt-1 text-sm text-slate-500">請填寫分數與審查評語；可重複儲存以更新。</p>
-          <div className="mt-6">
-            <CommitteeEvaluationForm
-              applicationId={application.id}
-              initialScore={existingEval?.score ?? null}
-              initialComment={existingEval?.comment ?? null}
-            />
-          </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-900">計畫書預覽</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {application.submissionMode === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF"}
+            </p>
+            <div className="mt-4">
+              {proposalPreviewUrl ? (
+                <iframe
+                  title="計畫書 PDF 預覽"
+                  src={proposalPreviewUrl}
+                  className="h-[760px] w-full rounded-xl border border-slate-200 bg-white"
+                />
+              ) : (
+                <div className="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                  目前無可預覽 PDF，請改用附件清單檢視。
+                </div>
+              )}
+            </div>
+          </section>
+          <section className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm ring-1 ring-blue-50">
+            <h2 className="text-base font-semibold text-slate-900">評分區</h2>
+            <p className="mt-1 text-sm text-slate-500">請填寫分數與審查評語；可重複儲存以更新。</p>
+            <div className="mt-6">
+              <CommitteeEvaluationForm
+                applicationId={application.id}
+                initialScore={existingEval?.score ?? null}
+                initialComment={existingEval?.comment ?? null}
+              />
+            </div>
+          </section>
         </div>
       </div>
     </main>

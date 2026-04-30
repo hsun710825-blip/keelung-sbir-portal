@@ -29,6 +29,14 @@ export function pickApplicationMetaFormData(input: AnyRecord | null | undefined)
   if (typeof y === "string" || typeof y === "number") {
     out.submitYear = y;
   }
+  const submissionMode = asTrimmedString(input.submissionMode).toUpperCase();
+  if (submissionMode === "ONLINE" || submissionMode === "UPLOAD") {
+    out.submissionMode = submissionMode;
+  }
+  const uploadedProposalUrl = asTrimmedString(input.uploadedProposalUrl);
+  if (uploadedProposalUrl) {
+    out.uploadedProposalUrl = uploadedProposalUrl;
+  }
   return out;
 }
 
@@ -99,6 +107,8 @@ export async function upsertApplicationFromDraftSave(input: {
   const title = projectTitle.trim() || null;
   const periodYear = parsePeriodYearFromForm(formData);
   const description = summarySnippet(formData);
+  const submissionMode = asTrimmedString(formData?.submissionMode).toUpperCase() === "UPLOAD" ? "UPLOAD" : "ONLINE";
+  const uploadedProposalUrl = asTrimmedString(formData?.uploadedProposalUrl) || null;
 
   return withPrismaRetry(async () => {
     const existing = await prisma.application.findUnique({
@@ -116,6 +126,8 @@ export async function upsertApplicationFromDraftSave(input: {
         title: title ?? undefined,
         ...(periodYear != null ? { periodYear } : {}),
         ...(description != null ? { description } : {}),
+        submissionMode,
+        uploadedProposalUrl: uploadedProposalUrl ?? undefined,
       };
 
       if (existing.status === ApplicationStatus.DRAFT) {
@@ -140,6 +152,8 @@ export async function upsertApplicationFromDraftSave(input: {
         periodYear: periodYear ?? undefined,
         description: description ?? undefined,
         status: ApplicationStatus.DRAFT,
+        submissionMode,
+        uploadedProposalUrl: uploadedProposalUrl ?? undefined,
       },
     });
   });
@@ -170,6 +184,8 @@ export async function finalizeApplicationOnSubmit(input: {
   const title = projectTitle.trim() || null;
   const periodYear = parsePeriodYearFromForm(formData);
   const description = summarySnippet(formData);
+  const submissionMode = asTrimmedString(formData?.submissionMode).toUpperCase() === "UPLOAD" ? "UPLOAD" : "ONLINE";
+  const uploadedProposalUrl = asTrimmedString(formData?.uploadedProposalUrl) || null;
 
   return withPrismaRetry(async () => {
     const existing = await prisma.application.findUnique({
@@ -196,6 +212,8 @@ export async function finalizeApplicationOnSubmit(input: {
             title: title ?? existing.title,
             ...(periodYear != null ? { periodYear } : {}),
             ...(description != null ? { description } : {}),
+            submissionMode,
+            uploadedProposalUrl: uploadedProposalUrl ?? undefined,
           },
         })
       : await prisma.application.create({
@@ -206,6 +224,8 @@ export async function finalizeApplicationOnSubmit(input: {
             title,
             periodYear: periodYear ?? undefined,
             description: description ?? undefined,
+            submissionMode,
+            uploadedProposalUrl: uploadedProposalUrl ?? undefined,
           },
         });
 
@@ -219,17 +239,19 @@ export async function finalizeApplicationOnSubmit(input: {
       },
     });
 
-    await prisma.applicationAttachment.create({
-      data: {
-        applicationId: app.id,
-        uploadedByUserId: applicantUserId,
-        driveFileId: pdfDriveFileId,
-        fileName: pdfDisplayName,
-        mimeType: "application/pdf",
-        sizeBytes: BigInt(Math.max(0, pdfByteLength)),
-        category: AttachmentCategory.DRAFT_PDF,
-      },
-    });
+    if (submissionMode === "ONLINE") {
+      await prisma.applicationAttachment.create({
+        data: {
+          applicationId: app.id,
+          uploadedByUserId: applicantUserId,
+          driveFileId: pdfDriveFileId,
+          fileName: pdfDisplayName,
+          mimeType: "application/pdf",
+          sizeBytes: BigInt(Math.max(0, pdfByteLength)),
+          category: AttachmentCategory.DRAFT_PDF,
+        },
+      });
+    }
 
     return app;
   });

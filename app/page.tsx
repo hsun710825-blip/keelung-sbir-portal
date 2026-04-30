@@ -587,8 +587,14 @@ function FoundingRocSelectors({
 }
 
 type ApplicationFormData = {
+  submissionMode?: "ONLINE" | "UPLOAD";
+  uploadedProposalUrl?: string;
   projectCategory: string;
   projectName: string;
+  taxId?: string;
+  projectManager?: string;
+  contactPerson?: string;
+  contactPhone?: string;
   projectStartDate: string;
   projectEndDate: string;
   projectMonths: string;
@@ -1060,6 +1066,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [showSidebarHint, setShowSidebarHint] = useState(true);
   const [showIdleModal, setShowIdleModal] = useState(false);
+  const [isProposalUploading, setIsProposalUploading] = useState(false);
+  const [showReadonlyHistory, setShowReadonlyHistory] = useState(false);
   const lastActivityRef = useRef(Date.now());
 
   const refreshMyApplications = useCallback(() => {
@@ -1105,8 +1113,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   }, []);
 
   const [formData, setFormData] = useState<ApplicationFormData>({
+    submissionMode: "ONLINE",
+    uploadedProposalUrl: "",
     // 第一頁籤：封面
     projectCategory: '', projectName: '',
+    taxId: "", projectManager: "", contactPerson: "", contactPhone: "",
     projectStartDate: '', projectEndDate: '', projectMonths: '',
     companyName: '', leaderName: '',
     submitYear: '115', submitMonth: '',
@@ -1132,6 +1143,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   });
 
   const formSaveBlocked = useMemo(() => {
+    if (formData.submissionMode === "UPLOAD") return false;
     const planMonthsNum = parseInt(formData.projectMonths, 10);
     const planTooLong =
       Boolean(formData.projectStartDate && formData.projectEndDate) &&
@@ -1141,6 +1153,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     return planTooLong || summaryOver;
   }, [formData]);
   const executionAdvantageChars = Array.from(formData.executionAdvantage || "").length;
+  const isUploadMode = formData.submissionMode === "UPLOAD";
 
   const scheduleBoundWorkItems = useMemo(
     () => buildScheduleBoundWorkItems(formData.planContent),
@@ -1181,12 +1194,19 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     { id: 8, title: '陸、附件（依計畫實際情況檢附，無則免附）' },
     { id: 9, title: '柒、送出前PDF預覽' },
   ];
+  const visibleTabs = isUploadMode ? tabs.filter((t) => t.id === 1 || t.id === 9) : tabs;
 
   useEffect(() => {
     if (!statusToast) return;
     const t = setTimeout(() => setStatusToast(null), 2800);
     return () => clearTimeout(t);
   }, [statusToast]);
+
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id ?? 1);
+    }
+  }, [activeTab, visibleTabs]);
 
   useEffect(() => {
     return () => {
@@ -1223,6 +1243,74 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       }
       return next;
     });
+  };
+
+  const handleSubmissionModeChange = (mode: "ONLINE" | "UPLOAD") => {
+    if (isPlanLocked) return;
+    setFormData((prev) => ({ ...prev, submissionMode: mode }));
+    if (mode === "UPLOAD") {
+      setActiveTab(1);
+      setPreviewPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setLastPdfBlob(null);
+      setLastPdfFilename("");
+    }
+  };
+
+  const validateUploadModeRequiredFields = () => {
+    const requiredFields: Array<[string, string]> = [
+      ["taxId", "統一編號"],
+      ["companyName", "公司名稱"],
+      ["projectName", "計畫名稱"],
+      ["leaderName", "負責人"],
+      ["projectManager", "計畫主持人"],
+      ["contactPerson", "聯絡人"],
+      ["contactPhone", "連絡電話"],
+    ];
+    const missing = requiredFields.filter(([k]) => !String(formData[k as keyof ApplicationFormData] ?? "").trim());
+    if (missing.length) {
+      alert(`UPLOAD 模式尚有必填欄位未完成：${missing.map(([, label]) => label).join("、")}`);
+      return false;
+    }
+    if (!String(formData.uploadedProposalUrl || "").trim()) {
+      alert("請先上傳計畫書 PDF。");
+      return false;
+    }
+    return true;
+  };
+
+  const handleUploadProposalPdf = async (file: File | null) => {
+    if (!file || isPlanLocked) return;
+    if (file.type !== "application/pdf") {
+      alert("僅允許上傳 PDF 檔案。");
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      alert("PDF 檔案不可超過 100MB。");
+      return;
+    }
+    setIsProposalUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("projectName", formData.projectName || "未命名計畫");
+      fd.append("submitYear", formData.submitYear || "");
+      fd.append("summary", formData.summary || "");
+      const res = await fetch("/api/upload-proposal", { method: "POST", body: fd });
+      const body = await res.json().catch(() => ({} as { error?: string; uploadedProposalUrl?: string }));
+      if (!res.ok || !body?.uploadedProposalUrl) {
+        alert(`PDF 上傳失敗：${body?.error || "未知錯誤"}`);
+        return;
+      }
+      setFormData((prev) => ({ ...prev, uploadedProposalUrl: String(body.uploadedProposalUrl) }));
+      setStatusToast("PDF 已上傳（將覆蓋前次版本）");
+    } catch (e) {
+      alert(`PDF 上傳失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+    } finally {
+      setIsProposalUploading(false);
+    }
   };
 
   const saveDraftCore = async (): Promise<boolean> => {
@@ -1298,15 +1386,18 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   };
 
   const handleNext = async () => {
+    const currentIdx = visibleTabs.findIndex((t) => t.id === activeTab);
+    const nextTabId = currentIdx >= 0 ? visibleTabs[currentIdx + 1]?.id : undefined;
+    if (!nextTabId) return;
     if (isPlanLocked) {
-      if (activeTab < tabs.length) setActiveTab(activeTab + 1);
+      setActiveTab(nextTabId);
       return;
     }
     const ok = await saveDraftCore();
     if (!ok) {
       alert("草稿暫時無法儲存，已先帶您前往下一步；請稍後再按儲存草稿。");
     }
-    if (activeTab < tabs.length) setActiveTab(activeTab + 1);
+    setActiveTab(nextTabId);
   };
 
   const handleTabChange = async (nextTab: number) => {
@@ -1323,6 +1414,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   };
 
   const handleGeneratePdf = async (opts?: { download?: boolean; openPreview?: boolean }) => {
+    if (isUploadMode) return;
     if (formSaveBlocked || isSaving || isSubmitting || isPdfGenerating) return;
     setIsPdfGenerating(true);
     try {
@@ -1379,7 +1471,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   };
 
   const previewDataKey = useMemo(() => {
-    if (activeTab !== 9) return "";
+    if (activeTab !== 9 || isUploadMode) return "";
     return JSON.stringify({
       projectName: formData.projectName,
       companyName: formData.companyName,
@@ -1398,7 +1490,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       files: formData.files,
       attachmentChecks: formData.attachmentChecks,
     });
-  }, [activeTab, formData]);
+  }, [activeTab, formData, isUploadMode]);
 
   useEffect(() => {
     if (activeTab !== 9 || !previewDataKey) return;
@@ -1432,40 +1524,57 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     const t = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      // 先產製 PDF，再送到後端上傳 Drive（需設定 service account 環境變數）
       const saved = await saveDraftCore();
       if (!saved) return;
       const payloadFormData = await buildTransportFormDataPayload(formData);
 
-      const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
-      const filename = `${safeBaseName}.pdf`;
-      const pdfRes = await fetch("/api/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formData: payloadFormData, filename }),
-        signal: controller.signal,
-      });
-      if (!pdfRes.ok) {
-        const err = await pdfRes
-          .json()
-          .catch(async () => ({ error: await pdfRes.text().catch(() => "PDF 產製失敗") }));
-        alert(formatApiErrorForAlert("PDF 產製失敗", err));
-        return;
-      }
-      const submitRes = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // Let backend generate/upload PDF from formData to avoid large base64 conversion in browser.
-        body: JSON.stringify({ formData: payloadFormData, filename, projectName: formData.projectName }),
-        signal: controller.signal,
-      });
+      if (isUploadMode) {
+        if (!validateUploadModeRequiredFields()) return;
+        const submitRes = await fetch("/api/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ formData: payloadFormData, projectName: formData.projectName }),
+          signal: controller.signal,
+        });
+        if (!submitRes.ok) {
+          const err = await submitRes
+            .json()
+            .catch(async () => ({ error: await submitRes.text().catch(() => "送出失敗") }));
+          alert(`送出失敗：${err?.error || "未知錯誤"}`);
+          return;
+        }
+      } else {
+        // 先產製 PDF，再送到後端上傳 Drive（需設定 service account 環境變數）
+        const safeBaseName = makeSafeFilenameBase(formData.projectName) || "sbir-plan";
+        const filename = `${safeBaseName}.pdf`;
+        const pdfRes = await fetch("/api/pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ formData: payloadFormData, filename }),
+          signal: controller.signal,
+        });
+        if (!pdfRes.ok) {
+          const err = await pdfRes
+            .json()
+            .catch(async () => ({ error: await pdfRes.text().catch(() => "PDF 產製失敗") }));
+          alert(formatApiErrorForAlert("PDF 產製失敗", err));
+          return;
+        }
+        const submitRes = await fetch("/api/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Let backend generate/upload PDF from formData to avoid large base64 conversion in browser.
+          body: JSON.stringify({ formData: payloadFormData, filename, projectName: formData.projectName }),
+          signal: controller.signal,
+        });
 
-      if (!submitRes.ok) {
-        const err = await submitRes
-          .json()
-          .catch(async () => ({ error: await submitRes.text().catch(() => "送出失敗") }));
-        alert(`送出失敗：${err?.error || "未知錯誤"}`);
-        return;
+        if (!submitRes.ok) {
+          const err = await submitRes
+            .json()
+            .catch(async () => ({ error: await submitRes.text().catch(() => "送出失敗") }));
+          alert(`送出失敗：${err?.error || "未知錯誤"}`);
+          return;
+        }
       }
 
       const stamp = formatTaipeiDateTime(new Date());
@@ -1637,7 +1746,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
           )}
           {isSidebarOpen && <div className="p-5 border-b border-slate-50"><h3 className="text-xs font-semibold text-slate-400 tracking-widest uppercase">計畫書章節</h3></div>}
           <nav className="p-2 space-y-1" aria-label="計畫書章節導覽">
-            {tabs.map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
@@ -1663,7 +1772,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
             {/* 只在非封面頁顯示一般標題 */}
             {activeTab !== 1 && (
                <h2 className="text-2xl font-medium tracking-wide text-slate-800 mb-8 border-b border-slate-100 pb-4">
-                 {tabs.find(t => t.id === activeTab)?.title}
+                 {visibleTabs.find(t => t.id === activeTab)?.title}
                </h2>
             )}
 
@@ -1690,11 +1799,131 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   此計畫書目前為鎖定狀態（{planLockReason || "已鎖定"}），僅可檢視，不可再修改或上傳附件。
                 </div>
               )}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <p className="text-sm font-medium text-slate-800">請選擇送件方式</p>
+                <div className="mt-2 flex flex-wrap items-center gap-5 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="submissionMode"
+                      checked={!isUploadMode}
+                      onChange={() => handleSubmissionModeChange("ONLINE")}
+                      disabled={isPlanLocked}
+                    />
+                    系統線上撰寫
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="submissionMode"
+                      checked={isUploadMode}
+                      onChange={() => handleSubmissionModeChange("UPLOAD")}
+                      disabled={isPlanLocked}
+                    />
+                    自行上傳計畫書 PDF
+                  </label>
+                </div>
+              </div>
               
               {/* 第 1 頁籤：正式封面設計 */}
               {activeTab === 1 && (
                 <div className="bg-white p-8 md:p-16 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-center min-h-[600px]">
-                  
+                  {isUploadMode ? (
+                    <div className="space-y-8">
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                        UPLOAD 模式僅需填寫關鍵基本資料，並上傳一份整併後 PDF；原 ONLINE 章節內容會保留但不開放編輯。
+                      </div>
+                      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <InputGroup label="統一編號" required>
+                          <input type="text" name="taxId" value={formData.taxId || ""} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="公司名稱" required>
+                          <input type="text" name="companyName" value={formData.companyName} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="計畫名稱" required>
+                          <input type="text" name="projectName" value={formData.projectName} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="負責人" required>
+                          <input type="text" name="leaderName" value={formData.leaderName} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="計畫主持人" required>
+                          <input type="text" name="projectManager" value={formData.projectManager || ""} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="聯絡人" required>
+                          <input type="text" name="contactPerson" value={formData.contactPerson || ""} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                        <InputGroup label="連絡電話" required>
+                          <input type="text" name="contactPhone" value={formData.contactPhone || ""} onChange={handleInputChange} className="form-input" />
+                        </InputGroup>
+                      </div>
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                        請將計畫書本文、所有切結書、登記證件與補充資料，【合併為一份 PDF 檔案】後上傳。
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <label className="block text-sm font-medium text-slate-700">上傳計畫書 PDF（限 100MB）</label>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          className="mt-2 block w-full text-sm"
+                          disabled={isPlanLocked || isProposalUploading}
+                          onChange={(e) => void handleUploadProposalPdf(e.target.files?.[0] ?? null)}
+                        />
+                        <p className="mt-2 text-xs text-slate-500">上傳新檔會覆蓋前次版本，不會累積無限版本。</p>
+                        {formData.uploadedProposalUrl ? (
+                          <a href={formData.uploadedProposalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-blue-700 underline">
+                            目前上傳檔案連結
+                          </a>
+                        ) : null}
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700"
+                          onClick={() => setShowReadonlyHistory((v) => !v)}
+                        >
+                          <span>檢視/下載歷史草稿資料</span>
+                          <span>{showReadonlyHistory ? "收合" : "展開"}</span>
+                        </button>
+                        {showReadonlyHistory ? (
+                          <div className="border-t border-slate-200 p-4">
+                            <fieldset disabled className="pointer-events-none opacity-75">
+                              <CompanyProfileForm
+                                shared={{
+                                  companyName: formData.companyName,
+                                  establishDate: formData.foundingDate,
+                                  representative: formData.leaderName,
+                                  mainBusiness: formData.mainBusinessItems,
+                                }}
+                                onSharedChange={() => {}}
+                                value={formData.companyProfile || undefined}
+                                onChange={() => {}}
+                              />
+                              <div className="mt-6">
+                                <PlanContentImplementationForm value={formData.planContent || undefined} onChange={() => {}} />
+                              </div>
+                              <div className="mt-6">
+                                <ExpectedBenefitsForm value={formData.expectedBenefits || undefined} onChange={() => {}} />
+                              </div>
+                              <div className="mt-6">
+                                <ScheduleCheckpointsForm
+                                  draftHydrated={true}
+                                  projectStartDate={formData.projectStartDate}
+                                  projectEndDate={formData.projectEndDate}
+                                  boundWorkItems={scheduleBoundWorkItems}
+                                  value={formData.scheduleCheckpoints || undefined}
+                                  onChange={() => {}}
+                                />
+                              </div>
+                              <div className="mt-6">
+                                <HumanBudgetRequirementsForm companyName={formData.companyName} value={formData.humanBudget || undefined} onChange={() => {}} />
+                              </div>
+                            </fieldset>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                  <>
                   {/* 頂部標題 */}
                   <div className="text-center space-y-4 mb-16">
                      <h2 className="text-2xl md:text-4xl font-semibold tracking-[0.2em] text-slate-800">115年度基隆市政府地方產業創新研發推動計畫</h2>
@@ -1796,6 +2025,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       本日期為計畫書填表日期（可先填預估月份，後續仍可調整）。
                     </div>
                   </div>
+                  </>
+                  )}
                 </div>
               )}
 
@@ -1956,27 +2187,33 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               {activeTab === 9 && (
                 <div className="space-y-4">
                   <div className="text-sm text-slate-600 whitespace-pre-wrap break-words">
-                    請先檢視完整計畫書 PDF，確認內容正確後再送出。
+                    {isUploadMode ? "請確認已上傳正確的 PDF 後再送出。" : "請先檢視完整計畫書 PDF，確認內容正確後再送出。"}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleDownloadLastPdf}
-                      disabled={!lastPdfBlob || isSaving || isPdfGenerating}
-                      className="px-4 py-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:pointer-events-none"
-                    >
-                      下載PDF檔
-                    </button>
-                  </div>
+                  {!isUploadMode ? (
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleDownloadLastPdf}
+                        disabled={!lastPdfBlob || isSaving || isPdfGenerating}
+                        className="px-4 py-2 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:pointer-events-none"
+                      >
+                        下載PDF檔
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="relative">
-                    {previewPdfUrl ? (
-                      <iframe title="計畫書預覽" src={previewPdfUrl} className="w-full h-[760px] rounded-lg border border-slate-200 bg-white" />
+                    {(isUploadMode ? formData.uploadedProposalUrl : previewPdfUrl) ? (
+                      <iframe
+                        title="計畫書預覽"
+                        src={isUploadMode ? formData.uploadedProposalUrl : previewPdfUrl || ""}
+                        className="w-full h-[760px] rounded-lg border border-slate-200 bg-white"
+                      />
                     ) : (
                       <div className="h-[760px] rounded-lg border border-slate-200 bg-white flex items-center justify-center text-sm text-slate-500">
-                        最新 PDF 產製中，請稍候...
+                        {isUploadMode ? "尚未上傳 PDF，請回上一頁先上傳。" : "最新 PDF 產製中，請稍候..."}
                       </div>
                     )}
-                    {isPdfGenerating && (
+                    {isPdfGenerating && !isUploadMode && (
                       <div className="absolute inset-0 rounded-lg border border-slate-200 bg-white/85 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3">
                         <div
                           className="h-8 w-8 rounded-full border-2 border-slate-300 border-t-blue-600 animate-spin"
@@ -2087,7 +2324,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   </button>
                 </>
               )}
-              {activeTab !== 8 && activeTab !== 9 && (
+              {activeTab !== 8 && activeTab !== 9 && !isUploadMode && (
                 <button
                   type="button"
                   onClick={() => void handleNext()}
@@ -2095,6 +2332,17 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                 >
                   儲存並前往下一步
+                  <ChevronRight size={16} aria-hidden />
+                </button>
+              )}
+              {isUploadMode && activeTab === 1 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(9)}
+                  disabled={isSaving || isSubmitting || isPlanLocked}
+                  className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  前往送出預覽
                   <ChevronRight size={16} aria-hidden />
                 </button>
               )}

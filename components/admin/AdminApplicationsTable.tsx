@@ -14,6 +14,7 @@ export type AdminApplicationTableRow = {
   updatedAtLabel: string;
   createdAtLabel: string | null;
   statusLabel: string;
+  submissionMode: "ONLINE" | "UPLOAD";
 };
 
 export function AdminApplicationsTable({
@@ -117,6 +118,9 @@ export function AdminApplicationsTable({
                 目前狀態
               </th>
               <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                送件方式
+              </th>
+              <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 操作
               </th>
             </tr>
@@ -124,7 +128,7 @@ export function AdminApplicationsTable({
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                <td colSpan={7} className="px-5 py-12 text-center text-slate-500">
                   {searchQuery
                     ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
                     : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
@@ -171,6 +175,17 @@ export function AdminApplicationsTable({
                     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-800">
                       {row.statusLabel}
                     </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {row.submissionMode === "UPLOAD" ? (
+                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                        自行上傳
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+                        線上撰寫
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5">
                     {isAdmin ? <DeleteApplicationButton applicationId={row.id} /> : <span className="text-xs text-slate-400">—</span>}

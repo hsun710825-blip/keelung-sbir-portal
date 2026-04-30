@@ -29,7 +29,9 @@ type AnyRecord = Record<string, unknown>;
 
 type ParsedPayload = {
   projectName: string;
-  pdfBytes: Buffer;
+  pdfBytes: Buffer | null;
+  submissionMode: "ONLINE" | "UPLOAD";
+  uploadedProposalUrl?: string;
   /** 若有帶入，用於寫回專案總表（Google Sheets） */
   formData?: AnyRecord | null;
 };
@@ -52,6 +54,23 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     if (body.formData) {
       // 重要：送出前先做遞迴淨化，降低惡意 payload 寫入風險。
       const cleanFormData = sanitizeDeepInput(body.formData as AnyRecord);
+      const submissionMode =
+        String((cleanFormData as { submissionMode?: unknown }).submissionMode ?? "").trim().toUpperCase() === "UPLOAD"
+          ? "UPLOAD"
+          : "ONLINE";
+      if (submissionMode === "UPLOAD") {
+        const uploadedProposalUrl = String((cleanFormData as { uploadedProposalUrl?: unknown }).uploadedProposalUrl ?? "").trim();
+        if (!uploadedProposalUrl) {
+          throw new Error("UPLOAD 模式缺少 uploadedProposalUrl，請先上傳 PDF。");
+        }
+        return {
+          projectName,
+          pdfBytes: null,
+          submissionMode,
+          uploadedProposalUrl,
+          formData: cleanFormData,
+        };
+      }
       const pdfRes = await fetch(new URL("/api/pdf", req.url), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,6 +84,7 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
       return {
         projectName,
         pdfBytes: Buffer.from(await pdfRes.arrayBuffer()),
+        submissionMode,
         formData: cleanFormData,
       };
     }
@@ -78,6 +98,7 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     return {
       projectName,
       pdfBytes,
+      submissionMode: "ONLINE",
     };
   }
 
@@ -116,6 +137,7 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
     return {
       projectName,
       pdfBytes: Buffer.from(bytes),
+      submissionMode: "ONLINE",
     };
   }
   throw new Error("Unsupported Content-Type");
@@ -133,11 +155,13 @@ async function getDriveWithFallback() {
 
 export async function POST(req: Request) {
   try {
-    const { projectName, pdfBytes, formData: registryFormData } = await parseSubmitPayload(req);
+    const { projectName, pdfBytes, submissionMode, uploadedProposalUrl, formData: registryFormData } = await parseSubmitPayload(req);
     const displayPdfName = buildSafeDisplayPdfName(projectName);
-    const payloadSizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
-    if (!payloadSizeCheck.ok) {
-      return NextResponse.json({ ok: false, error: payloadSizeCheck.error, maxBytes: payloadSizeCheck.maxBytes }, { status: 413 });
+    if (pdfBytes) {
+      const payloadSizeCheck = ensureFileSizeLimit(pdfBytes.byteLength);
+      if (!payloadSizeCheck.ok) {
+        return NextResponse.json({ ok: false, error: payloadSizeCheck.error, maxBytes: payloadSizeCheck.maxBytes }, { status: 413 });
+      }
     }
     // 權限驗證：僅登入者可執行正式送件。
     const session = await getServerSession(authOptions);
@@ -155,6 +179,9 @@ export async function POST(req: Request) {
       const draftFileId = await findDraftFileIdInFolder(drive, projectFolder.folderId, emailHashKey(session.user?.email || ""));
       await assertDraftUnlocked(drive, draftFileId, "Plan is locked");
 
+      if (submissionMode === "UPLOAD") {
+        return { userFolder, projectFolder, file: { id: "", name: displayPdfName, webViewLink: uploadedProposalUrl || "" }, draftFileId };
+      }
       const res = await drive.files.create({
         requestBody: {
           name: displayPdfName,
@@ -162,7 +189,7 @@ export async function POST(req: Request) {
         },
         media: {
           mimeType: "application/pdf",
-          body: Readable.from(pdfBytes),
+          body: Readable.from(pdfBytes!),
         },
         fields: "id, name, webViewLink",
         supportsAllDrives: true,
@@ -181,7 +208,7 @@ export async function POST(req: Request) {
         formData: prismaFormData,
         pdfDriveFileId: String(file.id || ""),
         pdfDisplayName: displayPdfName,
-        pdfByteLength: pdfBytes.byteLength,
+        pdfByteLength: pdfBytes?.byteLength || 0,
       });
     } catch (prismaErr) {
       console.error("[submit] prisma finalize failed:", prismaErr);
@@ -243,6 +270,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       file,
+      submissionMode,
       uploadMode: mode,
       folder: {
         user: { name: userFolder.folderName, id: userFolder.folderId },
