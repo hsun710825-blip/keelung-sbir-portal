@@ -1287,25 +1287,56 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       alert("僅允許上傳 PDF 檔案。");
       return;
     }
-    if (file.size > 4 * 1024 * 1024) {
-      alert("PDF 檔案不可超過 4MB（目前上傳通道限制）。");
+    if (file.size > 100 * 1024 * 1024) {
+      alert("PDF 檔案不可超過 100MB。");
       return;
     }
     setIsProposalUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("projectName", formData.projectName || "未命名計畫");
-      fd.append("submitYear", formData.submitYear || "");
-      fd.append("summary", formData.summary || "");
-      const res = await fetch("/api/upload-proposal", { method: "POST", body: fd });
-      const body = await res.json().catch(() => ({} as { error?: string; uploadedProposalUrl?: string }));
-      if (!res.ok || !body?.uploadedProposalUrl) {
-        if (res.status === 413) {
-          alert("PDF 上傳失敗：檔案超過目前上傳通道限制（4MB）。");
-        } else {
-          alert(`PDF 上傳失敗：${body?.error || "未知錯誤"}`);
-        }
+      const sessionRes = await fetch("/api/upload-proposal/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectName: formData.projectName || "未命名計畫",
+          fileSize: file.size,
+          mimeType: "application/pdf",
+        }),
+      });
+      const sessionBody = await sessionRes.json().catch(() => ({} as { error?: string; uploadUrl?: string }));
+      if (!sessionRes.ok || !sessionBody?.uploadUrl) {
+        alert(`PDF 上傳失敗：${sessionBody?.error || "無法建立雲端上傳通道"}`);
+        return;
+      }
+
+      const uploadRes = await fetch(String(sessionBody.uploadUrl), {
+        method: "PUT",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => "");
+        alert(`PDF 上傳失敗：Google Drive 回應 ${uploadRes.status}${errText ? ` (${errText.slice(0, 200)})` : ""}`);
+        return;
+      }
+      const uploadJson = (await uploadRes.json().catch(() => null)) as { id?: string } | null;
+      const uploadedFileId = String(uploadJson?.id || "").trim();
+      if (!uploadedFileId) {
+        alert("PDF 上傳失敗：未取得雲端檔案識別碼。");
+        return;
+      }
+      const finalizeRes = await fetch("/api/upload-proposal/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectName: formData.projectName || "未命名計畫",
+          submitYear: formData.submitYear || "",
+          summary: formData.summary || "",
+          fileId: uploadedFileId,
+        }),
+      });
+      const body = await finalizeRes.json().catch(() => ({} as { error?: string; uploadedProposalUrl?: string }));
+      if (!finalizeRes.ok || !body?.uploadedProposalUrl) {
+        alert(`PDF 上傳失敗：${body?.error || "無法完成上傳確認"}`);
         return;
       }
       setFormData((prev) => ({ ...prev, uploadedProposalUrl: String(body.uploadedProposalUrl) }));
@@ -1864,7 +1895,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                         請將計畫書本文、所有切結書、登記證件與補充資料，【合併為一份 PDF 檔案】後上傳。
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <label className="block text-sm font-medium text-slate-700">上傳計畫書 PDF（限 4MB）</label>
+                        <label className="block text-sm font-medium text-slate-700">上傳計畫書 PDF（限 100MB）</label>
                         <input
                           type="file"
                           accept="application/pdf"

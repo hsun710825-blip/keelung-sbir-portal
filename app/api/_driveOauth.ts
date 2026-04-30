@@ -9,13 +9,17 @@ function requireEnv(name: string) {
 }
 
 export function getDriveOauthClient() {
+  const oauth2Client = getDriveOauthAuthClient();
+  return google.drive({ version: "v3", auth: oauth2Client });
+}
+
+export function getDriveOauthAuthClient() {
   const clientId = requireEnv("GOOGLE_CLIENT_ID");
   const clientSecret = requireEnv("GOOGLE_CLIENT_SECRET");
   const refreshToken = requireEnv("GOOGLE_REFRESH_TOKEN");
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
   oauth2Client.setCredentials({ refresh_token: refreshToken });
-
-  return google.drive({ version: "v3", auth: oauth2Client });
+  return oauth2Client;
 }
 
