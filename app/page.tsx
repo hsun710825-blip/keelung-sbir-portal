@@ -1928,11 +1928,6 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                           onChange={(e) => void handleUploadProposalPdf(e.target.files?.[0] ?? null)}
                         />
                         <p className="mt-2 text-xs text-slate-500">上傳新檔會覆蓋前次版本，不會累積無限版本。</p>
-                        {formData.uploadedProposalUrl ? (
-                          <a href={formData.uploadedProposalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-blue-700 underline">
-                            目前上傳檔案連結
-                          </a>
-                        ) : null}
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white">
                         <button
