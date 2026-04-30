@@ -2215,18 +2215,25 @@ export async function POST(req: Request) {
       const treePage = treeDoc.getPage(0);
       const tw = treePage.getSize().width;
       const th = treePage.getSize().height;
-      const crop = Math.max(0, Math.min(treeRender.cropPadding || 0, Math.min(tw, th) * 0.16));
+      const cropBox = treeRender.cropBox as
+        | { left: number; right: number; top: number; bottom: number }
+        | undefined;
+      const defaultCrop = Math.max(0, Math.min(24, Math.min(tw, th) * 0.04));
+      const left = Math.max(0, Math.min(tw - 2, cropBox?.left ?? defaultCrop));
+      const right = Math.max(left + 1, Math.min(tw, cropBox?.right ?? tw - defaultCrop));
+      const bottom = Math.max(0, Math.min(th - 2, cropBox?.bottom ?? defaultCrop));
+      const top = Math.max(bottom + 1, Math.min(th, cropBox?.top ?? th - defaultCrop));
       const embeddedTree = await pdfDoc.embedPage(treePage, {
-        left: crop,
-        bottom: crop,
-        right: Math.max(crop + 1, tw - crop),
-        top: Math.max(crop + 1, th - crop),
+        left,
+        bottom,
+        right,
+        top,
       });
       const pageDims = cur.getSize();
       const boxX = M.left;
       const boxW = Math.max(1, pageDims.width - M.left - M.right);
-      const cropW = Math.max(1, tw - crop * 2);
-      const cropH = Math.max(1, th - crop * 2);
+      const cropW = Math.max(1, right - left);
+      const cropH = Math.max(1, top - bottom);
       const widthScale = boxW / cropW;
       const widthFillHeight = Math.max(1, cropH * widthScale);
       const treeBlockHeight = Math.max(120, widthFillHeight + Math.round(BODY_LINE_HEIGHT * 1.5));

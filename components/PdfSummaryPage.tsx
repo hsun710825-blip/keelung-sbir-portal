@@ -445,8 +445,11 @@ export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
   const measured = measureTree(treeData);
-  const pageWidth = Math.ceil(Math.max(1400, (measured.width + depth * 40 + 120) * scale));
-  const pageHeight = Math.ceil(Math.max(980, (measured.height + leaves * 24 + 120) * scale));
+  const pad = Math.ceil(28 * scale);
+  const contentW = Math.ceil((measured.width + depth * 18 + 48) * scale);
+  const contentH = Math.ceil((Math.max(measured.height, leaves * 120) + 48) * scale);
+  const pageWidth = Math.max(1200, contentW + pad * 2);
+  const pageHeight = Math.max(900, contentH + pad * 2);
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
@@ -454,7 +457,12 @@ export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   );
   return {
     buffer: await renderToBuffer(doc),
-    cropPadding: 24 * scale,
+    cropBox: {
+      left: pad,
+      right: Math.min(pageWidth - pad, pad + contentW),
+      top: pageHeight - pad,
+      bottom: Math.max(pad, pageHeight - pad - contentH),
+    },
   };
 }
 
