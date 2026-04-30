@@ -1194,7 +1194,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     { id: 8, title: '陸、附件（依計畫實際情況檢附，無則免附）' },
     { id: 9, title: '柒、送出前PDF預覽' },
   ];
-  const visibleTabs = isUploadMode ? tabs.filter((t) => t.id === 1 || t.id === 9) : tabs;
+  const visibleTabs = isUploadMode ? tabs.filter((t) => t.id === 1) : tabs;
 
   useEffect(() => {
     if (!statusToast) return;
@@ -2373,12 +2373,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
               {isUploadMode && activeTab === 1 && (
                 <button
                   type="button"
-                  onClick={() => setActiveTab(9)}
-                  disabled={isSaving || isSubmitting || isPlanLocked}
+                  onClick={() => void handleSubmitToDrive()}
+                  disabled={isSaving || isSubmitting || isPdfGenerating || isProposalUploading || isPlanLocked}
                   className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors font-medium text-sm shadow-sm disabled:opacity-60 disabled:pointer-events-none"
                 >
-                  前往送出預覽
-                  <ChevronRight size={16} aria-hidden />
+                  {isSubmitting ? "送出中..." : "直接送出上傳檔案"}
                 </button>
               )}
               {activeTab === 9 && (
