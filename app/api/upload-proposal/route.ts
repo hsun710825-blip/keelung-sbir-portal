@@ -15,7 +15,8 @@ import { googleDriveFileViewUrl } from "../../../lib/driveLinks";
 import { assertDraftUnlocked, findDraftFileIdInFolder } from "../../../lib/projectSecurity";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "../../../lib/applicantApplicationSync";
 
-const MAX_PROPOSAL_BYTES = 100 * 1024 * 1024;
+// Vercel Serverless request body hard-limit guardrail.
+const MAX_PROPOSAL_BYTES = 4 * 1024 * 1024;
 const PROPOSAL_FILE_NAME = "uploaded-proposal.pdf";
 
 export async function POST(req: Request) {
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "檔案不可為空。" }, { status: 400 });
     }
     if (file.size > MAX_PROPOSAL_BYTES) {
-      return NextResponse.json({ ok: false, error: "PDF 檔案不可超過 100MB。" }, { status: 413 });
+      return NextResponse.json({ ok: false, error: "PDF 檔案不可超過 4MB（目前上傳通道限制）。" }, { status: 413 });
     }
 
     const mimeCheck = ensureAllowedUploadMime(file.type || "");

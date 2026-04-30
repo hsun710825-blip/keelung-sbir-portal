@@ -1287,8 +1287,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       alert("僅允許上傳 PDF 檔案。");
       return;
     }
-    if (file.size > 100 * 1024 * 1024) {
-      alert("PDF 檔案不可超過 100MB。");
+    if (file.size > 4 * 1024 * 1024) {
+      alert("PDF 檔案不可超過 4MB（目前上傳通道限制）。");
       return;
     }
     setIsProposalUploading(true);
@@ -1301,7 +1301,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       const res = await fetch("/api/upload-proposal", { method: "POST", body: fd });
       const body = await res.json().catch(() => ({} as { error?: string; uploadedProposalUrl?: string }));
       if (!res.ok || !body?.uploadedProposalUrl) {
-        alert(`PDF 上傳失敗：${body?.error || "未知錯誤"}`);
+        if (res.status === 413) {
+          alert("PDF 上傳失敗：檔案超過目前上傳通道限制（4MB）。");
+        } else {
+          alert(`PDF 上傳失敗：${body?.error || "未知錯誤"}`);
+        }
         return;
       }
       setFormData((prev) => ({ ...prev, uploadedProposalUrl: String(body.uploadedProposalUrl) }));
@@ -1860,7 +1864,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                         請將計畫書本文、所有切結書、登記證件與補充資料，【合併為一份 PDF 檔案】後上傳。
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <label className="block text-sm font-medium text-slate-700">上傳計畫書 PDF（限 100MB）</label>
+                        <label className="block text-sm font-medium text-slate-700">上傳計畫書 PDF（限 4MB）</label>
                         <input
                           type="file"
                           accept="application/pdf"
