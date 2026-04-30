@@ -403,10 +403,36 @@ function countTreeLeaves(node: PdfTreeNodeData | null | undefined): number {
   return kids.reduce((acc, k) => acc + countTreeLeaves(k), 0);
 }
 
+function estimateTreeCardHeight(node: PdfTreeNodeData | null | undefined) {
+  const nameLen = Array.from(String(node?.name || "")).length;
+  const unitLen = Array.from(String(node?.unit || "")).length;
+  const weightLen = Array.from(String(node?.weight || "")).length;
+  const nameLines = Math.max(1, Math.ceil(nameLen / 10));
+  const metaLines = Math.max(1, Math.ceil((unitLen + weightLen + 12) / 16));
+  return 36 + nameLines * 28 + metaLines * 22;
+}
+
+function measureTree(node: PdfTreeNodeData | null | undefined): { width: number; height: number } {
+  if (!node) return { width: 360, height: 220 };
+  const children = Array.isArray(node.children) ? node.children : [];
+  const cardWidth = 240;
+  const cardHeight = Math.max(140, estimateTreeCardHeight(node));
+  if (!children.length) {
+    return { width: cardWidth, height: cardHeight + 40 };
+  }
+  const childMeasures = children.map((c) => measureTree(c));
+  const childrenHeight = childMeasures.reduce((s, m) => s + m.height, 0);
+  const childrenMaxWidth = childMeasures.reduce((m, c) => Math.max(m, c.width), 0);
+  return {
+    width: cardWidth + 56 + childrenMaxWidth,
+    height: Math.max(cardHeight + 40, childrenHeight),
+  };
+}
+
 function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
   return (
     <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }}>
-      <View style={{ padding: 12, flexDirection: "column", width: "100%" }}>
+      <View style={{ padding: 28, flexDirection: "column", width: "100%" }}>
         <TreeBranch node={treeData} isRoot={true} />
       </View>
     </Page>
@@ -415,19 +441,20 @@ function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeDa
 
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
-  // High-res tree rendering: avoid clipping when branches are wide/deep.
-  const scale = 3;
+  const scale = 2.4;
   const depth = Math.max(2, countTreeDepth(treeData));
   const leaves = Math.max(3, countTreeLeaves(treeData));
-  // Capture full logical content size with generous per-level/leaf budget.
-  // Intentionally avoid hard max clamps to prevent right/bottom clipping.
-  const pageWidth = Math.ceil(Math.max(1800, (520 + depth * 420) * scale));
-  const pageHeight = Math.ceil(Math.max(1200, (360 + leaves * 190) * scale));
+  const measured = measureTree(treeData);
+  const pageWidth = Math.ceil(Math.max(1400, (measured.width + depth * 40 + 120) * scale));
+  const pageHeight = Math.ceil(Math.max(980, (measured.height + leaves * 24 + 120) * scale));
   const doc = (
     <Document>
       <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
     </Document>
   );
-  return await renderToBuffer(doc);
+  return {
+    buffer: await renderToBuffer(doc),
+    cropPadding: 24 * scale,
+  };
 }
 

@@ -284,7 +284,7 @@ function buildContentDisposition(filenameUtf8: string) {
 }
 
 function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: number) {
-  const t = (text || "").replace(/\r\n/g, "\n");
+  const t = injectZeroWidthBreaks((text || "").replace(/\r\n/g, "\n"));
   const lines: string[] = [];
   const paragraphs = t.split("\n");
   const tokenRegex = /([A-Za-z0-9][A-Za-z0-9\-_/.:%]*|[\u4E00-\u9FFF]|[^\s])/g;
@@ -326,7 +326,7 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
 
 /** 表格專用換行：等效於 break-all + break-word + pre-wrap，確保不會水平穿牆。 */
 function wrapTextForTable(text: string, maxWidth: number, font: PDFFont, fontSize: number) {
-  const t = (text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const t = injectZeroWidthBreaks((text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
   const lines: string[] = [];
   const paragraphs = t.split("\n");
   for (const p of paragraphs) {
@@ -350,8 +350,17 @@ function wrapTextForTable(text: string, maxWidth: number, font: PDFFont, fontSiz
   return lines;
 }
 
+/** 針對長英數字串注入零寬空白，強制 PDF 引擎可斷行。 */
+function injectZeroWidthBreaks(input: string): string {
+  const ZWSP = "\u200B";
+  return String(input || "").replace(
+    /([A-Za-z0-9][A-Za-z0-9\-_/.:%()[\]{}@+*=,;'"]{11,})/g,
+    (token) => Array.from(token).map((ch, i) => (i > 0 && i % 6 === 0 ? `${ZWSP}${ch}` : ch)).join("")
+  );
+}
+
 function normalizePdfMultilineText(input: unknown): string {
-  return String(input ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return injectZeroWidthBreaks(String(input ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
 }
 
 function drawTextTopLeft(opts: {
@@ -1456,17 +1465,18 @@ export async function POST(req: Request) {
     const bottom = top - totalH;
     cur.drawRectangle({ x: x0, y: bottom, width: contentW, height: totalH, borderColor: rgb(0, 0, 0), borderWidth: 0.5 });
 
-    const drawCell = (txt: string, x1: number, x2: number, y1: number, y2: number, bold = false, center = false) => {
+    const drawCell = (txt: string, x1: number, x2: number, y1: number, y2: number, bold = false, center = false, maxLines = 200) => {
       const f = bold ? fontBold : font;
       const size = 9;
-      const lines = wrapText(asString(txt), Math.max(8, x2 - x1 - pad * 2), f, size).slice(0, 3);
-      const blockH = lines.length * 10.5;
+      const lines = wrapTextForTable(asString(txt), Math.max(8, x2 - x1 - pad * 2), f, size).slice(0, maxLines);
+      const step = 10.5;
+      const blockH = lines.length * step;
       const baseY = y2 + (y1 - y2 - blockH) / 2 + blockH - 8;
       for (let i = 0; i < lines.length; i++) {
         const w = f.widthOfTextAtSize(lines[i]!, size);
         cur.drawText(lines[i]!, {
           x: center ? x1 + (x2 - x1 - w) / 2 : x1 + pad,
-          y: baseY - i * 10.5,
+          y: baseY - i * step,
           size,
           font: f,
           color: rgb(0, 0, 0),
@@ -1534,33 +1544,47 @@ export async function POST(req: Request) {
     drawTwoColTallValue("重要成就", achievementsText, achRowH);
 
     const drawSection = (leftTitle: string, header: [string, string, string, string], rows: string[][]) => {
-      const sectionRows = 1 + rows.length;
+      const widthByCol = secCols;
+      const calcRightRowH = (vals: [string, string, string, string], isHeader = false) => {
+        let maxLines = 1;
+        for (let i = 0; i < vals.length; i++) {
+          const f = isHeader ? fontBold : font;
+          const lines = wrapTextForTable(asString(vals[i]), Math.max(8, widthByCol[i]! - pad * 2), f, 9);
+          maxLines = Math.max(maxLines, Math.min(lines.length || 1, 240));
+        }
+        return Math.max(rowH, pad * 2 + maxLines * 10.5);
+      };
+      const headerH = calcRightRowH(header, true);
+      const bodyHeights = rows.map((rw) => calcRightRowH([asString(rw[0]), asString(rw[1]), asString(rw[2]), asString(rw[3])], false));
+      const secH = headerH + bodyHeights.reduce((s, h) => s + h, 0);
       const secTop = y1();
-      const secBottom = secTop - rowH * sectionRows;
+      const secBottom = secTop - secH;
       const split = x0 + leftW;
       cur.drawLine({ start: { x: split, y: secTop }, end: { x: split, y: secBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
-      drawCell(leftTitle, x0, split, secTop, secBottom, true, true);
+      drawCell(leftTitle, x0, split, secTop, secBottom, true, true, 260);
 
       let rr = 0;
-      const rowTop = () => secTop - rr * rowH;
-      const rowBottom = () => rowTop() - rowH;
+      let ry = secTop;
       const rx = [split, split + secCols[0]!, split + secCols[0]! + secCols[1]!, split + secCols[0]! + secCols[1]! + secCols[2]!, xR];
-      const drawRightRow = (vals: [string, string, string, string], isHeader = false) => {
-        if (!(rowOff === 0 && rr === 0)) cur.drawLine({ start: { x: split, y: rowTop() }, end: { x: xR, y: rowTop() }, thickness: 0.5, color: rgb(0, 0, 0) });
-        cur.drawLine({ start: { x: rx[1]!, y: rowTop() }, end: { x: rx[1]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
-        cur.drawLine({ start: { x: rx[2]!, y: rowTop() }, end: { x: rx[2]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
-        cur.drawLine({ start: { x: rx[3]!, y: rowTop() }, end: { x: rx[3]!, y: rowBottom() }, thickness: 0.5, color: rgb(0, 0, 0) });
-        drawCell(vals[0], rx[0]!, rx[1]!, rowTop(), rowBottom(), isHeader, true);
-        drawCell(vals[1], rx[1]!, rx[2]!, rowTop(), rowBottom(), isHeader, true);
-        drawCell(vals[2], rx[2]!, rx[3]!, rowTop(), rowBottom(), isHeader, true);
-        drawCell(vals[3], rx[3]!, rx[4]!, rowTop(), rowBottom(), isHeader, true);
+      const drawRightRow = (vals: [string, string, string, string], h: number, isHeader = false) => {
+        const rowTop = ry;
+        const rowBottom = rowTop - h;
+        if (!(rowOff === 0 && rr === 0)) cur.drawLine({ start: { x: split, y: rowTop }, end: { x: xR, y: rowTop }, thickness: 0.5, color: rgb(0, 0, 0) });
+        cur.drawLine({ start: { x: rx[1]!, y: rowTop }, end: { x: rx[1]!, y: rowBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
+        cur.drawLine({ start: { x: rx[2]!, y: rowTop }, end: { x: rx[2]!, y: rowBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
+        cur.drawLine({ start: { x: rx[3]!, y: rowTop }, end: { x: rx[3]!, y: rowBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
+        drawCell(vals[0], rx[0]!, rx[1]!, rowTop, rowBottom, isHeader, true, 240);
+        drawCell(vals[1], rx[1]!, rx[2]!, rowTop, rowBottom, isHeader, true, 240);
+        drawCell(vals[2], rx[2]!, rx[3]!, rowTop, rowBottom, isHeader, true, 240);
+        drawCell(vals[3], rx[3]!, rx[4]!, rowTop, rowBottom, isHeader, true, 240);
+        ry = rowBottom;
         rr += 1;
       };
-      drawRightRow(header, true);
-      rows.forEach((rw) => drawRightRow([asString(rw[0]), asString(rw[1]), asString(rw[2]), asString(rw[3])], false));
+      drawRightRow(header, headerH, true);
+      rows.forEach((rw, idx) => drawRightRow([asString(rw[0]), asString(rw[1]), asString(rw[2]), asString(rw[3])], bodyHeights[idx]!, false));
       // 明確補上左側跨行標題區塊下邊線，避免視覺缺線
       cur.drawLine({ start: { x: x0, y: secBottom }, end: { x: split, y: secBottom }, thickness: 0.5, color: rgb(0, 0, 0) });
-      rowOff += rowH * sectionRows;
+      rowOff += secH;
     };
 
     drawSection("學歷", ["學校(大專以上)", "時間", "學位", "科系"], eduRows);
@@ -1745,7 +1769,7 @@ export async function POST(req: Request) {
     const rowHeights = rows.map((row) => {
       let maxLines = 1;
       for (const cell of row) {
-        const lines = wrapText(cell.text, cell.w - 8, cell.bold ? fontBold : font, 9);
+        const lines = wrapTextForTable(cell.text, cell.w - 8, cell.bold ? fontBold : font, 9);
         maxLines = Math.max(maxLines, Math.min(8, lines.length || 1));
       }
       return 10 + maxLines * lineHCell;
@@ -1765,7 +1789,7 @@ export async function POST(req: Request) {
         const cell = row[ci]!;
         const cw = cell.w;
         if (ci > 0) cur.drawLine({ start: { x: cx, y: yy }, end: { x: cx, y: yy - rh }, thickness: 0.5, color: rgb(0, 0, 0) });
-        const lines = wrapText(cell.text, cw - 8, cell.bold ? fontBold : font, 9).slice(0, 8);
+        const lines = wrapTextForTable(cell.text, cw - 8, cell.bold ? fontBold : font, 9).slice(0, 200);
         for (let li = 0; li < lines.length; li++) {
           cur.drawText(lines[li]!, {
             x: cx + 4,
@@ -1825,13 +1849,47 @@ export async function POST(req: Request) {
     const h1 = 26;
     const h2 = 26;
     const h3 = 26;
-    const rowH = 24;
+    const rowMinH = 24;
     const topGap = 15;
     const bottomGap = 15;
     const maxRows = Math.max(1, Math.min(3, rows.length));
     const manpowerData = rows.slice(0, maxRows);
     const totals = { ...totalRow };
-    const totalH = h1 + h2 + h3 + rowH * (manpowerData.length + 1);
+    const allRows = [
+      ...manpowerData.map((item) => [
+        asString(item.company),
+        asString(item.phd),
+        asString(item.master),
+        asString(item.bachelor),
+        asString(item.junior),
+        asString(item.male),
+        asString(item.female),
+        asString(item.avgAge),
+        asString(item.avgYears),
+        asString(item.toHire),
+      ]),
+      [
+        "總計",
+        asString(totals.phd),
+        asString(totals.master),
+        asString(totals.bachelor),
+        asString(totals.junior),
+        asString(totals.male),
+        asString(totals.female),
+        asString(totals.avgAge),
+        asString(totals.avgYears),
+        asString(totals.toHire),
+      ],
+    ];
+    const dataRowHeights = allRows.map((row) => {
+      let maxLines = 1;
+      for (let i = 0; i < 10; i++) {
+        const lines = wrapTextForTable(row[i]!, Math.max(8, widths[i]! - 6), font, 9);
+        maxLines = Math.max(maxLines, Math.min(lines.length || 1, 20));
+      }
+      return Math.max(rowMinH, 8 + maxLines * 10.2);
+    });
+    const totalH = h1 + h2 + h3 + dataRowHeights.reduce((s, h) => s + h, 0);
     ensure(topGap + 16 + 6 + totalH + bottomGap + 4);
     y -= topGap;
 
@@ -1846,9 +1904,15 @@ export async function POST(req: Request) {
       cur.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 0.5, color: rgb(0, 0, 0) });
     const center = (txt: string, x1: number, x2: number, y1: number, y2: number, bold = false, size = 8.8) => {
       const f = bold ? fontBold : font;
-      const t = asString(txt);
-      const tw = f.widthOfTextAtSize(t, size);
-      cur.drawText(t, { x: (x1 + x2 - tw) / 2, y: (y1 + y2) / 2 - size / 2 + 1, size, font: f, color: rgb(0, 0, 0) });
+      const lines = wrapTextForTable(asString(txt), Math.max(8, x2 - x1 - 6), f, size).slice(0, 30);
+      const step = Math.max(10, size + 1.2);
+      const blockH = (lines.length || 1) * step;
+      const startY = y1 - Math.max(2, (y1 - y2 - blockH) / 2) - step + 2;
+      for (let i = 0; i < Math.max(1, lines.length); i++) {
+        const lineTxt = lines[i] ?? "";
+        const tw = f.widthOfTextAtSize(lineTxt, size);
+        cur.drawText(lineTxt, { x: (x1 + x2 - tw) / 2, y: startY - i * step, size, font: f, color: rgb(0, 0, 0) });
+      }
     };
 
     const top = y;
@@ -1906,35 +1970,9 @@ export async function POST(req: Request) {
     center("女性", x[6]!, x[7]!, r2b, r3b, false, 8.8);
 
     // --- 資料列 + 總計列 ---
-    const allRows = [
-      ...manpowerData.map((item) => [
-        asString(item.company),
-        asString(item.phd),
-        asString(item.master),
-        asString(item.bachelor),
-        asString(item.junior),
-        asString(item.male),
-        asString(item.female),
-        asString(item.avgAge),
-        asString(item.avgYears),
-        asString(item.toHire),
-      ]),
-      [
-        "總計",
-        asString(totals.phd),
-        asString(totals.master),
-        asString(totals.bachelor),
-        asString(totals.junior),
-        asString(totals.male),
-        asString(totals.female),
-        asString(totals.avgAge),
-        asString(totals.avgYears),
-        asString(totals.toHire),
-      ],
-    ];
     let ryTop = r3b;
     for (let r = 0; r < allRows.length; r++) {
-      const ryBottom = ryTop - rowH;
+      const ryBottom = ryTop - (dataRowHeights[r] ?? rowMinH);
       line(x[0]!, ryTop, x[0]!, ryBottom);
       for (let i = 1; i <= 10; i++) line(x[i]!, ryTop, x[i]!, ryBottom);
       line(x[0]!, ryBottom, x[10]!, ryBottom);
@@ -2135,13 +2173,13 @@ export async function POST(req: Request) {
       ["6. 技術或服務優勢", asString(applicant.advantage), asString(aCo.advantage), asString(bCo.advantage), asString(cCo.advantage)],
     ];
 
-    const w0 = contentW * 0.2;
-    const w1 = contentW - w0;
-    // Evenly distribute remaining 4 columns.
+    const w0 = contentW * 0.16;
+    const wApplicant = contentW * 0.24;
+    const wPeer = (contentW - w0 - wApplicant) / 3;
     drawTableFlow(
       ["項目", "名稱\n申請人(本計畫研發標的)", "A公司", "B公司", "C公司"],
       compRows,
-      [w0, w1 / 4, w1 / 4, w1 / 4, w1 / 4]
+      [w0, wApplicant, wPeer, wPeer, wPeer]
     );
     ensure(20);
     drawSubHeading(
@@ -2171,22 +2209,31 @@ export async function POST(req: Request) {
       const leafCount = countLeaves(root);
       void leafCount;
 
-      const treePdfBytes = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
+      const treeRender = await renderTreeBranchPageBuffer(toPdfTreeNodeData(root));
+      const treePdfBytes = treeRender.buffer;
       const treeDoc = await PDFDocument.load(treePdfBytes);
       const treePage = treeDoc.getPage(0);
-      const embeddedTree = await pdfDoc.embedPage(treePage);
+      const tw = treePage.getSize().width;
+      const th = treePage.getSize().height;
+      const crop = Math.max(0, Math.min(treeRender.cropPadding || 0, Math.min(tw, th) * 0.16));
+      const embeddedTree = await pdfDoc.embedPage(treePage, {
+        left: crop,
+        bottom: crop,
+        right: Math.max(crop + 1, tw - crop),
+        top: Math.max(crop + 1, th - crop),
+      });
       const pageDims = cur.getSize();
       const boxX = M.left;
       const boxW = Math.max(1, pageDims.width - M.left - M.right);
-      const tw = treePage.getSize().width;
-      const th = treePage.getSize().height;
-      const widthScale = boxW / Math.max(1, tw);
-      const widthFillHeight = Math.max(1, th * widthScale);
+      const cropW = Math.max(1, tw - crop * 2);
+      const cropH = Math.max(1, th - crop * 2);
+      const widthScale = boxW / cropW;
+      const widthFillHeight = Math.max(1, cropH * widthScale);
       const treeBlockHeight = Math.max(120, widthFillHeight + Math.round(BODY_LINE_HEIGHT * 1.5));
       ensure(treeBlockHeight + 20);
       const boxY = y - treeBlockHeight;
       const drawW = boxW;
-      const drawH = Math.max(1, th * widthScale);
+      const drawH = Math.max(1, cropH * widthScale);
       cur.drawPage(embeddedTree, {
         x: boxX,
         y: boxY + (treeBlockHeight - drawH) / 2,
