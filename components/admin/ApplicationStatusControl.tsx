@@ -18,6 +18,8 @@ type Props = {
   currentStatus: ApplicationStatus;
   initialAdminRemarks: string | null;
   planTitle: string;
+  /** 市府人員等唯讀身分：不顯示變更與儲存 */
+  readOnly?: boolean;
 };
 
 export function ApplicationStatusControl({
@@ -25,6 +27,7 @@ export function ApplicationStatusControl({
   currentStatus,
   initialAdminRemarks,
   planTitle,
+  readOnly = false,
 }: Props) {
   const router = useRouter();
   const [value, setValue] = useState<ApplicationStatus>(currentStatus);
@@ -68,6 +71,25 @@ export function ApplicationStatusControl({
   const remarkPlaceholder = statusUsesRemarkPlaceholder(value)
     ? REVISION_REQUIRED_PLACEHOLDER
     : "可在此撰寫給申請者的說明，將以醒目區塊顯示於通知信（可留空）。";
+
+  if (readOnly) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">案件狀態（唯讀）</p>
+          <p className="mt-2 text-sm font-medium text-slate-900">
+            {applicationStatusLabel(currentStatus)} <span className="font-mono text-xs text-slate-500">({currentStatus})</span>
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">管理員說明（唯讀）</p>
+          <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-800">
+            {(initialAdminRemarks ?? "").trim() || "—"}
+          </pre>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

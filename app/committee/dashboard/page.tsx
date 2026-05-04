@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
-
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
 import { prisma } from "@/lib/prisma";
+import { isReviewerRole } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const metadata: Metadata = {
@@ -31,7 +30,7 @@ export default async function CommitteeDashboardPage() {
     select: { id: true, role: true },
   });
 
-  if (!dbUser || dbUser.role !== Role.COMMITTEE) {
+  if (!dbUser || !isReviewerRole(dbUser.role)) {
     redirect("/");
   }
 

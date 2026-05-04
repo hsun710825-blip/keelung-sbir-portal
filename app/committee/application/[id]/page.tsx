@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { AttachmentCategory, Role } from "@prisma/client";
+import { AttachmentCategory } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
@@ -12,6 +12,7 @@ import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
+import { isReviewerRole } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
     where: { email: { equals: emailRaw, mode: "insensitive" } },
     select: { id: true, role: true },
   });
-  if (!dbUser || dbUser.role !== Role.COMMITTEE) {
+  if (!dbUser || !isReviewerRole(dbUser.role)) {
     redirect("/");
   }
 

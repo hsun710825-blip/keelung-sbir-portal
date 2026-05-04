@@ -60,11 +60,12 @@ export function AdminGrantRoleForm() {
             id="grant-role"
             name="role"
             required
-            defaultValue={Role.COMMITTEE}
+            defaultValue={Role.REVIEWER}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value={Role.COMMITTEE}>審查委員（COMMITTEE）</option>
-            <option value={Role.ADMIN}>管理員（ADMIN）</option>
+            <option value={Role.REVIEWER}>審查委員（REVIEWER）</option>
+            <option value={Role.ADMIN}>PO人員（ADMIN）</option>
+            <option value={Role.GOV}>市府人員（GOV）</option>
           </select>
         </div>
       </div>

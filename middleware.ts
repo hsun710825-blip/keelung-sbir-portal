@@ -3,15 +3,27 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
+import { isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const role = (token?.role as string | null) ?? null;
   const path = req.nextUrl.pathname;
+  const method = req.method.toUpperCase();
 
   if (path.startsWith("/committee")) {
-    if (!token || role !== "COMMITTEE") {
+    if (!token || !isReviewerRole(role)) {
       return NextResponse.redirect(new URL("/", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (path.startsWith("/api/admin")) {
+    if (!token || !isBackofficePrismaRole(role)) {
+      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
+    if (isGovReadOnlyRole(role) && method !== "GET" && method !== "HEAD") {
+      return NextResponse.json({ ok: false, error: "市府人員僅能唯讀存取" }, { status: 403 });
     }
     return NextResponse.next();
   }
@@ -29,5 +41,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin", "/admin/:path*", "/committee", "/committee/:path*"],
+  matcher: ["/admin", "/admin/:path*", "/committee", "/committee/:path*", "/api/admin/:path*"],
 };

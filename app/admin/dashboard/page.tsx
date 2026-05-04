@@ -3,7 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { Prisma, Role } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { ApplicationListWithFilters } from "@/app/admin/dashboard/ApplicationListWithFilters";
@@ -12,6 +12,7 @@ import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
 import { prisma } from "@/lib/prisma";
+import { canOperateApplications, isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const metadata: Metadata = {
@@ -54,17 +55,14 @@ export default async function AdminDashboardPage({
     redirect("/");
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { role: true },
-  });
-
-  if (!dbUser || !isBackofficePrismaRole(dbUser.role)) {
+  const jwtRole = session.user.role ?? null;
+  if (!isBackofficePrismaRole(jwtRole)) {
     redirect("/");
   }
 
-  const isAdmin = dbUser.role === Role.ADMIN;
-  const isCommittee = dbUser.role === Role.COMMITTEE;
+  const canOperate = canOperateApplications(jwtRole);
+  const isReviewer = isReviewerRole(jwtRole);
+  const isGov = isGovReadOnlyRole(jwtRole);
 
   let applications: ApplicationListRow[];
   try {
@@ -206,13 +204,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             <p className="mt-2 text-sm text-slate-600">
               {session.user.name ?? "管理員"} · {session.user.email}
             </p>
-            {!isAdmin ? (
+            {isGov ? (
+              <p className="mt-2 text-xs text-sky-900">您為市府人員身分：可檢視與匯出；變更狀態、刪除與補件等操作已停用。</p>
+            ) : null}
+            {isReviewer && !isGov ? (
               <p className="mt-2 text-xs text-amber-800">
-                您為審查委員身分：可檢視列表；案件詳情與狀態變更僅限管理員。
+                您為審查委員身分：可檢視列表；案件詳情與狀態變更僅限管理員／PO 人員。
               </p>
             ) : null}
           </div>
-          {isCommittee ? <p className="text-xs text-sky-800">可至委員區檢視審查任務。</p> : null}
+          {isReviewer ? <p className="text-xs text-sky-800">可至委員區檢視審查任務。</p> : null}
         </header>
 
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
@@ -270,7 +271,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             </div>
           </div>
 
-          <ApplicationListWithFilters rows={tableRows} isAdmin={isAdmin} searchQuery={searchQuery} />
+          <ApplicationListWithFilters rows={tableRows} isAdmin={canOperate} searchQuery={searchQuery} />
         </section>
     </section>
   );

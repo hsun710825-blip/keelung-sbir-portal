@@ -2,11 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
-
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { prisma } from "@/lib/prisma";
+import { isReviewerRole } from "@/lib/rbac";
 
 export type SaveEvaluationState = { error?: string; message?: string };
 
@@ -22,7 +21,7 @@ async function requireCommitteeUser(): Promise<
     where: { email: { equals: email, mode: "insensitive" } },
     select: { id: true, role: true },
   });
-  if (!user || user.role !== Role.COMMITTEE) {
+  if (!user || !isReviewerRole(user.role)) {
     return { ok: false, error: "僅限審查委員" };
   }
   return { ok: true, id: user.id };

@@ -2,17 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
-import {
-  EmailNotificationStatus,
-  EmailNotificationType,
-  Role,
-} from "@prisma/client";
+import { EmailNotificationStatus, EmailNotificationType } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isApplicationStatusString } from "@/lib/applicationStatusOptions";
 import { buildStatusUpdateMailBodies, sendStatusUpdateEmail } from "@/lib/mail";
 import { prisma } from "@/lib/prisma";
+import { canOperateApplications } from "@/lib/rbac";
 
 export type UpdateStatusResult = { ok: true } | { ok: false; error: string };
 
@@ -27,16 +24,16 @@ export async function updateApplicationStatusAction(
 ): Promise<UpdateStatusResult> {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim();
-  if (!session?.user || !email || session.user.role !== Role.ADMIN) {
-    return { ok: false, error: "僅限管理員（ADMIN）操作" };
+  if (!session?.user || !email || !canOperateApplications(session.user.role)) {
+    return { ok: false, error: "僅限管理員或 PO 人員操作" };
   }
 
   const adminUser = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
-    select: { id: true, role: true },
+    select: { id: true },
   });
-  if (!adminUser || adminUser.role !== Role.ADMIN) {
-    return { ok: false, error: "僅限管理員（ADMIN）操作" };
+  if (!adminUser) {
+    return { ok: false, error: "找不到操作者帳號" };
   }
 
   if (!isApplicationStatusString(nextStatusRaw)) {

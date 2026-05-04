@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AccountOverviewExportButton } from "@/app/admin/accounts-overview/AccountOverviewExportButton";
 import type { AccountOverviewRow } from "@/app/admin/accounts-overview/types";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
+import { isReviewerRole } from "@/lib/rbac";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -34,14 +34,11 @@ export default async function AccountsOverviewPage() {
     redirect("/");
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { role: true },
-  });
-  if (!dbUser || !isBackofficePrismaRole(dbUser.role)) {
+  const jwtRole = session.user.role ?? null;
+  if (!isBackofficePrismaRole(jwtRole)) {
     redirect("/");
   }
-  if (dbUser.role !== Role.ADMIN) {
+  if (isReviewerRole(jwtRole)) {
     redirect("/admin");
   }
 

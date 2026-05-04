@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { AttachmentCategory, Role } from "@prisma/client";
+import { AttachmentCategory } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
+import { AdminAssistUpload } from "@/components/admin/AdminAssistUpload";
 import { ApplicationStatusControl } from "@/components/admin/ApplicationStatusControl";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
+import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
+import { canOperateApplications, isBackofficeRole, isGovReadOnlyRole, roleDisplayLabel } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
@@ -51,13 +54,13 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
     redirect("/");
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { role: true },
-  });
-  if (!dbUser || dbUser.role !== Role.ADMIN) {
+  const jwtRole = session.user.role ?? null;
+  if (!isBackofficeRole(jwtRole)) {
     redirect("/admin/dashboard");
   }
+
+  const isGov = isGovReadOnlyRole(jwtRole);
+  const canOperate = canOperateApplications(jwtRole);
 
   const application = await prisma.application.findUnique({
     where: { id },
@@ -86,6 +89,18 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
   const driveFolder = parsedDesc["Drive"] ?? null;
   const sheetRow = parsedDesc["試算表列"] ?? null;
 
+  const pdfViewUrl = resolveApplicationPdfViewUrl({
+    submissionMode: application.submissionMode,
+    uploadedProposalUrl: application.uploadedProposalUrl,
+    attachments: application.attachments.map((a) => ({
+      category: a.category,
+      driveFileId: a.driveFileId,
+      createdAt: a.createdAt,
+    })),
+  });
+  const isOnline = String(application.submissionMode || "").toUpperCase() === "ONLINE";
+  const formViewHref = `/admin/application/${application.id}/form-view`;
+
   return (
     <section className="mx-auto max-w-4xl px-1 py-2 sm:px-2 lg:max-w-5xl">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -96,6 +111,9 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
             >
               ← 返回案件總表
             </Link>
+            <p className="mt-2 text-xs text-slate-500">
+              您的角色：<span className="font-medium text-slate-800">{roleDisplayLabel(jwtRole)}</span>
+            </p>
             <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
               {application.title?.trim() || "（未命名計畫）"}
             </h1>
@@ -109,6 +127,39 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
               ) : null}
             </div>
           </div>
+          <div className="flex flex-col gap-2 sm:items-end">
+            {isOnline ? (
+              <a
+                href={formViewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+              >
+                👁️ 檢視線上撰寫內容
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title="此件為自行上傳模式，無線上草稿"
+                className="inline-flex cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400"
+              >
+                👁️ 檢視線上撰寫內容（不適用）
+              </button>
+            )}
+            {pdfViewUrl ? (
+              <a
+                href={pdfViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+              >
+                📄 新開視窗檢視最新 PDF
+              </a>
+            ) : (
+              <span className="text-center text-xs text-slate-400">尚未產生 PDF</span>
+            )}
+          </div>
         </header>
 
         <div className="mb-6">
@@ -117,6 +168,7 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
             currentStatus={application.status}
             initialAdminRemarks={application.adminRemarks}
             planTitle={application.title ?? ""}
+            readOnly={isGov}
           />
         </div>
 
@@ -253,6 +305,12 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
             )}
           </section>
         </div>
+
+        {canOperate ? (
+          <div className="mt-8">
+            <AdminAssistUpload applicationId={application.id} />
+          </div>
+        ) : null}
     </section>
   );
 }

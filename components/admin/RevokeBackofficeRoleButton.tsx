@@ -8,11 +8,17 @@ import { revokeBackofficeRoleAction } from "@/app/admin/users/actions";
 export function RevokeBackofficeRoleButton({
   userId,
   label,
+  disabled,
 }: {
   userId: string;
   /** 按鈕顯示文字 */
   label?: string;
+  /** 受保護帳號等：不顯示移除 */
+  disabled?: boolean;
 }) {
+  if (disabled) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

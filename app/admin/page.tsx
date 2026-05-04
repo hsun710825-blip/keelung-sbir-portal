@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
 import { ClipboardList, ShieldCheck, Sparkles } from "lucide-react";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
-import { prisma } from "@/lib/prisma";
+import { canManageBackofficeAccounts, canOperateApplications, isGovReadOnlyRole } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,11 +29,8 @@ export default async function AdminPage() {
     redirect("/");
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { role: true },
-  });
-  if (!dbUser || !isBackofficePrismaRole(dbUser.role)) {
+  const jwtRole = session.user.role ?? null;
+  if (!isBackofficePrismaRole(jwtRole)) {
     redirect("/");
   }
 
@@ -47,17 +43,19 @@ export default async function AdminPage() {
     },
   ];
 
-  if (dbUser.role === Role.ADMIN) {
+  if (canOperateApplications(jwtRole) || isGovReadOnlyRole(jwtRole)) {
     cards.push({
       href: "/admin/accounts-overview",
       title: "帳號與案件總覽",
       desc: "一筆案件一列，查看最後操作時間與聯絡資訊，並可匯出 Excel（CSV）。",
       icon: "overview",
     });
+  }
+  if (canManageBackofficeAccounts(jwtRole)) {
     cards.push({
       href: "/admin/users",
-      title: "會員/帳號管理",
-      desc: "管理後台帳號授權與委員、管理員角色指派。",
+      title: "帳號權限管理",
+      desc: "僅最高管理員：新增／移除 PO人員、市府人員與審查委員。",
       icon: "users",
     });
   }

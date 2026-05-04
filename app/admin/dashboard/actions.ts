@@ -2,10 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
-
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { prisma } from "@/lib/prisma";
+import { canOperateApplications } from "@/lib/rbac";
 
 export type DeleteApplicationResult = { ok: true } | { ok: false; error: string };
 export type BulkDeleteApplicationResult =
@@ -16,12 +15,15 @@ async function requireAdmin() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim();
   if (!email) return { ok: false as const, error: "未登入" };
+  if (!canOperateApplications(session?.user?.role ?? null)) {
+    return { ok: false as const, error: "僅限管理員或 PO 人員操作" };
+  }
   const user = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
-    select: { role: true },
+    select: { id: true },
   });
-  if (!user || user.role !== Role.ADMIN) {
-    return { ok: false as const, error: "僅限管理員操作" };
+  if (!user) {
+    return { ok: false as const, error: "找不到操作者帳號" };
   }
   return { ok: true as const };
 }

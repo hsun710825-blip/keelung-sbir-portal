@@ -16,7 +16,15 @@ datasource db {
 
 enum Role {
   USER
+  /// 最高權限（程式強制綁定特定 Email，並可管理後台帳號）
+  SUPER_ADMIN
+  /// PO 人員：案件營運（不可進入帳號權限管理）
   ADMIN
+  /// 市府人員：後台唯讀稽核
+  GOV
+  /// 審查委員
+  REVIEWER
+  /// 舊資料相容；新授權請使用 REVIEWER
   COMMITTEE
 }
 
