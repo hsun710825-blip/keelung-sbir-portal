@@ -324,26 +324,66 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, fontSize: numbe
   return lines;
 }
 
-/** 表格專用換行：等效於 break-all + break-word + pre-wrap，確保不會水平穿牆。 */
+/** 表格內：全形英數字轉半形（不含已為半形之字元）。 */
+function normalizeTableCellAsciiToHalfWidth(input: string): string {
+  let out = "";
+  for (const ch of Array.from(String(input ?? ""))) {
+    const cp = ch.codePointAt(0)!;
+    if (cp >= 0xff01 && cp <= 0xff5e) {
+      out += String.fromCodePoint(cp - 0xfee0);
+      continue;
+    }
+    if (cp === 0x3000) {
+      out += " ";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * 表格專用換行：英數半形化；沿用與 wrapText 相同的 token 邏輯（英文數字段落不插 ZWSP）；超寬 token 才逐字切斷。
+ */
 function wrapTextForTable(text: string, maxWidth: number, font: PDFFont, fontSize: number) {
-  const t = injectZeroWidthBreaks((text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
+  const t = normalizeTableCellAsciiToHalfWidth(String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
   const lines: string[] = [];
   const paragraphs = t.split("\n");
+  const tokenRegex = /([A-Za-z0-9][A-Za-z0-9\-_/.:%]*|[\u4E00-\u9FFF]|[^\s])/g;
+  const isAsciiWord = (s: string) => /^[A-Za-z0-9][A-Za-z0-9\-_/.:%]*$/.test(s);
   for (const p of paragraphs) {
-    const chars = Array.from(p);
-    if (!chars.length) {
+    if (!p.length) {
+      lines.push("");
+      continue;
+    }
+    const tokens = p.match(tokenRegex) ?? [];
+    if (!tokens.length) {
       lines.push("");
       continue;
     }
     let line = "";
-    for (const ch of chars) {
-      const cand = line + ch;
+    for (const tk of tokens) {
+      const joiner = line && isAsciiWord(line.slice(-1)) && isAsciiWord(tk) ? " " : "";
+      const cand = `${line}${joiner}${tk}`;
       if (font.widthOfTextAtSize(cand, fontSize) <= maxWidth) {
         line = cand;
-      } else {
-        if (line) lines.push(line);
-        line = ch;
+        continue;
       }
+      if (line) lines.push(line);
+      if (font.widthOfTextAtSize(tk, fontSize) <= maxWidth) {
+        line = tk;
+        continue;
+      }
+      let cur = "";
+      for (const ch of Array.from(tk)) {
+        const c2 = cur + ch;
+        if (font.widthOfTextAtSize(c2, fontSize) <= maxWidth) cur = c2;
+        else {
+          if (cur) lines.push(cur);
+          cur = ch;
+        }
+      }
+      line = cur;
     }
     if (line) lines.push(line);
   }
@@ -1308,19 +1348,22 @@ export async function POST(req: Request) {
     const rawSum = rawW.reduce((s, x) => s + Math.max(1, Number(x) || 0), 0);
     // 固定佈局：無論傳入比例如何，統一正規化到 table 可用寬度 100%。
     const w = rawW.map((x) => (Math.max(1, Number(x) || 0) / Math.max(1, rawSum)) * totalW);
-    const baseRowH = 16;
-    const cellLineH = TABLE_LINE_HEIGHT;
+    const headerCellLineH = Math.max(11, TABLE_HEADER_FONT_SIZE * 1.12);
     const headerLinesByCol = headers.map((h, i) => wrapTextForTable(h ?? "", (w[i] ?? totalW / colCount) - 8, fontBold, TABLE_HEADER_FONT_SIZE).slice(0, 10));
     const maxHeaderLines = Math.max(1, ...headerLinesByCol.map((ls) => ls.length || 1));
-    const headerH = 10 + maxHeaderLines * cellLineH;
+    const headerH = 8 + maxHeaderLines * headerCellLineH;
     const rowHeights: number[] = [];
     for (const row of rows) {
-      let maxLines = 1;
+      let maxRh = 12;
       for (let c = 0; c < colCount; c++) {
-        const lines = wrapTextForTable(row[c] ?? "", (w[c] ?? totalW / colCount) - 8, font, TABLE_FONT_SIZE);
-        maxLines = Math.max(maxLines, Math.min(lines.length, 200));
+        const cw = w[c] ?? totalW / colCount;
+        const minCellFont = cw < 75 ? 10.5 : TABLE_FONT_SIZE;
+        const lines = wrapTextForTable(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 400);
+        const n = Math.max(1, lines.length);
+        const lh = Math.max(11, minCellFont * 1.12);
+        maxRh = Math.max(maxRh, 8 + n * lh);
       }
-      rowHeights.push(baseRowH + (maxLines - 1) * cellLineH);
+      rowHeights.push(maxRh);
     }
     const x0 = M.left;
     let x = x0;
@@ -1332,12 +1375,12 @@ export async function POST(req: Request) {
       for (let c = 0; c < colCount; c++) {
         const cw = w[c]!;
         const lines = headerLinesByCol[c] ?? [""];
-        const headerContentH = (lines.length || 1) * cellLineH;
+        const headerContentH = (lines.length || 1) * headerCellLineH;
         const topPad = Math.max(2, (headerH - headerContentH) / 2);
         for (let li = 0; li < lines.length; li++) {
           cur.drawText(lines[li]!, {
             x: x + 4,
-            y: tableTop - (topPad + (li + 1) * cellLineH),
+            y: tableTop - (topPad + (li + 1) * headerCellLineH),
             size: TABLE_HEADER_FONT_SIZE,
             font: fontBold,
             color: rgb(0, 0, 0),
@@ -1352,7 +1395,7 @@ export async function POST(req: Request) {
     let tableTop = drawHeader();
     for (let ri = 0; ri < rows.length; ri++) {
       const row = rows[ri]!;
-      const rh = rowHeights[ri] ?? baseRowH;
+      const rh = rowHeights[ri] ?? 16;
       if (y - rh < M.bottom) {
         const tableBottom = y;
         x = x0;
@@ -1369,12 +1412,12 @@ export async function POST(req: Request) {
       for (let c = 0; c < colCount; c++) {
         const cw = w[c]!;
         const minCellFont = cw < 75 ? 10.5 : TABLE_FONT_SIZE;
-        const cellLines = wrapTextForTable(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 300);
+        const cellLines = wrapTextForTable(row[c] ?? "", cw - 8, font, minCellFont).slice(0, 400);
         const numLines = cellLines.length || 1;
-        const contentH = numLines * Math.max(10.5, minCellFont);
-        const topPad = Math.max(3, (rh - contentH) / 2);
+        const lh = Math.max(11, minCellFont * 1.12);
+        const contentH = numLines * lh;
+        const topPad = Math.max(4, (rh - contentH) / 2);
         for (let li = 0; li < cellLines.length; li++) {
-          const lh = Math.max(10.5, minCellFont);
           const yy = y + rh - topPad - (li + 1) * lh;
           cur.drawText(cellLines[li]!, { x: x + 4, y: yy, size: minCellFont, font, color: rgb(0, 0, 0) });
         }
@@ -1454,12 +1497,32 @@ export async function POST(req: Request) {
 
     const achievementsText = asString(pi.achievements);
     const achValueColW = Math.max(8, xR - (x0 + leftW) - pad * 2);
-    const achLines = wrapText(achievementsText, achValueColW, font, 9);
+    const achLines = wrapTextForTable(achievementsText, achValueColW, font, 9);
     const achLineStep = 10.5;
     const achRowH = Math.max(rowH, pad * 2 + achLines.length * achLineStep + 2);
 
-    const totalRows = 6 + (1 + eduRows.length) + (1 + expRows.length) + (1 + prjRows.length);
-    const totalH = totalRows * rowH + (achRowH - rowH);
+    const calcSectionBlockH = (header: [string, string, string, string], body: string[][]) => {
+      let maxLines = 1;
+      for (let i = 0; i < header.length; i++) {
+        const f = fontBold;
+        const lines = wrapTextForTable(asString(header[i]), Math.max(8, secCols[i]! - pad * 2), f, 9);
+        maxLines = Math.max(maxLines, Math.min(lines.length || 1, 240));
+      }
+      const headerH = Math.max(rowH, pad * 2 + maxLines * 10.5);
+      const bodyHeights = body.map((rw) => {
+        let ml = 1;
+        for (let i = 0; i < 4; i++) {
+          const lines = wrapTextForTable(asString(rw[i]), Math.max(8, secCols[i]! - pad * 2), font, 9);
+          ml = Math.max(ml, Math.min(lines.length || 1, 240));
+        }
+        return Math.max(rowH, pad * 2 + ml * 10.5);
+      });
+      return headerH + bodyHeights.reduce((s, h) => s + h, 0);
+    };
+    const hEdu = calcSectionBlockH(["學校(大專以上)", "時間", "學位", "科系"], eduRows);
+    const hExp = calcSectionBlockH(["事業單位", "時間", "部門", "職稱"], expRows);
+    const hPrj = calcSectionBlockH(["事業單位", "時間", "計畫名稱", "主要任務"], prjRows);
+    const totalH = 4 * rowH + rowH + achRowH + hEdu + hExp + hPrj;
     ensure(totalH + 24);
     const top = y;
     const bottom = top - totalH;
@@ -1526,7 +1589,7 @@ export async function POST(req: Request) {
       drawCell(k, x0, split, yt, yb, true, true);
       const f = font;
       const size = 9;
-      const lines = wrapText(asString(v), Math.max(8, xR - split - pad * 2), f, size);
+      const lines = wrapTextForTable(asString(v), Math.max(8, xR - split - pad * 2), f, size);
       const blockH = lines.length * achLineStep;
       const baseY = yb + (yt - yb - blockH) / 2 + blockH - 8;
       for (let i = 0; i < lines.length; i++) {
@@ -1618,8 +1681,8 @@ export async function POST(req: Request) {
       let maxLines = 1;
       for (let i = 0; i < cells.length; i++) {
         const f = isHeader ? fontBold : font;
-        const ls = wrapText(asString(cells[i]), w[i]! - pad * 2, f, 9);
-        maxLines = Math.max(maxLines, Math.min(10, ls.length || 1));
+        const ls = wrapTextForTable(asString(cells[i]), w[i]! - pad * 2, f, 9);
+        maxLines = Math.max(maxLines, Math.min(80, ls.length || 1));
       }
       return Math.max(minH, padV * 2 + maxLines * lineH);
     };
@@ -1642,7 +1705,7 @@ export async function POST(req: Request) {
       for (let i = 1; i < x.length - 1; i++) cur.drawLine({ start: { x: x[i]!, y: cy }, end: { x: x[i]!, y: cy - h }, thickness: 0.5, color: rgb(0, 0, 0) });
       for (let i = 0; i < cells.length; i++) {
         const f = isHeader ? fontBold : font;
-        const ls = wrapText(asString(cells[i]), w[i]! - pad * 2, f, 9).slice(0, 10);
+        const ls = wrapTextForTable(asString(cells[i]), w[i]! - pad * 2, f, 9).slice(0, 80);
         const blockH = ls.length * lineH;
         const yTop = cy - Math.max(padV, (h - blockH) / 2);
         for (let li = 0; li < ls.length; li++) {
@@ -2379,18 +2442,19 @@ export async function POST(req: Request) {
         progressTableRows,
         [...fixedCols, ...Array(monthLabels.length).fill(perMonthW)]
       );
-      const totalWeightPlanOnly = progressRows
-        .filter((r) => {
-          const id = asString((r as AnyRecord).id);
-          return id.length === 1 && /^[A-Za-z]$/.test(id);
-        })
-        .reduce((s, r) => s + (Number((r as AnyRecord).weight) || 0), 0);
-      const totalManMonths = progressRows.reduce((s, r) => s + (Number((r as AnyRecord).manMonths ?? (r as AnyRecord).man_months) || 0), 0);
+      const isProgressTopPlanRow = (r: AnyRecord) => {
+        const id = asString(r.id);
+        return id.length === 1 && /^[A-Za-z]$/.test(id);
+      };
+      const totalWeightPlanOnly = progressRows.filter(isProgressTopPlanRow).reduce((s, r) => s + (Number((r as AnyRecord).weight) || 0), 0);
+      const totalManMonthsPlanOnly = progressRows
+        .filter(isProgressTopPlanRow)
+        .reduce((s, r) => s + (Number((r as AnyRecord).manMonths ?? (r as AnyRecord).man_months) || 0), 0);
       drawTableFlow(
         ["項目", "數值"],
         [
           ["累計進度百分比", totalWeightPlanOnly ? `${totalWeightPlanOnly.toFixed(1)}` : ""],
-          ["人月數小計", totalManMonths ? totalManMonths.toFixed(1) : ""],
+          ["人月數小計", totalManMonthsPlanOnly ? totalManMonthsPlanOnly.toFixed(1) : ""],
         ],
         [contentW * 0.5, contentW * 0.5]
       );

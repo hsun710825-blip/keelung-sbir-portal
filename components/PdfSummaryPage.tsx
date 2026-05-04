@@ -323,13 +323,37 @@ export type PdfTreeNodeData = {
   children?: PdfTreeNodeData[];
 };
 
+export type TreeLayoutSpec = {
+  nameFont: number;
+  metaFont: number;
+  cardW: number;
+  marginV: number;
+  branchColW: number;
+  connectorW: number;
+  connectorH: number;
+  cardPad: number;
+};
+
+const DEFAULT_TREE_LAYOUT: TreeLayoutSpec = {
+  nameFont: 22,
+  metaFont: 18,
+  cardW: 240,
+  marginV: 20,
+  branchColW: 30,
+  connectorW: 26,
+  connectorH: 2.6,
+  cardPad: 18,
+};
+
 const TreeBranch = ({
   node,
+  layout,
   isRoot = true,
   isFirst = false,
   isLast = false,
 }: {
   node: PdfTreeNodeData | null | undefined;
+  layout: TreeLayoutSpec;
   isRoot?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
@@ -339,42 +363,45 @@ const TreeBranch = ({
   const labelName = String(node.name || "").trim() || "未命名項目";
   const labelWeight = node.weight || 0;
   const labelUnit = String(node.unit || "").trim();
+  const bw = layout.branchColW;
+  const ch = layout.connectorH;
 
   return (
     <View style={{ flexDirection: "row", alignItems: "stretch" }}>
       {!isRoot && (
-        <View style={{ width: 30, flexDirection: "column" }}>
-          <View style={{ flex: 1, borderLeftWidth: isFirst ? 0 : 2.6, borderColor: "#222" }} />
-          <View style={{ width: 30, height: 2.6, backgroundColor: "#222" }} />
-          <View style={{ flex: 1, borderLeftWidth: isLast ? 0 : 2.6, borderColor: "#222" }} />
+        <View style={{ width: bw, flexDirection: "column" }}>
+          <View style={{ flex: 1, borderLeftWidth: isFirst ? 0 : ch, borderColor: "#222" }} />
+          <View style={{ width: bw, height: ch, backgroundColor: "#222" }} />
+          <View style={{ flex: 1, borderLeftWidth: isLast ? 0 : ch, borderColor: "#222" }} />
         </View>
       )}
 
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
           style={{
-            width: 240,
-            marginVertical: 20,
-            padding: 18,
+            width: layout.cardW,
+            marginVertical: layout.marginV,
+            padding: layout.cardPad,
             borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
           }}
         >
-          <Text style={{ fontSize: 22, fontWeight: "bold", marginBottom: 8, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: 18, color: "#444", lineHeight: 1.2 }}>
+          <Text style={{ fontSize: layout.nameFont, fontWeight: "bold", marginBottom: 6, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
+          <Text style={{ fontSize: layout.metaFont, color: "#444", lineHeight: 1.2 }}>
             {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
           </Text>
         </View>
 
         {hasChildren && (
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={{ width: 26, height: 2.6, backgroundColor: "#222" }} />
+            <View style={{ width: layout.connectorW, height: ch, backgroundColor: "#222" }} />
             <View style={{ flexDirection: "column" }}>
               {node.children!.map((child, index) => (
                 <TreeBranch
                   key={`${index}-${child.name}-${child.weight}`}
+                  layout={layout}
                   node={child}
                   isRoot={false}
                   isFirst={index === 0}
@@ -389,49 +416,83 @@ const TreeBranch = ({
   );
 };
 
-function estimateTreeCardHeight(node: PdfTreeNodeData | null | undefined) {
+function estimateTreeCardHeight(node: PdfTreeNodeData | null | undefined, layout: TreeLayoutSpec) {
   const nameLen = Array.from(String(node?.name || "")).length;
   const unitLen = Array.from(String(node?.unit || "")).length;
   const weightLen = Array.from(String(node?.weight || "")).length;
-  const nameLines = Math.max(1, Math.ceil(nameLen / 10));
-  const metaLines = Math.max(1, Math.ceil((unitLen + weightLen + 12) / 16));
-  return 36 + nameLines * 28 + metaLines * 22;
+  const charsPerNameLine = Math.max(4, Math.floor(layout.cardW / (layout.nameFont * 0.92)));
+  const charsPerMetaLine = Math.max(6, Math.floor(layout.cardW / (layout.metaFont * 0.92)));
+  const nameLines = Math.max(1, Math.ceil(nameLen / charsPerNameLine));
+  const metaLines = Math.max(1, Math.ceil((unitLen + weightLen + 12) / charsPerMetaLine));
+  return layout.cardPad * 2 + 8 + nameLines * (layout.nameFont * 1.25) + metaLines * (layout.metaFont * 1.25);
 }
 
-function measureTree(node: PdfTreeNodeData | null | undefined): { width: number; height: number } {
+function measureTree(node: PdfTreeNodeData | null | undefined, layout: TreeLayoutSpec): { width: number; height: number } {
   if (!node) return { width: 360, height: 220 };
   const children = Array.isArray(node.children) ? node.children : [];
-  const cardWidth = 240;
-  const cardHeight = Math.max(140, estimateTreeCardHeight(node));
+  const cardWidth = layout.cardW;
+  const cardHeight = Math.max(layout.nameFont + layout.metaFont + layout.cardPad * 2 + 8, estimateTreeCardHeight(node, layout));
+  const spine = layout.branchColW + layout.connectorW;
   if (!children.length) {
-    return { width: cardWidth, height: cardHeight + 40 };
+    return { width: cardWidth, height: cardHeight + layout.marginV * 2 };
   }
-  const childMeasures = children.map((c) => measureTree(c));
+  const childMeasures = children.map((c) => measureTree(c, layout));
   const childrenHeight = childMeasures.reduce((s, m) => s + m.height, 0);
   const childrenMaxWidth = childMeasures.reduce((m, c) => Math.max(m, c.width), 0);
   return {
-    width: cardWidth + 56 + childrenMaxWidth,
-    height: Math.max(cardHeight + 40, childrenHeight),
+    width: cardWidth + spine + childrenMaxWidth,
+    height: Math.max(cardHeight + layout.marginV * 2, childrenHeight),
   };
 }
 
-function TreePage({ treeData, pageWidth, pageHeight }: { treeData: PdfTreeNodeData; pageWidth: number; pageHeight: number }) {
+function TreePage({
+  treeData,
+  layout,
+  pageWidth,
+  pageHeight,
+}: {
+  treeData: PdfTreeNodeData;
+  layout: TreeLayoutSpec;
+  pageWidth: number;
+  pageHeight: number;
+}) {
   return (
     <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }}>
       <View style={{ padding: 28, flexDirection: "column", width: "100%" }}>
-        <TreeBranch node={treeData} isRoot={true} />
+        <TreeBranch layout={layout} node={treeData} isRoot={true} />
       </View>
     </Page>
   );
 }
 
+/** 單頁優先縮排與字級（下限 8pt），仍超出時允許極高單頁以避免節點被裁切。 */
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
-  const measured = measureTree(treeData);
   const pagePadding = 28;
   const cropPadding = 14;
-  const contentW = Math.ceil(measured.width);
-  const contentH = Math.ceil(measured.height);
+  const layoutBudgetH = 520;
+
+  let layout: TreeLayoutSpec = { ...DEFAULT_TREE_LAYOUT };
+  let measured = measureTree(treeData, layout);
+  let guard = 0;
+  while (measured.height > layoutBudgetH && layout.nameFont > 8 && guard < 80) {
+    layout = {
+      ...layout,
+      nameFont: Math.max(8, Math.round((layout.nameFont - 0.5) * 10) / 10),
+      metaFont: Math.max(8, Math.round((layout.metaFont - 0.5) * 10) / 10),
+      cardW: Math.max(150, layout.cardW - 3),
+      marginV: Math.max(4, layout.marginV - 1),
+      branchColW: Math.max(22, layout.branchColW - 0.5),
+      connectorW: Math.max(18, layout.connectorW - 0.5),
+      cardPad: Math.max(10, layout.cardPad - 0.5),
+    };
+    measured = measureTree(treeData, layout);
+    guard += 1;
+  }
+
+  const slack = 1.08;
+  const contentW = Math.ceil(measured.width * slack);
+  const contentH = Math.ceil(measured.height * slack);
   const pageWidth = Math.max(640, contentW + pagePadding * 2);
   const pageHeight = Math.max(360, contentH + pagePadding * 2);
   const contentLeft = pagePadding;
@@ -440,7 +501,7 @@ export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   const contentBottom = contentTop - contentH;
   const doc = (
     <Document>
-      <TreePage treeData={treeData} pageWidth={pageWidth} pageHeight={pageHeight} />
+      <TreePage treeData={treeData} layout={layout} pageWidth={pageWidth} pageHeight={pageHeight} />
     </Document>
   );
   return {
