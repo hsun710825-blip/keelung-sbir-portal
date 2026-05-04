@@ -1,5 +1,6 @@
 "use client";
 
+import type { ApplicationStatus } from "@prisma/client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -15,16 +16,24 @@ export type AdminApplicationTableRow = {
   createdAtLabel: string | null;
   statusLabel: string;
   submissionMode: "ONLINE" | "UPLOAD";
+  /** 後台篩選用（不顯示於儲存格） */
+  status: ApplicationStatus;
+  applicantEmail: string;
+  updatedAtMs: number;
+  createdAtMs: number;
 };
 
 export function AdminApplicationsTable({
   rows,
   isAdmin,
   searchQuery,
+  emptyStateMessage,
 }: {
   rows: AdminApplicationTableRow[];
   isAdmin: boolean;
   searchQuery: string;
+  /** 有資料但篩選後為空時的提示（例如前端篩選無結果） */
+  emptyStateMessage?: string;
 }) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -129,9 +138,11 @@ export function AdminApplicationsTable({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-5 py-12 text-center text-slate-500">
-                  {searchQuery
-                    ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
-                    : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
+                  {emptyStateMessage
+                    ? emptyStateMessage
+                    : searchQuery
+                      ? `沒有符合「${searchQuery}」的申請案。請改關鍵字或清除搜尋。`
+                      : "尚無申請資料。請在資料庫建立測試資料後重新整理此頁。"}
                 </td>
               </tr>
             ) : (

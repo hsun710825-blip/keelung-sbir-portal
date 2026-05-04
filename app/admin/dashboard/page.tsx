@@ -6,7 +6,8 @@ import { getServerSession } from "next-auth";
 import { Prisma, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
-import { AdminApplicationsTable, type AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
+import { ApplicationListWithFilters } from "@/app/admin/dashboard/ApplicationListWithFilters";
+import type { AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -144,6 +145,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
       createdAtLabel: showCreatedSub ? formatTaipeiDateTime(row.createdAt) : null,
       statusLabel: applicationStatusLabel(row.status),
       submissionMode: row.submissionMode === "UPLOAD" ? "UPLOAD" : "ONLINE",
+      status: row.status,
+      applicantEmail: row.applicant.email,
+      updatedAtMs: updatedMs,
+      createdAtMs: createdMs,
     };
   });
 
@@ -215,7 +220,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             </div>
           </div>
 
-          <AdminApplicationsTable rows={tableRows} isAdmin={isAdmin} searchQuery={searchQuery} />
+          <ApplicationListWithFilters rows={tableRows} isAdmin={isAdmin} searchQuery={searchQuery} />
         </section>
     </section>
   );
