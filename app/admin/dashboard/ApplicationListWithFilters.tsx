@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { AdminApplicationsTable, type AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
+import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
 
 type StatusFilter = "ALL" | "DRAFT" | "SUBMITTED";
 type ModeFilter = "ALL" | "ONLINE" | "UPLOAD";
@@ -15,8 +16,12 @@ function isNewer(a: AdminApplicationTableRow, b: AdminApplicationTableRow): bool
 function dedupeByApplicantAndTitle(rows: AdminApplicationTableRow[]): AdminApplicationTableRow[] {
   const map = new Map<string, AdminApplicationTableRow>();
   for (const r of rows) {
+    if (r.isBlankPlanTitle) {
+      map.set(`unnamed\t${r.id}`, r);
+      continue;
+    }
     const email = (r.applicantEmail ?? "").trim().toLowerCase();
-    const title = r.titleText.trim().toLowerCase();
+    const title = normalizePlanTitleForDedupe(r.planTitleRaw);
     const key = `${email}\t${title}`;
     const prev = map.get(key);
     if (!prev) {
@@ -39,24 +44,28 @@ export function ApplicationListWithFilters({
 }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [modeFilter, setModeFilter] = useState<ModeFilter>("ALL");
-  const [hideHistoricalDrafts, setHideHistoricalDrafts] = useState(false);
+
+  const dedupedRows = useMemo(() => dedupeByApplicantAndTitle(rows), [rows]);
 
   const filteredRows = useMemo(() => {
-    let out = rows;
+    let out = dedupedRows;
     if (statusFilter !== "ALL") {
       out = out.filter((r) => r.status === statusFilter);
     }
     if (modeFilter !== "ALL") {
       out = out.filter((r) => r.submissionMode === modeFilter);
     }
-    if (hideHistoricalDrafts) {
-      out = dedupeByApplicantAndTitle(out);
-    }
     return out;
-  }, [rows, statusFilter, modeFilter, hideHistoricalDrafts]);
+  }, [dedupedRows, statusFilter, modeFilter]);
+
+  const namedEffectiveCount = useMemo(() => dedupedRows.filter((r) => !r.isBlankPlanTitle).length, [dedupedRows]);
+  const unnamedDraftCount = useMemo(
+    () => dedupedRows.filter((r) => r.isBlankPlanTitle && r.status === "DRAFT").length,
+    [dedupedRows],
+  );
 
   const emptyStateMessage =
-    filteredRows.length === 0 && rows.length > 0
+    filteredRows.length === 0 && dedupedRows.length > 0
       ? "沒有符合目前篩選條件的案件，請調整篩選條件。"
       : undefined;
 
@@ -89,19 +98,17 @@ export function ApplicationListWithFilters({
                 <option value="UPLOAD">自行上傳 PDF（UPLOAD）</option>
               </select>
             </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
-              <input
-                type="checkbox"
-                checked={hideHistoricalDrafts}
-                onChange={(e) => setHideHistoricalDrafts(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-blue-600"
-              />
-              <span>隱藏歷史草稿（相同計畫僅顯示最新版本）</span>
-            </label>
           </div>
-          <p className="text-sm font-medium text-slate-700" aria-live="polite">
-            目前列表顯示件數：<span className="tabular-nums text-slate-900">{filteredRows.length}</span> 件
-          </p>
+          <div className="text-sm font-medium text-slate-700" aria-live="polite">
+            <p>
+              目前列表顯示件數：<span className="tabular-nums text-slate-900">{filteredRows.length}</span> 件
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              排重後有效件數：<span className="tabular-nums font-semibold text-slate-900">{namedEffectiveCount}</span> 件
+              <span className="mx-2 text-slate-300">|</span>
+              未命名草稿：<span className="tabular-nums font-semibold text-slate-900">{unnamedDraftCount}</span> 件
+            </p>
+          </div>
         </div>
       </div>
 

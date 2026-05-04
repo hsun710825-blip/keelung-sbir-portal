@@ -39,6 +39,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   if (dbUser.role === Role.ADMIN) {
     navItems.push({
+      href: "/admin/accounts-overview",
+      label: "帳號與案件總覽",
+      description: "一筆案件一列，支援匯出",
+      icon: "dashboard",
+    });
+    navItems.push({
       href: "/admin/users",
       label: "帳號審核/管理",
       description: "維護管理員與委員權限",

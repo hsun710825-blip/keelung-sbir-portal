@@ -11,11 +11,16 @@ import { DeleteApplicationButton } from "@/components/admin/DeleteApplicationBut
 export type AdminApplicationTableRow = {
   id: string;
   titleText: string;
+  /** DB 原始計畫名稱（空字串表示未命名） */
+  planTitleRaw: string;
+  isBlankPlanTitle: boolean;
   applicantLabel: string;
   updatedAtLabel: string;
   createdAtLabel: string | null;
   statusLabel: string;
   submissionMode: "ONLINE" | "UPLOAD";
+  /** 雲端 PDF 預覽連結（無則 null） */
+  pdfViewUrl: string | null;
   /** 後台篩選用（不顯示於儲存格） */
   status: ApplicationStatus;
   applicantEmail: string;
@@ -130,6 +135,9 @@ export function AdminApplicationsTable({
                 送件方式
               </th>
               <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                計畫書 PDF
+              </th>
+              <th scope="col" className="whitespace-nowrap px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 操作
               </th>
             </tr>
@@ -137,7 +145,7 @@ export function AdminApplicationsTable({
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-slate-500">
+                <td colSpan={8} className="px-5 py-12 text-center text-slate-500">
                   {emptyStateMessage
                     ? emptyStateMessage
                     : searchQuery
@@ -195,6 +203,22 @@ export function AdminApplicationsTable({
                     ) : (
                       <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
                         線上撰寫
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {row.pdfViewUrl ? (
+                      <a
+                        href={row.pdfViewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-slate-50"
+                      >
+                        📄 檢視 PDF
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-400" title="尚未產生或未寫入雲端連結">
+                        尚未產生 PDF
                       </span>
                     )}
                   </td>

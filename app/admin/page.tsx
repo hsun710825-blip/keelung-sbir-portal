@@ -14,11 +14,12 @@ type AdminEntryCard = {
   href: string;
   title: string;
   desc: string;
-  icon: "applications" | "users";
+  icon: "applications" | "users" | "overview";
 };
 
 function CardIcon({ icon }: { icon: AdminEntryCard["icon"] }) {
   if (icon === "users") return <ShieldCheck className="h-10 w-10 text-violet-600" />;
+  if (icon === "overview") return <ClipboardList className="h-10 w-10 text-emerald-600" />;
   return <ClipboardList className="h-10 w-10 text-blue-600" />;
 }
 
@@ -47,6 +48,12 @@ export default async function AdminPage() {
   ];
 
   if (dbUser.role === Role.ADMIN) {
+    cards.push({
+      href: "/admin/accounts-overview",
+      title: "帳號與案件總覽",
+      desc: "一筆案件一列，查看最後操作時間與聯絡資訊，並可匯出 Excel（CSV）。",
+      icon: "overview",
+    });
     cards.push({
       href: "/admin/users",
       title: "會員/帳號管理",

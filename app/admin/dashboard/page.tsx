@@ -8,7 +8,9 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { ApplicationListWithFilters } from "@/app/admin/dashboard/ApplicationListWithFilters";
 import type { AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
+import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
+import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
@@ -24,6 +26,13 @@ export const revalidate = 0;
 type ApplicationListRow = Prisma.ApplicationGetPayload<{
   include: {
     applicant: { select: { name: true; email: true } };
+    attachments: {
+      select: {
+        category: true;
+        driveFileId: true;
+        createdAt: true;
+      };
+    };
   };
 }>;
 
@@ -76,6 +85,17 @@ export default async function AdminDashboardPage({
             name: true,
             email: true,
           },
+        },
+        attachments: {
+          select: {
+            category: true,
+            driveFileId: true,
+            createdAt: true,
+          },
+          where: {
+            category: "DRAFT_PDF",
+          },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
@@ -133,24 +153,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
 
   const tableRows: AdminApplicationTableRow[] = applications.map((row) => {
     const applicantLabel = [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
-    const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
+    const planTitleRaw = row.title?.trim() ?? "";
+    const isBlankPlanTitle = !planTitleRaw;
+    const titleText = planTitleRaw || "（未命名計畫）";
     const createdMs = row.createdAt.getTime();
     const updatedMs = row.updatedAt.getTime();
     const showCreatedSub = Math.abs(updatedMs - createdMs) > 60_000;
+    const pdfViewUrl = resolveApplicationPdfViewUrl({
+      submissionMode: row.submissionMode,
+      uploadedProposalUrl: row.uploadedProposalUrl,
+      attachments: row.attachments,
+    });
     return {
       id: row.id,
       titleText,
+      planTitleRaw,
+      isBlankPlanTitle,
       applicantLabel,
       updatedAtLabel: formatTaipeiDateTime(row.updatedAt),
       createdAtLabel: showCreatedSub ? formatTaipeiDateTime(row.createdAt) : null,
       statusLabel: applicationStatusLabel(row.status),
       submissionMode: row.submissionMode === "UPLOAD" ? "UPLOAD" : "ONLINE",
+      pdfViewUrl,
       status: row.status,
       applicantEmail: row.applicant.email,
       updatedAtMs: updatedMs,
       createdAtMs: createdMs,
     };
   });
+
+  const dedupeMap = new Map<string, AdminApplicationTableRow>();
+  for (const row of tableRows) {
+    if (row.isBlankPlanTitle) continue;
+    const key = `${row.applicantEmail.trim().toLowerCase()}\t${normalizePlanTitleForDedupe(row.planTitleRaw)}`;
+    const prev = dedupeMap.get(key);
+    if (!prev) {
+      dedupeMap.set(key, row);
+      continue;
+    }
+    const isNewer = row.updatedAtMs > prev.updatedAtMs || (row.updatedAtMs === prev.updatedAtMs && row.createdAtMs >= prev.createdAtMs);
+    if (isNewer) dedupeMap.set(key, row);
+  }
+  const namedEffectiveCount = dedupeMap.size;
+  const unnamedDraftCount = tableRows.filter((r) => r.isBlankPlanTitle && r.status === "DRAFT").length;
 
   return (
     <section className="mx-auto max-w-6xl px-1 py-2 sm:px-2">
@@ -185,7 +230,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
                   ) : null}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  列表依最後更新排序；欄位主顯示為最後更新時間，若與建立時間相差超過一分鐘會於下方附註建立時間。
+                  列表預設依「帳號 Email + 正規化計畫名稱」排重，僅保留最後更新最新一筆；空白計畫名稱草稿不併入有效件數。
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  排重後有效件數：<span className="tabular-nums font-semibold text-slate-900">{namedEffectiveCount}</span> 件
+                  <span className="mx-2 text-slate-300">|</span>
+                  未命名草稿：<span className="tabular-nums font-semibold text-slate-900">{unnamedDraftCount}</span> 件
                 </p>
               </div>
               <form action="/admin/dashboard" method="get" className="flex w-full max-w-md flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
