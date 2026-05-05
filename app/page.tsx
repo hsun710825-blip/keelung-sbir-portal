@@ -13,6 +13,7 @@ import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsFor
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
+import { isPastApplicationDeadline } from "@/lib/applicationDeadline";
 import { isSubmitLockScheduleActiveNow } from "@/lib/planLockSchedule";
 import {
   formatSubmittedAtForDisplay,
@@ -199,7 +200,10 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="text-md font-medium text-slate-800">收件日期</h4>
-                    <p className="text-sm text-amber-700 mt-1">即日起至 <span className="font-medium text-amber-600">115 年 5 月 4 日</span> 截止</p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      即日起至{" "}
+                      <span className="font-medium text-amber-600">115年5月15日 (五) 23:59 截止</span>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -652,8 +656,7 @@ function getPlanLockState(formData: Partial<ApplicationFormData>) {
   // 前端顯示層鎖定判定：僅負責控制互動（真正阻擋仍由 API 端執行）。
   const status = String(formData.workflowStatus || "").toLowerCase();
   const deleted = Boolean(formData.isDeleted || formData.deletedAt);
-  const expiresAtTs = formData.expiresAt ? Date.parse(String(formData.expiresAt)) : NaN;
-  const expired = Number.isFinite(expiresAtTs) && expiresAtTs < Date.now();
+  const expired = isPastApplicationDeadline();
   const submittedLocks = status === "submitted" && isSubmitLockScheduleActiveNow();
   const locked = deleted || expired || submittedLocks;
   const reason = deleted ? "已刪除" : expired ? "已過期" : submittedLocks ? "已送出" : "";
@@ -1061,7 +1064,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null);
   // PDF 防連點狀態：避免短時間重複觸發 /api/pdf。
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
-  // 畫面唯讀鎖定：deleted／過期；送件後鎖定則依 planLockSchedule（預設 2026/5/5 起）。
+  // 畫面唯讀鎖定：deleted／逾徵件截止（lib/applicationDeadline）；已送件則依 planLockSchedule。
   const [isPlanLocked, setIsPlanLocked] = useState(false);
   const [planLockReason, setPlanLockReason] = useState<string>("");
   const [dbApplications, setDbApplications] = useState<MeApplicationRow[]>([]);
