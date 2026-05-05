@@ -22,6 +22,7 @@ import {
   SCHEDULE_PROGRESS_TABLE_NOTE,
 } from "../../../lib/sbirAppendixNotes";
 import { writeAuditLog } from "../../../lib/audit";
+import { canOperateApplications } from "../../../lib/rbac";
 
 type AnyRecord = Record<string, unknown>;
 type FileItem = {
@@ -1063,14 +1064,21 @@ function drawMultilineBox(opts: {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const userKey = session?.user?.email?.trim() || session?.user?.name || "anonymous";
     const ip = getClientIp(req);
-    if (!consumePdfRateLimit(`${userKey}:${ip}`)) {
-      return NextResponse.json({ ok: false, error: "Too many PDF requests, please retry later." }, { status: 429 });
-    }
 
     const body = (await req.json().catch(() => null)) as AnyRecord | null;
     if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+
+    const jwtRole = session?.user?.role ?? null;
+    const adminPdfBypass =
+      body.__adminRegenerate === true && !!session?.user?.email && canOperateApplications(jwtRole);
+
+    const userKey = session?.user?.email?.trim() || session?.user?.name || "anonymous";
+    if (!adminPdfBypass) {
+      if (!consumePdfRateLimit(`${userKey}:${ip}`)) {
+        return NextResponse.json({ ok: false, error: "Too many PDF requests, please retry later." }, { status: 429 });
+      }
+    }
 
     const requestedName = typeof body.filename === "string" ? (body.filename as string) : "";
     const filename = makeSafeFilename(requestedName) || "sbir-plan.pdf";
