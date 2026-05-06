@@ -8,7 +8,7 @@ export function getApplicationDeadlineMs(): number {
   return Date.parse(APPLICATION_DEADLINE_ISO);
 }
 
-/** 已超過徵件截止時間（草稿仍可編輯至此前；之後由 API／前端鎖定） */
+/** 已超過徵件截止時間（截止前草稿與已送件皆可編輯；逾時後由 API／前端鎖定） */
 export function isPastApplicationDeadline(nowMs: number = Date.now()): boolean {
   return nowMs > getApplicationDeadlineMs();
 }

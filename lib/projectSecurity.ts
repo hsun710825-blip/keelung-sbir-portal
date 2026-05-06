@@ -1,7 +1,6 @@
 import type { drive_v3 } from "googleapis";
 
 import { isPastApplicationDeadline } from "./applicationDeadline";
-import { isSubmitLockScheduleActiveNow } from "./planLockSchedule";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -16,12 +15,10 @@ export function extractLockStateFromDraft(input: unknown) {
   const workflowStatus = String(formData.workflowStatus || formData.status || "").toLowerCase();
   const deletedAtRaw = String(formData.deletedAt || draft.deletedAt || "");
   const isDeleted = Boolean(formData.isDeleted || draft.isDeleted || deletedAtRaw);
-  /** 徵件是否已截止：僅依公告之全域截止日，不依草稿內舊 expiresAt（避免延長徵件後仍被鎖） */
+  /** 徵件是否已截止：僅依公告之全域截止日（截止後含已送件者一律鎖編輯）；不依草稿內舊 expiresAt */
   const isExpired = isPastApplicationDeadline(now);
-  const isSubmitted = workflowStatus === "submitted";
-  const lockedBySubmit = isSubmitted && isSubmitLockScheduleActiveNow();
-  const locked = isDeleted || isExpired || lockedBySubmit;
-  const reason = isDeleted ? "deleted" : isExpired ? "expired" : lockedBySubmit ? "submitted" : null;
+  const locked = isDeleted || isExpired;
+  const reason = isDeleted ? "deleted" : isExpired ? "expired" : null;
   return { locked, reason, workflowStatus, isDeleted, isExpired };
 }
 

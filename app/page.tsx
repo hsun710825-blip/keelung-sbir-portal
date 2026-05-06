@@ -14,7 +14,6 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
 import { isPastApplicationDeadline } from "@/lib/applicationDeadline";
-import { isSubmitLockScheduleActiveNow } from "@/lib/planLockSchedule";
 import {
   formatSubmittedAtForDisplay,
   formatTaipeiDateTime,
@@ -654,12 +653,11 @@ type MeApplicationRow = {
 
 function getPlanLockState(formData: Partial<ApplicationFormData>) {
   // 前端顯示層鎖定判定：僅負責控制互動（真正阻擋仍由 API 端執行）。
-  const status = String(formData.workflowStatus || "").toLowerCase();
   const deleted = Boolean(formData.isDeleted || formData.deletedAt);
   const expired = isPastApplicationDeadline();
-  const submittedLocks = status === "submitted" && isSubmitLockScheduleActiveNow();
-  const locked = deleted || expired || submittedLocks;
-  const reason = deleted ? "已刪除" : expired ? "已過期" : submittedLocks ? "已送出" : "";
+  /** 徵件截止前：草稿與已送件皆可編輯；截止後一律鎖（理由顯示為已過期）。 */
+  const locked = deleted || expired;
+  const reason = deleted ? "已刪除" : expired ? "已過期" : "";
   return { locked, reason };
 }
 
@@ -1064,7 +1062,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null);
   // PDF 防連點狀態：避免短時間重複觸發 /api/pdf。
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
-  // 畫面唯讀鎖定：deleted／逾徵件截止（lib/applicationDeadline）；已送件則依 planLockSchedule。
+  // 畫面唯讀鎖定：deleted／逾徵件截止（applicationDeadline；截止前已送件仍可編輯）。
   const [isPlanLocked, setIsPlanLocked] = useState(false);
   const [planLockReason, setPlanLockReason] = useState<string>("");
   const [dbApplications, setDbApplications] = useState<MeApplicationRow[]>([]);
