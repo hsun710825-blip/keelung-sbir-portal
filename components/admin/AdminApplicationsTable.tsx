@@ -26,6 +26,10 @@ export type AdminApplicationTableRow = {
   applicantEmail: string;
   updatedAtMs: number;
   createdAtMs: number;
+  /** 匯出用（若有則優先於 applicantLabel 解析） */
+  exportCompanyName?: string;
+  exportContactPerson?: string;
+  exportContactPhone?: string;
 };
 
 export function AdminApplicationsTable({
