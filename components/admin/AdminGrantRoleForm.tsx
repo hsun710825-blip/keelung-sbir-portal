@@ -2,9 +2,13 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Role } from "@prisma/client";
 
 import { grantBackofficeRoleAction, type GrantRoleState } from "@/app/admin/users/actions";
+
+/** 勿在 client 元件 import @prisma/client（會導致 /admin/users SSR 500） */
+const ROLE_REVIEWER = "REVIEWER";
+const ROLE_ADMIN = "ADMIN";
+const ROLE_GOV = "GOV";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -60,12 +64,12 @@ export function AdminGrantRoleForm() {
             id="grant-role"
             name="role"
             required
-            defaultValue={Role.REVIEWER}
+            defaultValue={ROLE_REVIEWER}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value={Role.REVIEWER}>審查委員（REVIEWER）</option>
-            <option value={Role.ADMIN}>PO人員（ADMIN）</option>
-            <option value={Role.GOV}>市府人員（GOV）</option>
+            <option value={ROLE_REVIEWER}>審查委員（REVIEWER）</option>
+            <option value={ROLE_ADMIN}>PO人員（ADMIN）</option>
+            <option value={ROLE_GOV}>市府人員（GOV）</option>
           </select>
         </div>
       </div>

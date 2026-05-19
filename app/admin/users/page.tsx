@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { Role } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminGrantRoleForm } from "@/components/admin/AdminGrantRoleForm";
@@ -10,6 +10,59 @@ import { prisma } from "@/lib/prisma";
 import { canManageBackofficeAccounts, normalizeEmailForCompare, roleDisplayLabel, SUPER_ADMIN_EMAIL_FORCED } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
+type PrivilegedUserRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadError: string | null }> {
+  try {
+    const rows = await prisma.user.findMany({
+      where: { role: { not: Role.USER } },
+      orderBy: [{ role: "asc" }, { email: "asc" }],
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return {
+      rows: rows.map((r) => ({ ...r, role: String(r.role) })),
+      loadError: null,
+    };
+  } catch (e) {
+    console.error("[admin/users] prisma.user.findMany failed:", e);
+    try {
+      const raw = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          email: string;
+          name: string | null;
+          role: string;
+          createdAt: Date;
+          updatedAt: Date;
+        }>
+      >(Prisma.sql`
+        SELECT id, email, name, role::text AS role, "createdAt", "updatedAt"
+        FROM "User"
+        WHERE role::text <> 'USER'
+        ORDER BY role ASC, email ASC
+      `);
+      return { rows: raw, loadError: null };
+    } catch (e2) {
+      const msg = e2 instanceof Error ? e2.message : String(e2);
+      return { rows: [], loadError: msg || "無法載入後台帳號列表" };
+    }
+  }
+}
+
 export const metadata: Metadata = {
   title: "後台權限管理",
   description: "最高管理員：PO／市府／委員帳號授權",
@@ -17,7 +70,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-function roleBadgeClass(role: Role): string {
+function roleBadgeClass(role: string): string {
   if (role === "SUPER_ADMIN") return "border-violet-300 bg-violet-100 text-violet-950";
   if (role === "ADMIN") return "border-indigo-200 bg-indigo-50 text-indigo-950";
   if (role === "GOV") return "border-sky-200 bg-sky-50 text-sky-950";
@@ -37,19 +90,7 @@ export default async function AdminUsersPage() {
     redirect("/admin/dashboard");
   }
 
-  // 勿在 where 使用尚未寫入 DB 的 enum 值（未跑 migration 時會 500）；改列舉所有非一般使用者。
-  const privileged = await prisma.user.findMany({
-    where: { role: { not: Role.USER } },
-    orderBy: [{ role: "asc" }, { email: "asc" }],
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const { rows: privileged, loadError } = await loadPrivilegedUsers();
 
   return (
     <section className="mx-auto max-w-4xl px-1 py-2 sm:px-2">
@@ -65,6 +106,12 @@ export default async function AdminUsersPage() {
           </p>
         </div>
       </header>
+
+      {loadError ? (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="alert">
+          無法載入帳號列表：{loadError}
+        </div>
+      ) : null}
 
       <section className="mb-8 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-800">新增／更新授權</h2>
