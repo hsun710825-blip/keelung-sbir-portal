@@ -37,8 +37,9 @@ export default async function AdminUsersPage() {
     redirect("/admin/dashboard");
   }
 
+  // 勿在 where 使用尚未寫入 DB 的 enum 值（未跑 migration 時會 500）；改列舉所有非一般使用者。
   const privileged = await prisma.user.findMany({
-    where: { role: { in: ["SUPER_ADMIN", "ADMIN", "GOV", "REVIEWER", "COMMITTEE"] as Role[] } },
+    where: { role: { not: Role.USER } },
     orderBy: [{ role: "asc" }, { email: "asc" }],
     select: {
       id: true,
