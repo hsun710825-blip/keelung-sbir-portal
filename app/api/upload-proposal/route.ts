@@ -12,6 +12,7 @@ import {
   sanitizeProjectNameForFolder,
 } from "../../../lib/serverSecurity";
 import { googleDriveFileViewUrl } from "../../../lib/driveLinks";
+import { draftUnlockContextFromSession } from "../../../lib/draftUnlockContext";
 import { assertDraftUnlocked, findDraftFileIdInFolder } from "../../../lib/projectSecurity";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "../../../lib/applicantApplicationSync";
 
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
       const userFolder = await ensureUserFolder(drive, session);
       const projectFolder = await ensureProjectFolder({ drive, userFolderId: userFolder.folderId, projectName });
       const draftFileId = await findDraftFileIdInFolder(drive, projectFolder.folderId, emailHashKey(email));
-      await assertDraftUnlocked(drive, draftFileId, "Plan is locked");
+      await assertDraftUnlocked(drive, draftFileId, "Plan is locked", draftUnlockContextFromSession(session));
 
       const oldFiles = await drive.files.list({
         q: `'${projectFolder.folderId}' in parents and name='${PROPOSAL_FILE_NAME}' and trashed=false`,

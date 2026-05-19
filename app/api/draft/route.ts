@@ -8,6 +8,8 @@ import { ensureProjectFolder, ensureUserFolder } from "../_driveFolders";
 import { updateRegistryFromFormData } from "../_registrySheet";
 import { withGoogleApiRetry } from "../_googleApiRetry";
 import { sanitizeDeepInput, sanitizeProjectNameForFolder } from "../../../lib/serverSecurity";
+import { isApplicantEditLockedByPolicy } from "../../../lib/applicantEditLock";
+import { draftUnlockContextFromSession } from "../../../lib/draftUnlockContext";
 import {
   assertDraftUnlocked,
   extractLockStateFromDraft,
@@ -274,6 +276,10 @@ export async function POST(req: Request) {
   if (!session?.user || !email) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
+  const unlockCtx = draftUnlockContextFromSession(session);
+  if (await isApplicantEditLockedByPolicy(email, unlockCtx.prismaRole)) {
+    return NextResponse.json({ ok: false, error: "徵件已截止，目前無法儲存草稿。" }, { status: 403 });
+  }
   const { emailKey: key } = getDraftKeysByEmail(email);
   // 進入儲存層前做遞迴字串淨化（XSS 風險降低）。
   const payload = normalizeDraftFormDataShape(sanitizeDeepInput({ ...body, updatedAt: new Date().toISOString() }) as Record<string, unknown>);
@@ -310,7 +316,7 @@ export async function POST(req: Request) {
       if (existingId) {
         await assertFileOwnershipOrThrow(drive, existingId, userFolder.folderId);
         // 鎖定檢查：submitted/expired/deleted 草稿不可更新。
-        await assertDraftUnlocked(drive, existingId, "Plan is locked");
+        await assertDraftUnlocked(drive, existingId, "Plan is locked", unlockCtx);
         const existingDraft = await readDraftJsonByFileId(drive, existingId).catch(() => null);
         if (existingDraft && typeof existingDraft === "object") {
           payloadToWrite = mergeCriticalFormSections(existingDraft as Record<string, unknown>, payload);

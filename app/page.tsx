@@ -10,6 +10,7 @@ import PlanContentImplementationForm from '@/components/PlanContentImplementatio
 import ExpectedBenefitsForm from '@/components/ExpectedBenefitsForm';
 import ScheduleCheckpointsForm from '@/components/ScheduleCheckpointsForm';
 import HumanBudgetRequirementsForm from '@/components/HumanBudgetRequirementsForm';
+import { ApplicantEntryGate } from "@/components/auth/ApplicantEntryGate";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { formatRocDateLongFromIso, isoDateToRocParts, rocYmdToIso, rocYearOptions } from "@/lib/dateRoc";
@@ -116,7 +117,11 @@ export default function App() {
   ];
 
   if (enterApplicantMode && userContext) {
-    return <Dashboard user={userContext} onLogout={handleLogout} />;
+    return (
+      <ApplicantEntryGate onLogout={handleLogout}>
+        <Dashboard user={userContext} onLogout={handleLogout} />
+      </ApplicantEntryGate>
+    );
   }
 
   return (
@@ -651,11 +656,11 @@ type MeApplicationRow = {
   updatedAt: string;
 };
 
-function getPlanLockState(formData: Partial<ApplicationFormData>) {
+function getPlanLockState(formData: Partial<ApplicationFormData>, supplementUnlock = false) {
   // 前端顯示層鎖定判定：僅負責控制互動（真正阻擋仍由 API 端執行）。
   const deleted = Boolean(formData.isDeleted || formData.deletedAt);
-  const expired = isPastApplicationDeadline();
-  /** 徵件截止前：草稿與已送件皆可編輯；截止後一律鎖（理由顯示為已過期）。 */
+  const expired = isPastApplicationDeadline() && !supplementUnlock;
+  /** 徵件截止前：草稿與已送件皆可編輯；截止後一律鎖（補件通道由 Auth JWT 放行）。 */
   const locked = deleted || expired;
   const reason = deleted ? "已刪除" : expired ? "已過期" : "";
   return { locked, reason };
@@ -1045,6 +1050,8 @@ function formatApiErrorForAlert(prefix: string, err: unknown): string {
 }
 
 function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () => void }) {
+  const { data: authSession } = useSession();
+  const supplementUnlock = authSession?.user?.applicantSupplementAccess === true;
   const coverFieldUid = useId();
   const benefitFieldUid = useId();
   const coverId = (suffix: string) => `${coverFieldUid}-${suffix}`;
@@ -1171,7 +1178,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       .then((data: { ok?: boolean; draft?: { formData?: ApplicationFormData } }) => {
         if (data?.ok && data?.draft?.formData) {
           const next = { ...data.draft!.formData };
-          const lock = getPlanLockState(next);
+          const lock = getPlanLockState(next, supplementUnlock);
           setIsPlanLocked(lock.locked);
           setPlanLockReason(lock.reason);
           setFormData((prev) => ({ ...prev, ...next }));
@@ -1185,7 +1192,14 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         // ignore
       })
       .finally(() => setDraftLoaded(true));
-  }, []);
+  }, [supplementUnlock]);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const lock = getPlanLockState(formData, supplementUnlock);
+    setIsPlanLocked(lock.locked);
+    setPlanLockReason(lock.reason);
+  }, [supplementUnlock, draftLoaded, formData.isDeleted, formData.deletedAt]);
 
   const tabs = [
     { id: 1, title: '封面與基本資料' },
@@ -1641,7 +1655,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
       setLastSubmittedAt(stamp);
       setFormData((prev) => {
         const next = { ...prev, workflowStatus: "submitted" as const, submittedAt: stamp };
-        const lock = getPlanLockState(next);
+        const lock = getPlanLockState(next, supplementUnlock);
         setIsPlanLocked(lock.locked);
         setPlanLockReason(lock.reason);
         return next;

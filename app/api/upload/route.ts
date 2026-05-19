@@ -12,6 +12,7 @@ import {
   ensureFileSizeLimit,
   sanitizeProjectNameForFolder,
 } from "../../../lib/serverSecurity";
+import { draftUnlockContextFromSession } from "../../../lib/draftUnlockContext";
 import { assertDraftUnlocked, findDraftFileIdInFolder } from "../../../lib/projectSecurity";
 import { writeAuditLog } from "../../../lib/audit";
 
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
       const projectFolder = await ensureProjectFolder({ drive, userFolderId: userFolder.folderId, projectName });
       // 6) 狀態鎖定：已送出/已刪除/過期計畫禁止再上傳附件。
       const draftFileId = await findDraftFileIdInFolder(drive, projectFolder.folderId, emailHashKey(session.user?.email || ""));
-      await assertDraftUnlocked(drive, draftFileId, "Plan is locked");
+      await assertDraftUnlocked(drive, draftFileId, "Plan is locked", draftUnlockContextFromSession(session));
       const bytes = new Uint8Array(await file.arrayBuffer());
       const magicCheck = ensureAllowedUploadMagic(bytes, mimeCheck.mimeType);
       if (!magicCheck.ok) {

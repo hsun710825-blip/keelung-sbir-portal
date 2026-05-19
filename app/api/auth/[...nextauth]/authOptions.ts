@@ -1,7 +1,9 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-import { getPrismaRoleByEmail } from "@/lib/adminAuth";
+import { getPrismaRoleByEmail, isBackofficePrismaRole } from "@/lib/adminAuth";
+import { canApplicantAccessSupplementChannel } from "@/lib/applicantSupplementEligibility";
+import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -31,24 +33,48 @@ export const authOptions: NextAuthOptions = {
      * 後台是否放行改由 JWT 內之 Prisma role，以及 /admin 的 middleware 判定（ADMIN / COMMITTEE）。
      */
     async signIn({ user, account }) {
-      return account?.provider === "google" && Boolean(user?.email?.trim());
+      if (account?.provider !== "google") return false;
+      const email = user?.email?.trim();
+      if (!email) return false;
+
+      const role = await getPrismaRoleByEmail(email);
+      if (isBackofficePrismaRole(role)) return true;
+
+      if (!isWithinSupplementWindow()) return true;
+
+      const allowed = await canApplicantAccessSupplementChannel(email, role);
+      if (!allowed) return "/auth/applicant-denied";
+
+      return true;
     },
     async jwt({ token, user }) {
       const email = (user?.email ?? token.email) as string | undefined;
       if (!email?.trim()) {
         token.role = null;
+        token.applicantSupplementAccess = false;
+        token.applicantSupplementDenied = false;
         return token;
       }
-      // 初次 OAuth 完成時會帶入 user；舊版 JWT 可能尚未寫入 role
-      if (user || token.role === undefined) {
-        token.role = await getPrismaRoleByEmail(email);
+
+      token.role = await getPrismaRoleByEmail(email);
+
+      if (isWithinSupplementWindow() && !isBackofficePrismaRole(token.role as string | null)) {
+        const allowed = await canApplicantAccessSupplementChannel(email, token.role as string | null);
+        token.applicantSupplementAccess = allowed;
+        token.applicantSupplementDenied = !allowed;
+      } else {
+        token.applicantSupplementAccess = false;
+        token.applicantSupplementDenied = false;
       }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
         session.user.role = token.role ?? null;
+        session.user.applicantSupplementAccess = token.applicantSupplementAccess === true;
+        session.user.applicantSupplementDenied = token.applicantSupplementDenied === true;
       }
       return session;
     },

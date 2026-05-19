@@ -17,6 +17,7 @@ import {
   sanitizeDeepInput,
   sanitizeProjectNameForFolder,
 } from "../../../lib/serverSecurity";
+import { draftUnlockContextFromSession } from "../../../lib/draftUnlockContext";
 import { assertDraftUnlocked, findDraftFileIdInFolder, readDraftJsonByFileId } from "../../../lib/projectSecurity";
 import { writeAuditLog } from "../../../lib/audit";
 import { sendSubmitSuccessEmail } from "../../../lib/mailer";
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    const unlockCtx = draftUnlockContextFromSession(session);
     const { drive, mode } = await getDriveWithFallback();
     const nowIso = new Date().toISOString();
     const { userFolder, projectFolder, file, draftFileId } = await withGoogleApiRetry("submit.driveUpload", async () => {
@@ -178,7 +180,7 @@ export async function POST(req: Request) {
       const projectFolder = await ensureProjectFolder({ drive, userFolderId: userFolder.folderId, projectName });
       // 狀態鎖定：已送出/過期/刪除的草稿禁止再送件。
       const draftFileId = await findDraftFileIdInFolder(drive, projectFolder.folderId, emailHashKey(session.user?.email || ""));
-      await assertDraftUnlocked(drive, draftFileId, "Plan is locked");
+      await assertDraftUnlocked(drive, draftFileId, "Plan is locked", unlockCtx);
 
       if (submissionMode === "UPLOAD") {
         return { userFolder, projectFolder, file: { id: "", name: displayPdfName, webViewLink: uploadedProposalUrl || "" }, draftFileId };

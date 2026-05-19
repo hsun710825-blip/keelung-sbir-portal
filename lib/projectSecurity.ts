@@ -1,5 +1,6 @@
 import type { drive_v3 } from "googleapis";
 
+import { isApplicantEditLockedByPolicy } from "./applicantEditLock";
 import { isPastApplicationDeadline } from "./applicationDeadline";
 
 type AnyRecord = Record<string, unknown>;
@@ -46,15 +47,32 @@ export async function readDraftJsonByFileId(drive: drive_v3.Drive, fileId: strin
   return JSON.parse(raw) as AnyRecord;
 }
 
+export type DraftUnlockContext = {
+  applicantEmail?: string;
+  prismaRole?: string | null;
+};
+
 export async function assertDraftUnlocked(
   drive: drive_v3.Drive,
   fileId: string | null,
-  message = "Plan is locked"
+  message = "Plan is locked",
+  ctx?: DraftUnlockContext,
 ) {
-  if (!fileId) return;
+  if (!fileId) {
+    if (ctx?.applicantEmail && (await isApplicantEditLockedByPolicy(ctx.applicantEmail, ctx.prismaRole))) {
+      const err = new Error(`${message}: expired`);
+      (err as Error & { status?: number }).status = 403;
+      throw err;
+    }
+    return;
+  }
   const draft = await readDraftJsonByFileId(drive, fileId);
   const lock = extractLockStateFromDraft(draft);
   if (lock.locked) {
+    if (lock.reason === "expired" && ctx?.applicantEmail) {
+      const policyLocked = await isApplicantEditLockedByPolicy(ctx.applicantEmail, ctx.prismaRole);
+      if (!policyLocked) return;
+    }
     const err = new Error(`${message}: ${lock.reason || "locked"}`);
     (err as Error & { status?: number }).status = 403;
     throw err;
