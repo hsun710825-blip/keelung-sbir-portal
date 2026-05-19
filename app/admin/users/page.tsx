@@ -6,6 +6,7 @@ import { Prisma, Role } from "@prisma/client";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminGrantRoleForm } from "@/components/admin/AdminGrantRoleForm";
 import { RevokeBackofficeRoleButton } from "@/components/admin/RevokeBackofficeRoleButton";
+import { ensureRbacRoleEnumValues } from "@/lib/ensureRbacRoleEnums";
 import { prisma } from "@/lib/prisma";
 import { canManageBackofficeAccounts, normalizeEmailForCompare, roleDisplayLabel, SUPER_ADMIN_EMAIL_FORCED } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -20,6 +21,7 @@ type PrivilegedUserRow = {
 };
 
 async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadError: string | null }> {
+  await ensureRbacRoleEnumValues();
   try {
     const rows = await prisma.user.findMany({
       where: { role: { not: Role.USER } },

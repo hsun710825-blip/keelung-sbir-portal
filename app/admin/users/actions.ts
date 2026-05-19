@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { Role } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
+import { ensureRbacRoleEnumValues } from "@/lib/ensureRbacRoleEnums";
 import { prisma } from "@/lib/prisma";
 import {
   canManageBackofficeAccounts,
@@ -19,12 +20,14 @@ const GRANTABLE: Role[] = [Role.ADMIN, Role.GOV, Role.REVIEWER];
 const GRANTABLE_STR = new Set(["ADMIN", "GOV", "REVIEWER"]);
 
 async function persistUserRole(emailNorm: string, role: Role, existingId: string | undefined) {
+  await ensureRbacRoleEnumValues();
   try {
     if (existingId) {
       await prisma.user.update({ where: { id: existingId }, data: { role } });
     } else {
       await prisma.user.create({ data: { email: emailNorm, role } });
     }
+    return;
   } catch (e) {
     if (role === Role.REVIEWER) {
       const fallback = Role.COMMITTEE;
@@ -35,10 +38,8 @@ async function persistUserRole(emailNorm: string, role: Role, existingId: string
       }
       return;
     }
-    if (role === Role.GOV) {
-      throw new Error("資料庫尚未支援 GOV 角色，請先執行 RBAC migration");
-    }
-    throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(msg || "寫入角色失敗");
   }
 }
 
@@ -72,33 +73,39 @@ export async function grantBackofficeRoleAction(
   _prev: GrantRoleState,
   formData: FormData,
 ): Promise<GrantRoleState> {
-  const gate = await requireSuperAdminUserId();
-  if (!gate.ok) {
-    return { error: gate.error };
+  try {
+    const gate = await requireSuperAdminUserId();
+    if (!gate.ok) {
+      return { error: gate.error };
+    }
+
+    const rawEmail = String(formData.get("email") || "").trim();
+    const roleRaw = String(formData.get("role") || "").trim();
+    const emailNorm = rawEmail.toLowerCase();
+
+    if (!emailNorm || !emailNorm.includes("@")) {
+      return { error: "請輸入有效的 Gmail／Email" };
+    }
+    if (!GRANTABLE_STR.has(roleRaw)) {
+      return { error: "請選擇 PO人員、市府人員或審查委員" };
+    }
+    const roleToWrite = roleRaw as Role;
+
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: emailNorm, mode: "insensitive" } },
+      select: { id: true },
+    });
+
+    await persistUserRole(emailNorm, roleToWrite, existing?.id);
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/dashboard");
+    return { message: `已將 ${emailNorm} 設為「${roleDisplayLabel(roleToWrite)}」` };
+  } catch (e) {
+    console.error("[grantBackofficeRoleAction]", e);
+    const msg = e instanceof Error ? e.message : "授權失敗";
+    return { error: msg };
   }
-
-  const rawEmail = String(formData.get("email") || "").trim();
-  const roleRaw = String(formData.get("role") || "").trim();
-  const emailNorm = rawEmail.toLowerCase();
-
-  if (!emailNorm || !emailNorm.includes("@")) {
-    return { error: "請輸入有效的 Gmail／Email" };
-  }
-  if (!GRANTABLE_STR.has(roleRaw)) {
-    return { error: "請選擇 PO人員、市府人員或審查委員" };
-  }
-  const roleToWrite = roleRaw as Role;
-
-  const existing = await prisma.user.findFirst({
-    where: { email: { equals: emailNorm, mode: "insensitive" } },
-    select: { id: true },
-  });
-
-  await persistUserRole(emailNorm, roleToWrite, existing?.id);
-
-  revalidatePath("/admin/users");
-  revalidatePath("/admin/dashboard");
-  return { message: `已將 ${emailNorm} 設為「${roleDisplayLabel(roleToWrite)}」` };
 }
 
 export type RevokeRoleResult = { ok: true } | { ok: false; error: string };
@@ -129,12 +136,17 @@ export async function revokeBackofficeRoleAction(userId: string): Promise<Revoke
     return { ok: false, error: "不可透過此流程移除自己的後台權限" };
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { role: Role.USER },
-  });
-
-  revalidatePath("/admin/users");
-  revalidatePath("/admin/dashboard");
-  return { ok: true };
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: Role.USER },
+    });
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/dashboard");
+    return { ok: true };
+  } catch (e) {
+    console.error("[revokeBackofficeRoleAction]", e);
+    const msg = e instanceof Error ? e.message : "移除權限失敗";
+    return { ok: false, error: msg };
+  }
 }
