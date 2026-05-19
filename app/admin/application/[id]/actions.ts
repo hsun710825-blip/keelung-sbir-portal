@@ -97,6 +97,7 @@ export async function updateApplicationStatusAction(
     statusLabelZh,
     adminRemarksText: remarks,
     announcement,
+    applicationStatus: nextStatusRaw,
   });
 
   let mailError: string | null = null;
@@ -110,6 +111,7 @@ export async function updateApplicationStatusAction(
       statusLabelZh,
       adminRemarksText: remarks,
       announcement,
+      applicationStatus: nextStatusRaw,
     });
     messageId = sent.messageId;
     mockMail = sent.mock;

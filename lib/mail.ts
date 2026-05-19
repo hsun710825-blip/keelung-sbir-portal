@@ -1,3 +1,4 @@
+import type { ApplicationStatus } from "@prisma/client";
 import nodemailer from "nodemailer";
 
 /** 與 mailer.ts 一致，避免 .env UTF-8 在平台解析異常 */
@@ -98,6 +99,12 @@ function portalBaseUrl(): string {
   return resolvePublicSiteUrl();
 }
 
+/** 退回補件（REVISION_REQUIRED）專用通知信 */
+export const REVISION_REQUIRED_MAIL_SUBJECT =
+  "【基隆市 SBIR系統通知】您的提案計畫退回需補件請速閱信件內容";
+
+export const REVISION_REQUIRED_MAIL_INTRO = "您需補件如下說明";
+
 export type StatusUpdateMailContentInput = {
   applicantDisplayName: string;
   planTitle: string;
@@ -105,6 +112,7 @@ export type StatusUpdateMailContentInput = {
   adminRemarksText: string;
   /** 僅更新 adminRemarks、狀態未變時使用不同主旨與開頭文案 */
   announcement: "status_changed" | "remarks_only";
+  applicationStatus?: ApplicationStatus | string;
 };
 
 export type StatusUpdateMailInput = StatusUpdateMailContentInput & { to: string };
@@ -113,32 +121,54 @@ export type StatusUpdateMailBodies = {
   subject: string;
   html: string;
   text: string;
+  /** 高重要性標頭（Outlook / Gmail 等顯示為重要郵件） */
+  highPriority: boolean;
 };
 
+function isRevisionRequiredStatus(status: ApplicationStatus | string | undefined): boolean {
+  return status === "REVISION_REQUIRED";
+}
+
 export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput): StatusUpdateMailBodies {
-  const { applicantDisplayName, planTitle, statusLabelZh, adminRemarksText, announcement } = input;
+  const { applicantDisplayName, planTitle, statusLabelZh, adminRemarksText, announcement, applicationStatus } =
+    input;
   const plan = planTitle.trim() || "未命名計畫";
   const name = applicantDisplayName.trim() || "申請者";
   const remarksBlock = adminRemarksText.trim() || "（管理員未留下額外說明）";
   const portalUrl = portalBaseUrl();
-
-  const subject =
-    announcement === "remarks_only"
-      ? `【基隆市 SBIR】計畫「${plan}」案件狀態已更新`
-      : `【基隆市 SBIR】您的計畫書狀態已更新為：${statusLabelZh}`;
+  const revisionRequiredMail = isRevisionRequiredStatus(applicationStatus);
 
   const lineText = `如有問題請聯繫《115基隆SBIR幫》Line官方帳號：${LINE_OFFICIAL_URL}`;
-  const leadText =
-    announcement === "remarks_only"
-      ? `您的計畫「${plan}」目前狀態仍為「${statusLabelZh}」，管理員已更新說明如下：`
-      : `您的計畫「${plan}」狀態已更新為：${statusLabelZh}`;
+
+  let subject: string;
+  let leadText: string;
+  let remarksHeading: string;
+
+  if (revisionRequiredMail) {
+    subject = REVISION_REQUIRED_MAIL_SUBJECT;
+    leadText =
+      announcement === "remarks_only"
+        ? `您的計畫「${plan}」目前為退回補件，${REVISION_REQUIRED_MAIL_INTRO}`
+        : `您的計畫「${plan}」已退回補件，${REVISION_REQUIRED_MAIL_INTRO}`;
+    remarksHeading = REVISION_REQUIRED_MAIL_INTRO;
+  } else {
+    subject =
+      announcement === "remarks_only"
+        ? `【基隆市 SBIR】計畫「${plan}」案件狀態已更新`
+        : `【基隆市 SBIR】您的計畫書狀態已更新為：${statusLabelZh}`;
+    leadText =
+      announcement === "remarks_only"
+        ? `您的計畫「${plan}」目前狀態仍為「${statusLabelZh}」，管理員已更新說明如下：`
+        : `您的計畫「${plan}」狀態已更新為：${statusLabelZh}`;
+    remarksHeading = "案件狀態說明";
+  }
 
   const text = [
     `${name} 您好，`,
     "",
     leadText,
     "",
-    "── 案件狀態說明 ──",
+    `── ${remarksHeading} ──`,
     remarksBlock,
     "",
     `登入系統：${portalUrl}`,
@@ -152,12 +182,20 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
   const safeStatus = escapeHtml(statusLabelZh);
   const safeRemarks = escapeHtml(remarksBlock);
   const safePortal = escapeHtml(portalUrl);
+  const safeIntro = escapeHtml(REVISION_REQUIRED_MAIL_INTRO);
   const lineHtml = `<p>如有問題請聯繫《115基隆SBIR幫》Line官方帳號：<a href="${escapeHtml(LINE_OFFICIAL_URL)}">${escapeHtml(LINE_OFFICIAL_URL)}</a></p>`;
 
-  const leadHtml =
-    announcement === "remarks_only"
+  const leadHtml = revisionRequiredMail
+    ? announcement === "remarks_only"
+      ? `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 目前為<strong style="color:#b45309;">退回補件</strong>。</p>
+<p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#b45309;">${safeIntro}</p>`
+      : `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 已<strong style="color:#b45309;">退回補件</strong>。</p>
+<p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#b45309;">${safeIntro}</p>`
+    : announcement === "remarks_only"
       ? `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 目前狀態仍為：<strong style="color:#0369a1;">${safeStatus}</strong>，管理員已更新說明如下：</p>`
       : `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 狀態已更新為：<strong style="color:#0369a1;">${safeStatus}</strong></p>`;
+
+  const remarksBoxTitle = revisionRequiredMail ? safeIntro : "案件狀態說明";
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body style="font-family:'Noto Sans TC',sans-serif;line-height:1.65;color:#1e293b;background:#f8fafc;padding:24px;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
@@ -166,7 +204,7 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
 <p style="margin:0 0 12px;">${safeName} 您好，</p>
 ${leadHtml}
 <div style="margin-top:20px;padding:16px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:8px;">
-<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">案件狀態說明</p>
+<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">${remarksBoxTitle}</p>
 <div style="margin:0;font-size:14px;color:#422006;white-space:pre-wrap;">${safeRemarks}</div>
 </div>
 <p style="margin:24px 0 8px;"><a href="${safePortal}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">前往系統首頁</a></p>
@@ -175,7 +213,7 @@ ${lineHtml}
 </td></tr></table>
 </body></html>`;
 
-  return { subject, html, text };
+  return { subject, html, text, highPriority: revisionRequiredMail };
 }
 
 export type StatusUpdateMailResult = {
@@ -195,7 +233,7 @@ export async function sendStatusUpdateEmail(input: StatusUpdateMailInput): Promi
     throw new Error("缺少收件人信箱");
   }
 
-  const { subject, html, text } = buildStatusUpdateMailBodies(input);
+  const { subject, html, text, highPriority } = buildStatusUpdateMailBodies(input);
   const ctx = createSmtpMailContext();
 
   if (ctx.mode === "mock") {
@@ -204,7 +242,7 @@ export async function sendStatusUpdateEmail(input: StatusUpdateMailInput): Promi
     );
     console.log(
       "[mail:mock] status update",
-      JSON.stringify({ to, subject, text }, null, 2),
+      JSON.stringify({ to, subject, text, highPriority }, null, 2),
     );
     return { mock: true, subject, html, text };
   }
@@ -215,6 +253,17 @@ export async function sendStatusUpdateEmail(input: StatusUpdateMailInput): Promi
     subject,
     text,
     html,
+    ...(highPriority
+      ? {
+          priority: "high" as const,
+          headers: {
+            Importance: "high",
+            "X-Priority": "1",
+            "X-MSMail-Priority": "High",
+            Priority: "urgent",
+          },
+        }
+      : {}),
   });
 
   return { mock: false, messageId: info.messageId, subject, html, text };
