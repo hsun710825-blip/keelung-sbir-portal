@@ -4,8 +4,15 @@ import { useMemo, useState } from "react";
 
 import { AdminApplicationsTable, type AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
 import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
+import {
+  ADMIN_CASE_LIST_STATUS_FILTER_OPTIONS,
+  matchesAdminCaseListStatusFilter,
+  type AdminCaseListStatusFilter,
+} from "@/lib/applicationStatusOptions";
 
 const ASIA_TAIPEI = "Asia/Taipei";
+
+type ModeFilter = "ALL" | "ONLINE" | "UPLOAD";
 
 function csvEscapeCell(v: string): string {
   const s = String(v ?? "");
@@ -99,9 +106,6 @@ function exportFilteredRowsToCsv(rows: AdminApplicationTableRow[]) {
   URL.revokeObjectURL(url);
 }
 
-type StatusFilter = "ALL" | "DRAFT" | "SUBMITTED";
-type ModeFilter = "ALL" | "ONLINE" | "UPLOAD";
-
 function isNewer(a: AdminApplicationTableRow, b: AdminApplicationTableRow): boolean {
   if (a.updatedAtMs !== b.updatedAtMs) return a.updatedAtMs > b.updatedAtMs;
   return a.createdAtMs >= b.createdAtMs;
@@ -139,7 +143,7 @@ export function ApplicationListWithFilters({
   /** 管理員／市府等可檢視列表者；預設顯示匯出按鈕 */
   canExportList?: boolean;
 }) {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<AdminCaseListStatusFilter>("ALL");
   const [modeFilter, setModeFilter] = useState<ModeFilter>("ALL");
 
   const dedupedRows = useMemo(() => dedupeByApplicantAndTitle(rows), [rows]);
@@ -147,7 +151,7 @@ export function ApplicationListWithFilters({
   const filteredRows = useMemo(() => {
     let out = dedupedRows;
     if (statusFilter !== "ALL") {
-      out = out.filter((r) => r.status === statusFilter);
+      out = out.filter((r) => matchesAdminCaseListStatusFilter(r.status, statusFilter));
     }
     if (modeFilter !== "ALL") {
       out = out.filter((r) => r.submissionMode === modeFilter);
@@ -172,15 +176,17 @@ export function ApplicationListWithFilters({
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              送件狀態
+              案件狀態
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                onChange={(e) => setStatusFilter(e.target.value as AdminCaseListStatusFilter)}
                 className="min-w-[11rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
-                <option value="ALL">全部</option>
-                <option value="DRAFT">草稿中（DRAFT）</option>
-                <option value="SUBMITTED">已送出（SUBMITTED）</option>
+                {ADMIN_CASE_LIST_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">

@@ -1,0 +1,2 @@
+-- 新增「審查通過」狀態（REVIEW_PASSED）
+ALTER TYPE "ApplicationStatus" ADD VALUE IF NOT EXISTS 'REVIEW_PASSED';

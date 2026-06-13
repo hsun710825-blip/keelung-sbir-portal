@@ -13,6 +13,7 @@ const SUBMITTED_OR_BEYOND: ApplicationStatus[] = [
   ApplicationStatus.REVISION_SUBMITTED,
   ApplicationStatus.REVISION_REQUIRED,
   ApplicationStatus.PRE_REVIEW_PASSED,
+  ApplicationStatus.REVIEW_PASSED,
   ApplicationStatus.APPROVED,
   ApplicationStatus.REJECTED,
   ApplicationStatus.CLOSED,

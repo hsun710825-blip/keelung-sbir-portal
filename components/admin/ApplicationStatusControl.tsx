@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import type { ApplicationStatus } from "@prisma/client";
 
 import { updateApplicationStatusAction } from "@/app/admin/application/[id]/actions";
-import { APPLICATION_STATUS_OPTIONS } from "@/lib/applicationStatusOptions";
+import { APPLICATION_STATUS_OPTIONS, applicationStatusOptionLabel } from "@/lib/applicationStatusOptions";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import {
   defaultAdminRemarksForStatus,
@@ -106,7 +106,7 @@ export function ApplicationStatusControl({
             >
               {APPLICATION_STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {applicationStatusLabel(s)} ({s})
+                  {applicationStatusOptionLabel(s)}
                 </option>
               ))}
             </select>

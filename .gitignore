@@ -45,3 +45,9 @@ google-credentials.json
 # local runtime / smoke (do not commit)
 .data/
 tmp-pdf-smoke/
+# deploy / local capture (do not commit)
+_build_capture.txt
+_deploy_capture.txt
+_fix_log.py
+_patch_build.py
+DEPLOY_LOG.txt

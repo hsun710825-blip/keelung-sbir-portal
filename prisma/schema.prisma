@@ -40,6 +40,8 @@ enum ApplicationStatus {
   REVISION_REQUIRED
   /// 初審通過（後續可銜接「複審簡報上傳」等前端功能）
   PRE_REVIEW_PASSED
+  /// 複審／委員審查通過（待核定）
+  REVIEW_PASSED
   APPROVED
   REJECTED
   CLOSED
