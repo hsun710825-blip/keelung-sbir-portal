@@ -43,7 +43,7 @@ export default async function CommitteeDashboardPage() {
       },
       evaluations: {
         where: { committeeId: dbUser.id },
-        select: { id: true },
+        select: { id: true, rank: true },
       },
     },
   });
@@ -86,7 +86,7 @@ export default async function CommitteeDashboardPage() {
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">申請公司／聯絡</th>
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">送件／更新</th>
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">狀態</th>
-                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">評分</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">評分／序位</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -101,7 +101,8 @@ export default async function CommitteeDashboardPage() {
                     const companyLabel =
                       [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
                     const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
-                    const done = row.evaluations.length > 0;
+                    const ev = row.evaluations[0];
+                    const done = Boolean(ev && ev.rank != null);
                     return (
                       <tr key={row.id} className="transition-colors hover:bg-slate-50/80">
                         <td className="max-w-[220px] px-5 py-3.5 font-medium text-slate-900">

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Home, LayoutDashboard, ShieldCheck } from "lucide-react";
+import { BarChart3, ClipboardList, Home, LayoutDashboard, ShieldCheck } from "lucide-react";
 
 export type AdminNavItem = {
   href: string;
   label: string;
   description?: string;
-  icon?: "home" | "dashboard" | "users" | "applications";
+  icon?: "home" | "dashboard" | "users" | "applications" | "evaluations";
   matchPrefix?: string;
 };
 
@@ -18,6 +18,7 @@ function resolveIcon(name: AdminNavItem["icon"]) {
   if (name === "home") return <Home className={iconClass} />;
   if (name === "users") return <ShieldCheck className={iconClass} />;
   if (name === "applications") return <ClipboardList className={iconClass} />;
+  if (name === "evaluations") return <BarChart3 className={iconClass} />;
   return <LayoutDashboard className={iconClass} />;
 }
 

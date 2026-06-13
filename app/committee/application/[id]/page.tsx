@@ -275,11 +275,12 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
           </section>
           <section className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm ring-1 ring-blue-50">
             <h2 className="text-base font-semibold text-slate-900">評分區</h2>
-            <p className="mt-1 text-sm text-slate-500">請填寫分數與審查評語；可重複儲存以更新。</p>
+            <p className="mt-1 text-sm text-slate-500">請填寫分數、序位（序位法）與審查評語；可重複儲存以更新。</p>
             <div className="mt-6">
               <CommitteeEvaluationForm
                 applicationId={application.id}
                 initialScore={existingEval?.score ?? null}
+                initialRank={existingEval?.rank ?? null}
                 initialComment={existingEval?.comment ?? null}
               />
             </div>

@@ -1,0 +1,105 @@
+========== DEPLOY LOG ==========
+Timestamp: 2026-05-20
+
+=== 1. git status -sb ===
+## main...origin/main
+ M app/admin/application/[id]/actions.ts
+ M lib/mail.ts
+
+=== 2. git diff --stat ===
+warning: in the working copy of 'app/admin/application/[id]/actions.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/mail.ts', LF will be replaced by CRLF the next time Git touches it
+ app/admin/application/[id]/actions.ts |  2 +
+ lib/mail.ts                           | 83 ++++++++++++++++++++++++++++-------
+ 2 files changed, 68 insertions(+), 17 deletions(-)
+
+=== 3. git add -A ===
+warning: in the working copy of 'app/admin/application/[id]/actions.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/mail.ts', LF will be replaced by CRLF the next time Git touches it
+
+=== 4. git status --short ===
+M  app/admin/application/[id]/actions.ts
+M  lib/mail.ts
+
+=== 5. git commit -m "Add dedicated revision-required notification email" -m "Fixed subject and intro for REVISION_REQUIRED; high-priority headers for applicant mail." ===
+[main 93390f7] Add dedicated revision-required notification email
+ 2 files changed, 68 insertions(+), 17 deletions(-)
+
+=== 6. npm run build ===
+
+> keelung-sbir-portal@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 15.3s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/26) ...
+  Generating static pages using 7 workers (6/26) 
+  Generating static pages using 7 workers (12/26) 
+  Generating static pages using 7 workers (19/26) 
+✓ Generating static pages using 7 workers (26/26) in 691.1ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin
+├ ƒ /admin/accounts-overview
+├ ƒ /admin/application/[id]
+├ ƒ /admin/application/[id]/form-view
+├ ƒ /admin/dashboard
+├ ƒ /admin/users
+├ ƒ /api/admin/applications/[id]/attachments
+├ ƒ /api/admin/applications/[id]/draft-view
+├ ƒ /api/admin/applications/[id]/regenerate-online-pdf
+├ ƒ /api/admin/dashboard
+├ ƒ /api/admin/export
+├ ƒ /api/applications/me
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/draft
+├ ƒ /api/draft/debug
+├ ƒ /api/drive/auth
+├ ƒ /api/drive/callback
+├ ƒ /api/drive/status
+├ ƒ /api/pdf
+├ ƒ /api/postal
+├ ƒ /api/registry/ensure
+├ ƒ /api/submit
+├ ƒ /api/upload
+├ ƒ /api/upload-proposal
+├ ƒ /api/upload-proposal/chunk
+├ ƒ /api/upload-proposal/finalize
+├ ƒ /api/upload-proposal/session
+├ ○ /apple-icon.png
+├ ○ /auth/applicant-denied
+├ ƒ /committee/application/[id]
+├ ƒ /committee/dashboard
+├ ○ /icon.png
+├ ○ /privacy
+├ ○ /terms
+├ ƒ /workshop/admin
+├ ƒ /workshop/student
+└ ƒ /workshop/workspace/[groupId]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+npm run build exit code: 0
+
+=== 7. git push origin main ===
+To https://github.com/hsun710825-blip/keelung-sbir-portal.git
+   8436ba0..93390f7  main -> main
+
+=== 8. git log -1 --format=%H ===
+93390f7b607b8a6bad67bbd6d094ff04b0fb695d
+
+========== END DEPLOY LOG ==========

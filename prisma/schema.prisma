@@ -186,6 +186,8 @@ model Evaluation {
   id String @id @default(cuid())
 
   score   Float
+  /// 序位法：正整數，1 為最佳；數字愈小序位愈前
+  rank    Int?
   comment String? @db.Text
 
   applicationId String

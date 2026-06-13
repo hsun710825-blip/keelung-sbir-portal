@@ -38,6 +38,7 @@ export async function saveCommitteeEvaluationAction(
 
   const applicationId = String(formData.get("applicationId") || "").trim();
   const scoreRaw = formData.get("score");
+  const rankRaw = formData.get("rank");
   const comment = String(formData.get("comment") || "").trim();
 
   if (!applicationId) {
@@ -68,6 +69,16 @@ export async function saveCommitteeEvaluationAction(
     return { error: "分數請介於 0～100" };
   }
 
+  const rank =
+    typeof rankRaw === "string"
+      ? parseInt(rankRaw, 10)
+      : typeof rankRaw === "number"
+        ? Math.trunc(rankRaw)
+        : NaN;
+  if (!Number.isInteger(rank) || rank < 1) {
+    return { error: "請填寫有效序位（正整數，1 為最佳）" };
+  }
+
   await prisma.evaluation.upsert({
     where: {
       applicationId_committeeId: {
@@ -79,15 +90,18 @@ export async function saveCommitteeEvaluationAction(
       applicationId,
       committeeId: gate.id,
       score,
+      rank,
       comment: comment.length > 0 ? comment : null,
     },
     update: {
       score,
+      rank,
       comment: comment.length > 0 ? comment : null,
     },
   });
 
   revalidatePath(`/committee/application/${applicationId}`);
   revalidatePath("/committee/dashboard");
-  return { message: "已儲存評分" };
+  revalidatePath("/admin/committee-evaluations");
+  return { message: "已儲存評分與序位" };
 }

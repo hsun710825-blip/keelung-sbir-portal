@@ -40,6 +40,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       description: "一筆案件一列，支援匯出",
       icon: "dashboard",
     });
+    navItems.push({
+      href: "/admin/committee-evaluations",
+      label: "委員評分彙總",
+      description: "序位法排序與委員分數明細",
+      icon: "evaluations",
+      matchPrefix: "/admin/committee-evaluations",
+    });
   }
   if (canManageBackofficeAccounts(jwtRole)) {
     navItems.push({

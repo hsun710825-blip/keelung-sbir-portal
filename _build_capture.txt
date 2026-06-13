@@ -1,0 +1,80 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help
+ npmrc` for supported config options.
+位於 線路:1 字元:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> keelung-sbir-portal@0.1.0 build
+> next build
+
+??Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+
+??The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messa
+ges/middleware-to-proxy
+  Creating an optimized production build ...
+??Compiled successfully in 15.1s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/26) ...
+  Generating static pages using 7 workers (6/26) 
+  Generating static pages using 7 workers (12/26) 
+  Generating static pages using 7 workers (19/26) 
+??Generating static pages using 7 workers (26/26) in 800.0ms
+  Finalizing page optimization ...
+
+Route (app)
+????/
+????/_not-found
+??? /admin
+??? /admin/accounts-overview
+??? /admin/application/[id]
+??? /admin/application/[id]/form-view
+??? /admin/dashboard
+??? /admin/users
+??? /api/admin/applications/[id]/attachments
+??? /api/admin/applications/[id]/draft-view
+??? /api/admin/applications/[id]/regenerate-online-pdf
+??? /api/admin/dashboard
+??? /api/admin/export
+??? /api/applications/me
+??? /api/auth/[...nextauth]
+??? /api/draft
+??? /api/draft/debug
+??? /api/drive/auth
+??? /api/drive/callback
+??? /api/drive/status
+??? /api/pdf
+??? /api/postal
+??? /api/registry/ensure
+??? /api/submit
+??? /api/upload
+??? /api/upload-proposal
+??? /api/upload-proposal/chunk
+??? /api/upload-proposal/finalize
+??? /api/upload-proposal/session
+????/apple-icon.png
+????/auth/applicant-denied
+??? /committee/application/[id]
+??? /committee/dashboard
+????/icon.png
+????/privacy
+????/terms
+??? /workshop/admin
+??? /workshop/student
+??? /workshop/workspace/[groupId]
+
+
+? Proxy (Middleware)
+
+?? (Static)   prerendered as static content
+?  (Dynamic)  server-rendered on demand
+
+npm notice
+npm notice New minor version of npm available! 11.11.0 -> 11.14.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.14.1
+npm notice To update run: npm install -g npm@11.14.1
+npm notice

@@ -26,10 +26,12 @@ const initial: SaveEvaluationState = {};
 export function CommitteeEvaluationForm({
   applicationId,
   initialScore,
+  initialRank,
   initialComment,
 }: {
   applicationId: string;
   initialScore: number | null;
+  initialRank: number | null;
   initialComment: string | null;
 }) {
   const [state, formAction] = useActionState(saveCommitteeEvaluationAction, initial);
@@ -49,21 +51,40 @@ export function CommitteeEvaluationForm({
         </p>
       ) : null}
 
-      <div>
-        <label htmlFor="eval-score" className="block text-sm font-medium text-slate-700">
-          分數（0～100）
-        </label>
-        <input
-          id="eval-score"
-          name="score"
-          type="number"
-          step="0.1"
-          min={0}
-          max={100}
-          required
-          defaultValue={initialScore != null ? String(initialScore) : ""}
-          className="mt-1 w-full max-w-xs rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="eval-score" className="block text-sm font-medium text-slate-700">
+            分數（0～100）
+          </label>
+          <input
+            id="eval-score"
+            name="score"
+            type="number"
+            step="0.1"
+            min={0}
+            max={100}
+            required
+            defaultValue={initialScore != null ? String(initialScore) : ""}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label htmlFor="eval-rank" className="block text-sm font-medium text-slate-700">
+            序位（序位法）
+          </label>
+          <input
+            id="eval-rank"
+            name="rank"
+            type="number"
+            step={1}
+            min={1}
+            required
+            defaultValue={initialRank != null ? String(initialRank) : ""}
+            placeholder="1 為最佳，數字愈小愈前"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <p className="mt-1 text-xs text-slate-500">正整數；1 表示本輪最優先，2 次之，依此類推。</p>
+        </div>
       </div>
 
       <div>
