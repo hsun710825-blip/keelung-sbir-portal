@@ -8,11 +8,11 @@ import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { CommitteeEvaluationForm } from "@/components/committee/CommitteeEvaluationForm";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
+import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { loadCommitteeApplicationReview } from "@/lib/loadCommitteeApplicationReview";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
 import {
-  COMMITTEE_EVALUATION_SCHEMA_FIX_SQL,
   isMissingEvaluationSchemaError,
   loadCommitteeEvaluationDetail,
 } from "@/lib/safeCommitteeEvaluation";
@@ -86,9 +86,18 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
   let existingEval: Awaited<ReturnType<typeof loadCommitteeEvaluationDetail>>["evaluation"] = null;
   let evaluationSchemaIssue: "none" | "rank_column_missing" | "table_missing" = "none";
   try {
+    await ensureEvaluationSchema();
+  } catch (error) {
+    console.error("[committee/application] ensure evaluation schema:", error);
+    evaluationSchemaIssue = "table_missing";
+  }
+
+  try {
     const loaded = await loadCommitteeEvaluationDetail(application.id, dbUser.id);
     existingEval = loaded.evaluation;
-    evaluationSchemaIssue = loaded.schemaIssue;
+    if (loaded.schemaIssue !== "none") {
+      evaluationSchemaIssue = loaded.schemaIssue;
+    }
   } catch (error) {
     if (isMissingEvaluationSchemaError(error)) {
       evaluationSchemaIssue = "table_missing";
@@ -149,24 +158,30 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
             <h2 className="text-base font-semibold text-slate-900">計畫書 PDF</h2>
             <p className="mt-1 text-sm text-slate-500">請閱讀計畫內容後，於右側填寫序位與評分。</p>
             <div className="mt-4">
-              {application.pdfViewUrl ? (
+              {application.pdfEmbedUrl ? (
                 <iframe
                   title="計畫書 PDF 預覽"
-                  src={application.pdfViewUrl}
+                  src={application.pdfEmbedUrl}
                   className="h-[min(80vh,900px)] w-full rounded-xl border border-slate-200 bg-white"
                 />
+              ) : application.pdfViewUrl ? (
+                <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-600">
+                  <p>內嵌預覽暫不可用，請使用上方「新分頁開啟 PDF」。</p>
+                  <a
+                    href={application.pdfViewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    新分頁開啟 PDF
+                  </a>
+                </div>
               ) : (
                 <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-600">
-                  <p>目前無法內嵌預覽此案件 PDF。</p>
+                  <p>目前無法載入此案件 PDF。</p>
                   <p className="text-xs text-slate-500">
-                    可能原因：尚未產生 PDF、雲端連結未寫入，或檔案權限未開放。
+                    可能原因：尚未產生 PDF，或資料庫未記錄雲端檔案 ID。
                   </p>
-                  <Link
-                    href="/admin/dashboard"
-                    className="text-xs font-medium text-blue-700 hover:underline"
-                  >
-                    可至提案清單嘗試「檢視 PDF」
-                  </Link>
                 </div>
               )}
             </div>
@@ -179,10 +194,7 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
             </p>
             {evaluationSchemaIssue === "table_missing" ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-medium">資料庫尚未建立委員評分表，儲存可能失敗。請管理員執行下列 SQL：</p>
-                <pre className="mt-2 max-h-36 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">
-                  {COMMITTEE_EVALUATION_SCHEMA_FIX_SQL}
-                </pre>
+                評分資料表初始化失敗；若儲存失敗請聯絡管理員確認資料庫權限。
               </div>
             ) : evaluationSchemaIssue === "rank_column_missing" ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">

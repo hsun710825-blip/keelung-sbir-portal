@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
 
 /** 委員評分列表用（不查 rank，相容尚未套用 rank migration 的正式庫） */
@@ -130,6 +131,13 @@ export async function loadCommitteeEvaluationDetail(
   evaluation: CommitteeEvalDetail | null;
   schemaIssue: "none" | "rank_column_missing" | "table_missing";
 }> {
+  try {
+    await ensureEvaluationSchema();
+  } catch (error) {
+    console.error("[committee/evaluation] ensure schema:", error);
+    return { evaluation: null, schemaIssue: "table_missing" };
+  }
+
   const where = {
     applicationId_committeeId: { applicationId, committeeId },
   };

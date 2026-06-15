@@ -12,6 +12,8 @@ export type CommitteeApplicationReviewData = {
   periodYear: number | null;
   applicant: { name: string | null; email: string };
   pdfViewUrl: string | null;
+  /** 站內 PDF 串流（服務帳戶讀取 Drive，不需委員個人 Drive 登入） */
+  pdfEmbedUrl: string | null;
   pdfAttachmentsLoaded: boolean;
 };
 
@@ -83,9 +85,15 @@ export async function loadCommitteeApplicationReview(
     attachments,
   });
 
+  const hasPdfSource =
+    Boolean(pdfViewUrl) ||
+    attachments.some((a) => a.driveFileId) ||
+    Boolean(core.uploadedProposalUrl?.trim());
+
   return {
     ...core,
     pdfViewUrl,
+    pdfEmbedUrl: hasPdfSource ? `/api/committee/applications/${core.id}/proposal-pdf` : null,
     pdfAttachmentsLoaded,
   };
 }

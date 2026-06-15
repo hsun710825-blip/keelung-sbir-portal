@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
+import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
 import { isMissingEvaluationSchemaError } from "@/lib/safeCommitteeEvaluation";
@@ -89,6 +90,15 @@ export async function saveCommitteeEvaluationAction(
     score,
     comment: comment.length > 0 ? comment : null,
   };
+
+  try {
+    await ensureEvaluationSchema();
+  } catch (error) {
+    console.error("[committee/evaluation] ensure schema failed:", error);
+    return {
+      error: "無法初始化委員評分資料表，請聯絡管理員檢查資料庫權限。",
+    };
+  }
 
   const upsertWithRank = async () => {
     if (rank == null) {

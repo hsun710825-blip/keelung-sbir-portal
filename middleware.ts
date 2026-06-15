@@ -19,6 +19,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  if (path.startsWith("/api/committee")) {
+    if (!token || !isReviewerRole(role)) {
+      return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
+    return NextResponse.next();
+  }
+
   if (path.startsWith("/api/admin")) {
     if (!token || !isBackofficePrismaRole(role)) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
@@ -73,6 +80,7 @@ export const config = {
     "/admin/:path*",
     "/committee",
     "/committee/:path*",
+    "/api/committee/:path*",
     "/api/admin/:path*",
     "/api/draft",
     "/api/submit",
