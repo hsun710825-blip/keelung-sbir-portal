@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { CommitteeEvaluationForm } from "@/components/committee/CommitteeEvaluationForm";
+import { CommitteeProposalPdfViewer } from "@/components/committee/CommitteeProposalPdfViewer";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
@@ -159,10 +160,9 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
             <p className="mt-1 text-sm text-slate-500">請閱讀計畫內容後，於右側填寫序位與評分。</p>
             <div className="mt-4">
               {application.pdfEmbedUrl ? (
-                <iframe
-                  title="計畫書 PDF 預覽"
-                  src={application.pdfEmbedUrl}
-                  className="h-[min(80vh,900px)] w-full rounded-xl border border-slate-200 bg-white"
+                <CommitteeProposalPdfViewer
+                  applicationId={application.id}
+                  fallbackViewUrl={application.pdfViewUrl}
                 />
               ) : application.pdfViewUrl ? (
                 <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-600">

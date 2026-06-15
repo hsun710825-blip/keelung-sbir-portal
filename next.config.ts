@@ -12,6 +12,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/api/committee/applications/:id/proposal-pdf",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "X-DNS-Prefetch-Control", value: "on" },

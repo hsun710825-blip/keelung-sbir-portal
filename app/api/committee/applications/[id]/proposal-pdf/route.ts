@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { downloadDriveFileBytes } from "@/lib/downloadDriveFileBytes";
 import { resolveCommitteeProposalPdfSource } from "@/lib/resolveCommitteeProposalPdf";
@@ -12,10 +11,13 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, ctx: Ctx) {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email?.trim();
-  if (!session?.user?.email || !email) {
+export async function GET(req: NextRequest, ctx: Ctx) {
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
+  const email = typeof token?.email === "string" ? token.email.trim() : "";
+  if (!email) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +25,8 @@ export async function GET(_req: Request, ctx: Ctx) {
     where: { email: { equals: email, mode: "insensitive" } },
     select: { role: true },
   });
-  if (!dbUser || !isReviewerRole(dbUser.role)) {
+  const role = dbUser?.role ?? (typeof token?.role === "string" ? token.role : null);
+  if (!dbUser || !isReviewerRole(role)) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
@@ -60,6 +63,8 @@ export async function GET(_req: Request, ctx: Ctx) {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${encodeURIComponent(filename)}"`,
         "Cache-Control": "private, no-store",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Security-Policy": "frame-ancestors 'self'",
       },
     });
   } catch (error) {
