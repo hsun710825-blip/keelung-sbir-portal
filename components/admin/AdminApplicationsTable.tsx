@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { bulkDeleteApplicationsAction } from "@/app/admin/dashboard/actions";
 import { DeleteApplicationButton } from "@/components/admin/DeleteApplicationButton";
+import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 
 export type AdminApplicationTableRow = {
   id: string;
@@ -35,11 +36,14 @@ export type AdminApplicationTableRow = {
 export function AdminApplicationsTable({
   rows,
   isAdmin,
+  isReviewer = false,
   searchQuery,
   emptyStateMessage,
 }: {
   rows: AdminApplicationTableRow[];
   isAdmin: boolean;
+  /** 審查委員：可進入評分頁（初審通過及之後階段） */
+  isReviewer?: boolean;
   searchQuery: string;
   /** 有資料但篩選後為空時的提示（例如前端篩選無結果） */
   emptyStateMessage?: string;
@@ -306,6 +310,14 @@ export function AdminApplicationsTable({
                       >
                         {row.titleText}
                       </Link>
+                    ) : isReviewer && isCommitteeVisibleStatus(row.status) ? (
+                      <Link
+                        href={`/committee/application/${row.id}`}
+                        className="line-clamp-2 text-blue-700 hover:text-blue-900 hover:underline"
+                        title={row.titleText}
+                      >
+                        {row.titleText}
+                      </Link>
                     ) : (
                       <span className="line-clamp-2" title={row.titleText}>
                         {row.titleText}
@@ -354,7 +366,18 @@ export function AdminApplicationsTable({
                     )}
                   </td>
                   <td className="px-5 py-3.5">
-                    {isAdmin ? <DeleteApplicationButton applicationId={row.id} /> : <span className="text-xs text-slate-400">—</span>}
+                    {isAdmin ? (
+                      <DeleteApplicationButton applicationId={row.id} />
+                    ) : isReviewer && isCommitteeVisibleStatus(row.status) ? (
+                      <Link
+                        href={`/committee/application/${row.id}`}
+                        className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                      >
+                        評分
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))

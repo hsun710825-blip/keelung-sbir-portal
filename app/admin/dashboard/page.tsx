@@ -209,11 +209,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             ) : null}
             {isReviewer && !isGov ? (
               <p className="mt-2 text-xs text-amber-800">
-                您為審查委員身分：可檢視列表；案件詳情與狀態變更僅限管理員／PO 人員。
+                您為審查委員身分：可檢視列表；初審通過案件請點「評分」或左側「委員評分任務」進入評分頁。
               </p>
             ) : null}
           </div>
-          {isReviewer ? <p className="text-xs text-sky-800">可至委員區檢視審查任務。</p> : null}
+          {isReviewer ? (
+            <Link
+              href="/committee/dashboard"
+              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900 shadow-sm hover:bg-blue-100"
+            >
+              委員評分任務
+            </Link>
+          ) : null}
         </header>
 
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
@@ -271,7 +278,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
             </div>
           </div>
 
-          <ApplicationListWithFilters rows={tableRows} isAdmin={canOperate} searchQuery={searchQuery} />
+          <ApplicationListWithFilters
+            rows={tableRows}
+            isAdmin={canOperate}
+            isReviewer={isReviewer}
+            searchQuery={searchQuery}
+          />
         </section>
     </section>
   );

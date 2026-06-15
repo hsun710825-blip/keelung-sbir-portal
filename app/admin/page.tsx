@@ -4,7 +4,12 @@ import { getServerSession } from "next-auth";
 import { ClipboardList, ShieldCheck, Sparkles } from "lucide-react";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
-import { canManageBackofficeAccounts, canOperateApplications, isGovReadOnlyRole } from "@/lib/rbac";
+import {
+  canManageBackofficeAccounts,
+  canOperateApplications,
+  isGovReadOnlyRole,
+  isReviewerRole,
+} from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,12 +18,13 @@ type AdminEntryCard = {
   href: string;
   title: string;
   desc: string;
-  icon: "applications" | "users" | "overview";
+  icon: "applications" | "users" | "overview" | "evaluations";
 };
 
 function CardIcon({ icon }: { icon: AdminEntryCard["icon"] }) {
   if (icon === "users") return <ShieldCheck className="h-10 w-10 text-violet-600" />;
   if (icon === "overview") return <ClipboardList className="h-10 w-10 text-emerald-600" />;
+  if (icon === "evaluations") return <ClipboardList className="h-10 w-10 text-sky-600" />;
   return <ClipboardList className="h-10 w-10 text-blue-600" />;
 }
 
@@ -38,10 +44,21 @@ export default async function AdminPage() {
     {
       href: "/admin/dashboard",
       title: "提案清單與審核",
-      desc: "檢視所有申請案、進行查詢與案件狀態管理。",
+      desc: isReviewerRole(jwtRole)
+        ? "檢視所有申請案；初審通過案件可點「評分」進入審查。"
+        : "檢視所有申請案、進行查詢與案件狀態管理。",
       icon: "applications",
     },
   ];
+
+  if (isReviewerRole(jwtRole)) {
+    cards.push({
+      href: "/committee/dashboard",
+      title: "委員評分任務",
+      desc: "列出初審通過及之後階段案件，填寫序位、分數與審查評語。",
+      icon: "evaluations",
+    });
+  }
 
   if (canOperateApplications(jwtRole) || isGovReadOnlyRole(jwtRole)) {
     cards.push({

@@ -134,11 +134,13 @@ function dedupeByApplicantAndTitle(rows: AdminApplicationTableRow[]): AdminAppli
 export function ApplicationListWithFilters({
   rows,
   isAdmin,
+  isReviewer = false,
   searchQuery,
   canExportList = true,
 }: {
   rows: AdminApplicationTableRow[];
   isAdmin: boolean;
+  isReviewer?: boolean;
   searchQuery: string;
   /** 管理員／市府等可檢視列表者；預設顯示匯出按鈕 */
   canExportList?: boolean;
@@ -230,6 +232,7 @@ export function ApplicationListWithFilters({
       <AdminApplicationsTable
         rows={filteredRows}
         isAdmin={isAdmin}
+        isReviewer={isReviewer}
         searchQuery={searchQuery}
         emptyStateMessage={emptyStateMessage}
       />

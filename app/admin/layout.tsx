@@ -5,7 +5,13 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import AdminNav, { type AdminNavItem } from "@/components/admin/AdminNav";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
-import { canManageBackofficeAccounts, canOperateApplications, isGovReadOnlyRole, roleDisplayLabel } from "@/lib/rbac";
+import {
+  canManageBackofficeAccounts,
+  canOperateApplications,
+  isGovReadOnlyRole,
+  isReviewerRole,
+  roleDisplayLabel,
+} from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +28,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     redirect("/");
   }
 
+  const isReviewer = isReviewerRole(jwtRole);
+
   const navItems: AdminNavItem[] = [
     { href: "/admin", label: "後台首頁", description: "管理功能入口", icon: "home" },
     {
@@ -32,6 +40,16 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       matchPrefix: "/admin/application/",
     },
   ];
+
+  if (isReviewer) {
+    navItems.push({
+      href: "/committee/dashboard",
+      label: "委員評分任務",
+      description: "初審通過案件之評分與審查",
+      icon: "evaluations",
+      matchPrefix: "/committee/",
+    });
+  }
 
   if (canOperateApplications(jwtRole) || isGovReadOnlyRole(jwtRole)) {
     navItems.push({

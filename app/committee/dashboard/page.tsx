@@ -64,6 +64,12 @@ export default async function CommitteeDashboardPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
+              href="/admin/dashboard"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              提案清單（唯讀）
+            </Link>
+            <Link
               href="/"
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             >
@@ -128,15 +134,23 @@ export default async function CommitteeDashboardPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
-                          {done ? (
-                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-                              已評分
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
-                              未評分
-                            </span>
-                          )}
+                          <div className="flex flex-col items-start gap-1.5">
+                            {done ? (
+                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                                已評分
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                                未評分
+                              </span>
+                            )}
+                            <Link
+                              href={`/committee/application/${row.id}`}
+                              className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                            >
+                              評分
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
