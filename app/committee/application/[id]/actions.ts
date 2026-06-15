@@ -6,6 +6,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
+import { isMissingEvaluationSchemaError } from "@/lib/safeCommitteeEvaluation";
 
 export type SaveEvaluationState = { error?: string; message?: string };
 
@@ -69,36 +70,96 @@ export async function saveCommitteeEvaluationAction(
     return { error: "分數請介於 0～100" };
   }
 
-  const rank =
-    typeof rankRaw === "string"
-      ? parseInt(rankRaw, 10)
-      : typeof rankRaw === "number"
-        ? Math.trunc(rankRaw)
-        : NaN;
-  if (!Number.isInteger(rank) || rank < 1) {
-    return { error: "請填寫有效序位（正整數，1 為最佳）" };
+  const rankText = typeof rankRaw === "string" ? rankRaw.trim() : "";
+  let rank: number | null = null;
+  if (rankText.length > 0) {
+    const parsed =
+      typeof rankRaw === "string"
+        ? parseInt(rankRaw, 10)
+        : typeof rankRaw === "number"
+          ? Math.trunc(rankRaw)
+          : NaN;
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return { error: "請填寫有效序位（正整數，1 為最佳）" };
+    }
+    rank = parsed;
   }
 
-  await prisma.evaluation.upsert({
-    where: {
-      applicationId_committeeId: {
+  const baseData = {
+    score,
+    comment: comment.length > 0 ? comment : null,
+  };
+
+  const upsertWithRank = async () => {
+    if (rank == null) {
+      return { error: "請填寫序位（序位法為必填）" };
+    }
+    await prisma.evaluation.upsert({
+      where: {
+        applicationId_committeeId: {
+          applicationId,
+          committeeId: gate.id,
+        },
+      },
+      create: {
         applicationId,
         committeeId: gate.id,
+        ...baseData,
+        rank,
       },
-    },
-    create: {
-      applicationId,
-      committeeId: gate.id,
-      score,
-      rank,
-      comment: comment.length > 0 ? comment : null,
-    },
-    update: {
-      score,
-      rank,
-      comment: comment.length > 0 ? comment : null,
-    },
-  });
+      update: {
+        ...baseData,
+        rank,
+      },
+    });
+    return { message: "已儲存評分與序位" as const };
+  };
+
+  const upsertWithoutRank = async () => {
+    await prisma.evaluation.upsert({
+      where: {
+        applicationId_committeeId: {
+          applicationId,
+          committeeId: gate.id,
+        },
+      },
+      create: {
+        applicationId,
+        committeeId: gate.id,
+        ...baseData,
+      },
+      update: baseData,
+    });
+    return {
+      message:
+        rank != null
+          ? ("已儲存分數與評語（序位欄位待資料庫更新後可寫入）" as const)
+          : ("已儲存分數與評語" as const),
+    };
+  };
+
+  try {
+    const result = await upsertWithRank();
+    if ("error" in result) return result;
+  } catch (error) {
+    if (!isMissingEvaluationSchemaError(error)) {
+      console.error("[committee/evaluation] upsert failed:", error);
+      return { error: "儲存失敗，請稍後再試或聯絡管理員。" };
+    }
+    try {
+      const fallback = await upsertWithoutRank();
+      revalidatePath(`/committee/application/${applicationId}`);
+      revalidatePath("/committee/dashboard");
+      revalidatePath("/admin/committee-evaluations");
+      return { message: fallback.message };
+    } catch (fallbackError) {
+      console.error("[committee/evaluation] fallback upsert failed:", fallbackError);
+      return {
+        error:
+          "正式資料庫尚未建立委員評分表（Evaluation）。請管理員於 PostgreSQL 套用 migration 後再試。",
+      };
+    }
+  }
 
   revalidatePath(`/committee/application/${applicationId}`);
   revalidatePath("/committee/dashboard");

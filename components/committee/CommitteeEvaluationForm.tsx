@@ -28,11 +28,14 @@ export function CommitteeEvaluationForm({
   initialScore,
   initialRank,
   initialComment,
+  rankOptional = false,
 }: {
   applicationId: string;
   initialScore: number | null;
   initialRank: number | null;
   initialComment: string | null;
+  /** 正式庫尚未有 rank 欄位時，序位改為選填 */
+  rankOptional?: boolean;
 }) {
   const [state, formAction] = useActionState(saveCommitteeEvaluationAction, initial);
 
@@ -78,12 +81,15 @@ export function CommitteeEvaluationForm({
             type="number"
             step={1}
             min={1}
-            required
+            required={!rankOptional}
             defaultValue={initialRank != null ? String(initialRank) : ""}
             placeholder="1 為最佳，數字愈小愈前"
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <p className="mt-1 text-xs text-slate-500">正整數；1 表示本輪最優先，2 次之，依此類推。</p>
+          <p className="mt-1 text-xs text-slate-500">
+            正整數；1 表示本輪最優先，2 次之，依此類推。
+            {rankOptional ? "（資料庫更新前暫為選填）" : null}
+          </p>
         </div>
       </div>
 

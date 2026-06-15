@@ -13,6 +13,11 @@ import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
+import {
+  COMMITTEE_EVALUATION_SCHEMA_FIX_SQL,
+  isMissingEvaluationSchemaError,
+  loadCommitteeEvaluationDetail,
+} from "@/lib/safeCommitteeEvaluation";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
@@ -63,19 +68,21 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
     redirect("/");
   }
 
-  const application = await prisma.application.findUnique({
-    where: { id },
-    include: {
-      applicant: {
-        select: { id: true, name: true, email: true, createdAt: true },
+  let application;
+  try {
+    application = await prisma.application.findUnique({
+      where: { id },
+      include: {
+        applicant: {
+          select: { id: true, name: true, email: true, createdAt: true },
+        },
+        attachments: { orderBy: { createdAt: "desc" } },
       },
-      attachments: { orderBy: { createdAt: "desc" } },
-      evaluations: {
-        where: { committeeId: dbUser.id },
-        take: 1,
-      },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("[committee/application] load failed:", error);
+    throw error;
+  }
 
   if (!application) {
     notFound();
@@ -84,12 +91,26 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
     redirect("/committee/dashboard");
   }
 
+  let existingEval: Awaited<ReturnType<typeof loadCommitteeEvaluationDetail>>["evaluation"] = null;
+  let evaluationSchemaIssue = false;
+  let rankColumnMissing = false;
+  try {
+    const loaded = await loadCommitteeEvaluationDetail(application.id, dbUser.id);
+    existingEval = loaded.evaluation;
+    rankColumnMissing = loaded.rankColumnMissing;
+    evaluationSchemaIssue = loaded.rankColumnMissing;
+  } catch (error) {
+    if (isMissingEvaluationSchemaError(error)) {
+      evaluationSchemaIssue = true;
+    } else {
+      throw error;
+    }
+  }
   const parsedDesc = parseKeyValueDescription(application.description);
   const companyFromName = application.applicant.name?.trim() || null;
   const taxId = parsedDesc["統編"] ?? null;
   const driveFolder = parsedDesc["Drive"] ?? null;
 
-  const existingEval = application.evaluations[0] ?? null;
   const onlinePdfAttachment = application.attachments.find(
     (att) => att.category === AttachmentCategory.DRAFT_PDF || att.category === AttachmentCategory.FINAL_APPROVED_PDF
   );
@@ -275,13 +296,28 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
           </section>
           <section className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm ring-1 ring-blue-50">
             <h2 className="text-base font-semibold text-slate-900">評分區</h2>
-            <p className="mt-1 text-sm text-slate-500">請填寫分數、序位（序位法）與審查評語；可重複儲存以更新。</p>
+            <p className="mt-1 text-sm text-slate-500">請填寫序位（序位法先決）、分數與審查評語；可重複儲存以更新。</p>
+            {evaluationSchemaIssue ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-medium">
+                  {rankColumnMissing
+                    ? "資料庫尚未建立序位欄位，暫可儲存分數與評語；請管理員套用 migration 後即可儲存序位。"
+                    : "資料庫尚未建立委員評分表，請管理員執行下列 SQL 後再儲存評分。"}
+                </p>
+                {!rankColumnMissing ? (
+                  <pre className="mt-2 max-h-36 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">
+                    {COMMITTEE_EVALUATION_SCHEMA_FIX_SQL}
+                  </pre>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-6">
               <CommitteeEvaluationForm
                 applicationId={application.id}
                 initialScore={existingEval?.score ?? null}
                 initialRank={existingEval?.rank ?? null}
                 initialComment={existingEval?.comment ?? null}
+                rankOptional={rankColumnMissing}
               />
             </div>
           </section>

@@ -8,6 +8,10 @@ import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
+import {
+  COMMITTEE_EVALUATION_SCHEMA_FIX_SQL,
+  loadCommitteeDashboardApplications,
+} from "@/lib/safeCommitteeEvaluation";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const metadata: Metadata = {
@@ -34,18 +38,8 @@ export default async function CommitteeDashboardPage() {
     redirect("/");
   }
 
-  const applications = await prisma.application.findMany({
-    where: { status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES } },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      applicant: {
-        select: { name: true, email: true },
-      },
-      evaluations: {
-        where: { committeeId: dbUser.id },
-        select: { id: true, rank: true },
-      },
-    },
+  const { applications, evaluationSchemaIssue } = await loadCommitteeDashboardApplications(dbUser.id, {
+    status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES },
   });
 
   return (
@@ -79,6 +73,19 @@ export default async function CommitteeDashboardPage() {
           </div>
         </header>
 
+        {evaluationSchemaIssue ? (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <p className="font-semibold">評分資料表尚未就緒</p>
+            <p className="mt-1 leading-relaxed">
+              案件列表已顯示，但正式資料庫可能尚未建立 <code className="rounded bg-white px-1 text-xs">Evaluation</code>{" "}
+              表或序位欄位。請管理員於 PostgreSQL 執行下列 SQL 後重新整理；完成前「已評分／未評分」可能無法正確顯示。
+            </p>
+            <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+              {COMMITTEE_EVALUATION_SCHEMA_FIX_SQL}
+            </pre>
+          </div>
+        ) : null}
+
         <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-6 py-4">
             <h2 className="text-base font-semibold text-slate-800">案件列表</h2>
@@ -92,7 +99,7 @@ export default async function CommitteeDashboardPage() {
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">申請公司／聯絡</th>
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">送件／更新</th>
                   <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">狀態</th>
-                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">評分／序位</th>
+                  <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-slate-600">評分狀態</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -108,7 +115,7 @@ export default async function CommitteeDashboardPage() {
                       [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
                     const titleText = row.title?.trim() ? row.title : "（未命名計畫）";
                     const ev = row.evaluations[0];
-                    const done = Boolean(ev && ev.rank != null);
+                    const done = Boolean(ev);
                     return (
                       <tr key={row.id} className="transition-colors hover:bg-slate-50/80">
                         <td className="max-w-[220px] px-5 py-3.5 font-medium text-slate-900">
