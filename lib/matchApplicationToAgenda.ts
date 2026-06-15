@@ -11,6 +11,7 @@ function normalizeForMatch(raw: string): string {
       .replace(/[「」『』"']/g, "")
       .replace(/[|｜]/g, "|")
       .replace(/[：:]/g, ":")
+      .replace(/[－—–-]/g, "-")
       .replace(/[（(]聯合案[）)]/g, "")
       .replace(/\(簡報\)/g, "")
       .trim(),
