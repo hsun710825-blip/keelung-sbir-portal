@@ -51,7 +51,6 @@ export default async function AccountsOverviewPage() {
       id: app.id,
       submissionMode: app.submissionMode,
       description: app.description,
-      applicantName: app.applicant.name,
     })),
   );
 

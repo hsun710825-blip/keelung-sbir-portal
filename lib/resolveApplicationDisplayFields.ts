@@ -6,10 +6,19 @@ export type ApplicationDisplayFields = {
   companyName: string;
   contactPerson: string;
   contactPhone: string;
-  source: "draft" | "description" | "applicant_fallback" | "none";
+  source: "draft" | "description" | "none";
 };
 
 type AnyRecord = Record<string, unknown>;
+
+/** Drive 草稿 JSON 可能是 { formData: {...} } 或直接為 formData 欄位 */
+export function extractFormDataFromDraftPayload(payload: AnyRecord | null | undefined): AnyRecord {
+  if (!payload || typeof payload !== "object") return {};
+  if (payload.formData && typeof payload.formData === "object") {
+    return payload.formData as AnyRecord;
+  }
+  return payload;
+}
 
 function pickFirst(parsed: Record<string, string>, keys: string[]): string {
   for (const k of keys) {
@@ -20,8 +29,9 @@ function pickFirst(parsed: Record<string, string>, keys: string[]): string {
 }
 
 export function resolveDisplayFieldsFromFormData(
-  formData: AnyRecord | null | undefined,
+  payload: AnyRecord | null | undefined,
 ): ApplicationDisplayFields {
+  const formData = extractFormDataFromDraftPayload(payload);
   const reg = pickRegistryFieldsFromFormData(formData);
   const companyName = reg.companyName.trim();
   const contactPerson = (reg.contactPerson || reg.planHost || reg.responsiblePerson).trim();
@@ -39,7 +49,6 @@ export function resolveDisplayFieldsFromFormData(
 
 export function resolveDisplayFieldsFromDescription(
   description: string | null | undefined,
-  applicantName?: string | null,
 ): ApplicationDisplayFields {
   const parsed = parseKeyValueDescription(description);
   const companyName = pickFirst(parsed, ["公司名稱", "公司", "申請公司", "企業名稱"]);
@@ -48,15 +57,6 @@ export function resolveDisplayFieldsFromDescription(
   if (companyName || contactPerson || contactPhone) {
     return { companyName, contactPerson, contactPhone, source: "description" };
   }
-  const fallback = String(applicantName || "").trim();
-  if (fallback) {
-    return {
-      companyName: fallback,
-      contactPerson: "",
-      contactPhone: "",
-      source: "applicant_fallback",
-    };
-  }
   return { companyName: "", contactPerson: "", contactPhone: "", source: "none" };
 }
 
@@ -64,15 +64,14 @@ export async function resolveApplicationDisplayFields(input: {
   id: string;
   submissionMode: string;
   description: string | null;
-  applicantName: string | null;
 }): Promise<ApplicationDisplayFields> {
-  const fromDescription = resolveDisplayFieldsFromDescription(input.description, null);
+  const fromDescription = resolveDisplayFieldsFromDescription(input.description);
   if (fromDescription.companyName) {
     return fromDescription;
   }
 
   const mode = String(input.submissionMode || "ONLINE").toUpperCase();
-  if (mode === "ONLINE") {
+  if (mode === "ONLINE" || mode === "UPLOAD") {
     try {
       const draftState = await resolveOnlineDraftViewPayload(input.id);
       if (draftState.kind === "ok") {
@@ -86,8 +85,11 @@ export async function resolveApplicationDisplayFields(input: {
     }
   }
 
-  const fallback = resolveDisplayFieldsFromDescription(input.description, input.applicantName);
-  return fallback;
+  if (fromDescription.contactPerson || fromDescription.contactPhone) {
+    return fromDescription;
+  }
+
+  return { companyName: "", contactPerson: "", contactPhone: "", source: "none" };
 }
 
 export async function resolveApplicationDisplayFieldsBatch(
@@ -95,7 +97,6 @@ export async function resolveApplicationDisplayFieldsBatch(
     id: string;
     submissionMode: string;
     description: string | null;
-    applicantName: string | null;
   }>,
   concurrency = 6,
 ): Promise<Map<string, ApplicationDisplayFields>> {

@@ -1,15 +1,25 @@
 import { emailHashKey } from "@/app/api/_driveFolders";
 import { getDriveOauthClient } from "@/app/api/_driveOauth";
+import { getDriveSaClient } from "@/app/api/_driveSa";
 import { withGoogleApiRetry } from "@/app/api/_googleApiRetry";
 import { normalizeDraftFormDataShape } from "@/lib/draftFormNormalize";
 import { findDraftFileIdInFolder, readDraftJsonByFileId } from "@/lib/projectSecurity";
 import { prisma } from "@/lib/prisma";
+import type { drive_v3 } from "googleapis";
 
 export type OnlineDraftViewPayload =
   | { kind: "upload_mode" }
   | { kind: "error"; status: number; message: string }
   | { kind: "no_draft_file" }
   | { kind: "ok"; draft: Record<string, unknown>; applicationId: string; driveProjectFolderId: string; applicantEmail: string; title: string | null };
+
+async function getAdminDraftDriveClient(): Promise<drive_v3.Drive> {
+  try {
+    return await getDriveSaClient();
+  } catch {
+    return getDriveOauthClient();
+  }
+}
 
 /**
  * 管理員讀取 ONLINE 案件之 Drive 線上草稿（正規化後 formData 形狀）。
@@ -29,9 +39,6 @@ export async function resolveOnlineDraftViewPayload(applicationId: string): Prom
   if (!app) {
     return { kind: "error", status: 404, message: "找不到案件" };
   }
-  if (String(app.submissionMode || "").toUpperCase() === "UPLOAD") {
-    return { kind: "upload_mode" };
-  }
   const folderId = app.driveProjectFolderId?.trim();
   if (!folderId) {
     return { kind: "error", status: 400, message: "此案件尚未綁定雲端專案資料夾，無法載入線上草稿" };
@@ -43,7 +50,7 @@ export async function resolveOnlineDraftViewPayload(applicationId: string): Prom
 
   try {
     return await withGoogleApiRetry("admin.resolveOnlineDraft", async () => {
-      const drive = getDriveOauthClient();
+      const drive = await getAdminDraftDriveClient();
       const key = emailHashKey(applicantEmail);
       const draftFileId = await findDraftFileIdInFolder(drive, folderId, key);
       if (!draftFileId) {

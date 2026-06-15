@@ -155,7 +155,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
       id: row.id,
       submissionMode: row.submissionMode,
       description: row.description,
-      applicantName: row.applicant.name,
     })),
   );
 
@@ -164,7 +163,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
     const companyName = display?.companyName?.trim() || "";
     const applicantLabel = companyName
       ? [companyName, row.applicant.email].filter(Boolean).join(" · ")
-      : [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
+      : row.applicant.email || "—";
     const planTitleRaw = row.title?.trim() ?? "";
     const isBlankPlanTitle = !planTitleRaw;
     const titleText = planTitleRaw || "（未命名計畫）";
