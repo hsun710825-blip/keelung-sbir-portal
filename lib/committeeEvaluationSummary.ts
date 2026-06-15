@@ -60,6 +60,7 @@ export function buildApplicationEvaluationSummaryRows(input: {
     evaluations: Array<{ committeeId: string; score: number; rank: number | null }>;
   }>;
   committeeMembers: CommitteeMemberColumn[];
+  companyNameByAppId?: Map<string, string>;
 }): ApplicationEvaluationSummaryRow[] {
   const rows: ApplicationEvaluationSummaryRow[] = input.applications.map((app) => {
     const memberCells: Record<string, MemberEvaluationCell | null> = {};
@@ -75,8 +76,10 @@ export function buildApplicationEvaluationSummaryRows(input: {
         ranks.push(ev.rank);
       }
     }
-    const applicantLabel =
-      [app.applicant.name, app.applicant.email].filter(Boolean).join(" · ") || "—";
+    const companyName = input.companyNameByAppId?.get(app.id)?.trim() || "";
+    const applicantLabel = companyName
+      ? [companyName, app.applicant.email].filter(Boolean).join(" · ")
+      : app.applicant.email || "—";
     return {
       applicationId: app.id,
       title: app.title?.trim() || "（未命名計畫）",

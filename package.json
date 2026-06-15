@@ -12,7 +12,9 @@
     "deploy": "npx vercel deploy --prod --yes",
     "phase1:backup": "npx tsx scripts/phase1-data-cleanup.ts backup",
     "phase1:verify": "npx tsx scripts/phase1-data-cleanup.ts verify",
-    "phase1:delete": "npx tsx scripts/phase1-data-cleanup.ts delete --confirm"
+    "phase1:delete": "npx tsx scripts/phase1-data-cleanup.ts delete --confirm",
+    "eval:clear": "npx tsx scripts/clear-evaluations.ts",
+    "review:assign-meetings": "npx tsx --env-file=.env --env-file=.env.local scripts/assign-review-meetings.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-tc": "^5.2.9",

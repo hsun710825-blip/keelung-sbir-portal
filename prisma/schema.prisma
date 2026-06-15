@@ -92,6 +92,8 @@ model User {
   statusHistoryChanges   ApplicationStatusHistory[] @relation("StatusChangedBy")
   scores                 ApplicationScore[]
   evaluations            Evaluation[]               @relation("CommitteeEvaluations")
+  committeeReviewSessions CommitteeReviewSession[]  @relation("CommitteeReviewSessions")
+  committeeReviewSessionsLocked CommitteeReviewSession[] @relation("CommitteeReviewSessionLockedBy")
   attachmentsUploaded    ApplicationAttachment[]    @relation("AttachmentUploadedBy")
   emailNotifications     EmailNotification[]        @relation("EmailRelatedUser")
 
@@ -116,6 +118,10 @@ model Application {
   driveProjectFolderId String? @unique
 
   title       String?
+  /// 審查會議場次：0622 | 0701（對應外部議程表）
+  reviewMeetingDate String?
+  /// 該場次議程簡報順序
+  reviewAgendaOrder Int?
   periodYear  Int?
   description String? @db.Text
   /// 管理員狀態更新說明（通知信與審查紀錄）
@@ -134,6 +140,7 @@ model Application {
   @@index([status])
   @@index([createdAt])
   @@index([periodYear])
+  @@index([reviewMeetingDate, reviewAgendaOrder])
 }
 
 // ---------------------------------------------------------------------------
@@ -188,9 +195,15 @@ model Evaluation {
   id String @id @default(cuid())
 
   score   Float
-  /// 序位法：正整數，1 為最佳；數字愈小序位愈前
+  /// 委員個人總表依總分排序後之序位（1 為最高）
   rank    Int?
   comment String? @db.Text
+  /// DRAFT | SUBMITTED | LOCKED
+  status  String  @default("DRAFT")
+  /// 100 分制評分細項 JSON
+  scoresJson String? @db.Text
+  /// 審查會議場次 0622 | 0701
+  meetingDate String?
 
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
@@ -204,6 +217,33 @@ model Evaluation {
   @@unique([applicationId, committeeId])
   @@index([applicationId])
   @@index([committeeId])
+  @@index([meetingDate])
+  @@index([status])
+}
+
+/// 委員於特定審查場次之批次狀態（送交 PO、PO 鎖定）
+model CommitteeReviewSession {
+  id String @id @default(cuid())
+
+  committeeId String
+  committee   User @relation("CommitteeReviewSessions", fields: [committeeId], references: [id], onDelete: Cascade)
+
+  /// 0622 | 0701
+  meetingDate String
+  /// ACTIVE | SUBMITTED_TO_PO | LOCKED_BY_PO
+  status String @default("ACTIVE")
+
+  submittedAt DateTime?
+  lockedAt    DateTime?
+  lockedByUserId String?
+  lockedBy         User?   @relation("CommitteeReviewSessionLockedBy", fields: [lockedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([committeeId, meetingDate])
+  @@index([meetingDate])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------------------

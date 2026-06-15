@@ -8,8 +8,8 @@ export type CommitteeApplicationReviewData = {
   title: string | null;
   status: ApplicationStatus;
   submissionMode: string;
-  uploadedProposalUrl: string | null;
-  periodYear: number | null;
+  description: string | null;
+  uploadedProposalUrl: string | null;  periodYear: number | null;
   applicant: { name: string | null; email: string };
   pdfViewUrl: string | null;
   /** 站內 PDF 串流（服務帳戶讀取 Drive，不需委員個人 Drive 登入） */
@@ -28,6 +28,7 @@ const applicationReviewSelect = {
   title: true,
   status: true,
   submissionMode: true,
+  description: true,
   uploadedProposalUrl: true,
   periodYear: true,
   applicant: {
@@ -43,6 +44,7 @@ export async function loadCommitteeApplicationReview(
     title: string | null;
     status: ApplicationStatus;
     submissionMode: string;
+    description: string | null;
     uploadedProposalUrl: string | null;
     periodYear: number | null;
     applicant: { name: string | null; email: string };

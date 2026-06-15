@@ -65,6 +65,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       icon: "evaluations",
       matchPrefix: "/admin/committee-evaluations",
     });
+    navItems.push({
+      href: "/admin/review-progress",
+      label: "審查進度監看",
+      description: "即時監看委員評分與鎖定",
+      icon: "evaluations",
+      matchPrefix: "/admin/review-progress",
+    });
   }
   if (canManageBackofficeAccounts(jwtRole)) {
     navItems.push({

@@ -10,6 +10,7 @@ import { buildApplicationEvaluationSummaryRows } from "@/lib/committeeEvaluation
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { prisma } from "@/lib/prisma";
 import { canOperateApplications, isGovReadOnlyRole } from "@/lib/rbac";
+import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
 
 export const metadata: Metadata = {
   title: "委員評分彙總",
@@ -46,6 +47,9 @@ export default async function AdminCommitteeEvaluationsPage() {
         id: true,
         title: true,
         status: true,
+        submissionMode: true,
+        description: true,
+        reviewMeetingDate: true,
         applicant: { select: { name: true, email: true } },
         evaluations: {
           select: { committeeId: true, score: true, rank: true },
@@ -54,7 +58,24 @@ export default async function AdminCommitteeEvaluationsPage() {
     }),
   ]);
 
-  const rows = buildApplicationEvaluationSummaryRows({ applications, committeeMembers });
+  const displayMap = await resolveApplicationDisplayFieldsBatch(
+    applications.map((app) => ({
+      id: app.id,
+      submissionMode: app.submissionMode,
+      description: app.description,
+    })),
+  );
+  const companyNameByAppId = new Map<string, string>();
+  for (const app of applications) {
+    const name = displayMap.get(app.id)?.companyName?.trim();
+    if (name) companyNameByAppId.set(app.id, name);
+  }
+
+  const rows = buildApplicationEvaluationSummaryRows({
+    applications,
+    committeeMembers,
+    companyNameByAppId,
+  });
 
   return (
     <section className="space-y-6">
