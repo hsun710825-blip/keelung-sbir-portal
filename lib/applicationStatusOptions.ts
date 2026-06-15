@@ -19,6 +19,7 @@ export const ADMIN_CASE_LIST_STATUS_FILTER_OPTIONS: {
   { value: "ALL", label: "全部" },
   { value: AS.DRAFT, label: "草稿中（DRAFT）" },
   { value: AS.SUBMITTED, label: "已送出（SUBMITTED）" },
+  { value: AS.PRE_REVIEW_PASSED, label: "初審通過（PRE_REVIEW_PASSED）" },
   { value: "REVIEW_IN_PROGRESS", label: "審查中" },
   { value: AS.REVIEW_PASSED, label: "審查通過（REVIEW_PASSED）" },
   { value: AS.APPROVED, label: "已核定（APPROVED）" },
