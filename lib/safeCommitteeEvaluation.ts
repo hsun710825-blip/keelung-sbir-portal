@@ -126,7 +126,10 @@ export async function loadCommitteeDashboardApplications(
 export async function loadCommitteeEvaluationDetail(
   applicationId: string,
   committeeId: string,
-): Promise<{ evaluation: CommitteeEvalDetail | null; rankColumnMissing: boolean }> {
+): Promise<{
+  evaluation: CommitteeEvalDetail | null;
+  schemaIssue: "none" | "rank_column_missing" | "table_missing";
+}> {
   const where = {
     applicationId_committeeId: { applicationId, committeeId },
   };
@@ -136,7 +139,7 @@ export async function loadCommitteeEvaluationDetail(
       where,
       select: { ...committeeEvalDetailSelectBase, rank: true },
     });
-    if (!row) return { evaluation: null, rankColumnMissing: false };
+    if (!row) return { evaluation: null, schemaIssue: "none" };
     return {
       evaluation: {
         id: row.id,
@@ -144,7 +147,7 @@ export async function loadCommitteeEvaluationDetail(
         comment: row.comment,
         rank: row.rank,
       },
-      rankColumnMissing: false,
+      schemaIssue: "none",
     };
   } catch (error) {
     if (!isMissingEvaluationSchemaError(error)) throw error;
@@ -153,7 +156,9 @@ export async function loadCommitteeEvaluationDetail(
         where,
         select: committeeEvalDetailSelectBase,
       });
-      if (!row) return { evaluation: null, rankColumnMissing: true };
+      if (!row) {
+        return { evaluation: null, schemaIssue: "rank_column_missing" };
+      }
       return {
         evaluation: {
           id: row.id,
@@ -161,11 +166,11 @@ export async function loadCommitteeEvaluationDetail(
           comment: row.comment,
           rank: null,
         },
-        rankColumnMissing: true,
+        schemaIssue: "rank_column_missing",
       };
     } catch (fallbackError) {
       if (isMissingEvaluationSchemaError(fallbackError)) {
-        return { evaluation: null, rankColumnMissing: true };
+        return { evaluation: null, schemaIssue: "table_missing" };
       }
       throw fallbackError;
     }

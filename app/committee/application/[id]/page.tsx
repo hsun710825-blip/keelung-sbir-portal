@@ -2,15 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { AttachmentCategory } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { CommitteeEvaluationForm } from "@/components/committee/CommitteeEvaluationForm";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
-import { googleDriveFileViewUrl } from "@/lib/driveLinks";
-import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
+import { loadCommitteeApplicationReview } from "@/lib/loadCommitteeApplicationReview";
 import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
 import {
@@ -18,37 +16,24 @@ import {
   isMissingEvaluationSchemaError,
   loadCommitteeEvaluationDetail,
 } from "@/lib/safeCommitteeEvaluation";
-import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
-
-const CATEGORY_LABEL: Record<AttachmentCategory, string> = {
-  DRAFT_PDF: "計畫書稿 PDF",
-  SLOT_ATTACHMENT: "欄位附件",
-  FINAL_APPROVED_PDF: "核定本 PDF",
-  GENERAL: "一般附件",
-  OTHER: "其他",
-};
-
-function formatBytes(n: bigint | number): string {
-  const v = typeof n === "bigint" ? Number(n) : n;
-  if (!Number.isFinite(v) || v < 0) return "—";
-  if (v < 1024) return `${v} B`;
-  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
-  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 type PageProps = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const app = await prisma.application.findUnique({
-    where: { id },
-    select: { title: true },
-  });
-  return {
-    title: app?.title?.trim() ? `${app.title} — 委員審查` : "委員審查",
-  };
+  try {
+    const app = await prisma.application.findUnique({
+      where: { id },
+      select: { title: true },
+    });
+    return {
+      title: app?.title?.trim() ? `${app.title} — 委員審查` : "委員審查",
+    };
+  } catch {
+    return { title: "委員審查" };
+  }
 }
 
 export default async function CommitteeApplicationDetailPage({ params }: PageProps) {
@@ -70,18 +55,25 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
 
   let application;
   try {
-    application = await prisma.application.findUnique({
-      where: { id },
-      include: {
-        applicant: {
-          select: { id: true, name: true, email: true, createdAt: true },
-        },
-        attachments: { orderBy: { createdAt: "desc" } },
-      },
-    });
+    application = await loadCommitteeApplicationReview(id);
   } catch (error) {
     console.error("[committee/application] load failed:", error);
-    throw error;
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 px-4 py-12">
+        <div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-white p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-900">無法載入案件</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            讀取案件資料時發生錯誤，請稍後再試或聯絡管理員。
+          </p>
+          <Link
+            href="/committee/dashboard"
+            className="mt-6 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            返回委員總表
+          </Link>
+        </div>
+      </main>
+    );
   }
 
   if (!application) {
@@ -92,223 +84,109 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
   }
 
   let existingEval: Awaited<ReturnType<typeof loadCommitteeEvaluationDetail>>["evaluation"] = null;
-  let evaluationSchemaIssue = false;
-  let rankColumnMissing = false;
+  let evaluationSchemaIssue: "none" | "rank_column_missing" | "table_missing" = "none";
   try {
     const loaded = await loadCommitteeEvaluationDetail(application.id, dbUser.id);
     existingEval = loaded.evaluation;
-    rankColumnMissing = loaded.rankColumnMissing;
-    evaluationSchemaIssue = loaded.rankColumnMissing;
+    evaluationSchemaIssue = loaded.schemaIssue;
   } catch (error) {
     if (isMissingEvaluationSchemaError(error)) {
-      evaluationSchemaIssue = true;
+      evaluationSchemaIssue = "table_missing";
     } else {
-      throw error;
+      console.error("[committee/application] evaluation load failed:", error);
     }
   }
-  const parsedDesc = parseKeyValueDescription(application.description);
-  const companyFromName = application.applicant.name?.trim() || null;
-  const taxId = parsedDesc["統編"] ?? null;
-  const driveFolder = parsedDesc["Drive"] ?? null;
 
-  const onlinePdfAttachment = application.attachments.find(
-    (att) => att.category === AttachmentCategory.DRAFT_PDF || att.category === AttachmentCategory.FINAL_APPROVED_PDF
-  );
-  const onlinePdfUrl = googleDriveFileViewUrl(onlinePdfAttachment?.driveFileId);
-  const proposalPreviewUrl =
-    application.submissionMode === "UPLOAD"
-      ? (application.uploadedProposalUrl?.trim() || null)
-      : onlinePdfUrl;
+  const titleText = application.title?.trim() || "（未命名計畫）";
+  const applicantLabel =
+    [application.applicant.name, application.applicant.email].filter(Boolean).join(" · ") || "—";
+  const submissionLabel =
+    String(application.submissionMode || "").toUpperCase() === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF";
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:max-w-5xl lg:px-8">
-        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-6 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <Link
               href="/committee/dashboard"
               className="text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline"
             >
               ← 返回委員總表
             </Link>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
-              {application.title?.trim() || "（未命名計畫）"}
-            </h1>
-            <p className="mt-1 font-mono text-xs text-slate-500">ID：{application.id}</p>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">{titleText}</h1>
+            <p className="mt-2 text-sm text-slate-600">{applicantLabel}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-800">
+              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-800">
                 {applicationStatusLabel(application.status)}
               </span>
-              {application.periodYear != null ? (
-                <span className="text-xs text-slate-600">年度：{application.periodYear}</span>
-              ) : null}
+              <span className="text-xs text-slate-500">{submissionLabel}</span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Link
-              href="/"
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              首頁
-            </Link>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {application.pdfViewUrl ? (
+              <a
+                href={application.pdfViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 shadow-sm hover:bg-slate-50"
+              >
+                新分頁開啟 PDF
+              </a>
+            ) : null}
             <AdminSignOutButton />
           </div>
         </header>
 
-        <div className="mb-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">唯讀：案件與計畫內容</h2>
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <section className="rounded-xl border border-slate-100 bg-slate-50/50 p-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">申請人</h3>
-              <dl className="mt-3 space-y-2 text-sm">
-                <div>
-                  <dt className="text-slate-500">公司／顯示名稱</dt>
-                  <dd className="font-medium text-slate-900">{companyFromName || "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">登入 Email</dt>
-                  <dd>
-                    <a href={`mailto:${application.applicant.email}`} className="text-blue-700 hover:underline">
-                      {application.applicant.email}
-                    </a>
-                  </dd>
-                </div>
-                {taxId ? (
-                  <div>
-                    <dt className="text-slate-500">統一編號</dt>
-                    <dd className="font-mono text-slate-900">{taxId}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
+        {!application.pdfAttachmentsLoaded ? (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            附件 metadata 暫時無法讀取；若下方無法預覽 PDF，請使用上方「新分頁開啟 PDF」或聯絡管理員。
+          </p>
+        ) : null}
 
-            <section className="rounded-xl border border-slate-100 bg-slate-50/50 p-5">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">案件時間</h3>
-              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-slate-500">建立</dt>
-                  <dd className="tabular-nums text-slate-900">{formatTaipeiDateTime(application.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">最後更新</dt>
-                  <dd className="tabular-nums text-slate-900">{formatTaipeiDateTime(application.updatedAt)}</dd>
-                </div>
-              </dl>
-            </section>
-
-            {application.adminRemarks?.trim() ? (
-              <section className="rounded-xl border border-amber-100 bg-amber-50/40 p-5 lg:col-span-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-800">管理員初審／狀態說明</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-950">
-                  {application.adminRemarks.trim()}
-                </p>
-              </section>
-            ) : null}
-
-            {application.description?.trim() ? (
-              <section className="rounded-xl border border-slate-100 bg-white p-5 lg:col-span-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">計畫內容與備註全文</h3>
-                <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-xs text-slate-800">
-                  {application.description.trim()}
-                </pre>
-              </section>
-            ) : (
-              <section className="rounded-xl border border-slate-100 bg-white p-5 lg:col-span-2">
-                <p className="text-sm text-slate-500">尚無寫入資料庫之計畫全文摘要（可參考下方附件）。</p>
-              </section>
-            )}
-
-            {driveFolder ? (
-              <section className="rounded-xl border border-slate-100 bg-white p-5 lg:col-span-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Drive 資料夾（遷移欄位）</h3>
-                <a
-                  href={driveFolder}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-block break-all text-sm text-blue-700 hover:underline"
-                >
-                  {driveFolder}
-                </a>
-              </section>
-            ) : null}
-
-            <section className="rounded-xl border border-slate-100 bg-white p-5 lg:col-span-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">附件（Google Drive）</h3>
-              {application.attachments.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">尚無附件紀錄。</p>
-              ) : (
-                <ul className="mt-4 divide-y divide-slate-100">
-                  {application.attachments.map((att) => {
-                    const fileUrl = googleDriveFileViewUrl(att.driveFileId);
-                    return (
-                      <li
-                        key={att.id}
-                        className="flex flex-col gap-1 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div>
-                          <p className="font-medium text-slate-900">{att.fileName}</p>
-                          <p className="text-xs text-slate-500">
-                            {CATEGORY_LABEL[att.category]} · {att.mimeType} · {formatBytes(att.sizeBytes)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 gap-2">
-                          {fileUrl ? (
-                            <a
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                            >
-                              在 Drive 開啟
-                            </a>
-                          ) : (
-                            <span className="text-xs text-slate-400">無可用連結</span>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          </div>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-900">計畫書預覽</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {application.submissionMode === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF"}
-            </p>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+            <h2 className="text-base font-semibold text-slate-900">計畫書 PDF</h2>
+            <p className="mt-1 text-sm text-slate-500">請閱讀計畫內容後，於右側填寫序位與評分。</p>
             <div className="mt-4">
-              {proposalPreviewUrl ? (
+              {application.pdfViewUrl ? (
                 <iframe
                   title="計畫書 PDF 預覽"
-                  src={proposalPreviewUrl}
-                  className="h-[760px] w-full rounded-xl border border-slate-200 bg-white"
+                  src={application.pdfViewUrl}
+                  className="h-[min(80vh,900px)] w-full rounded-xl border border-slate-200 bg-white"
                 />
               ) : (
-                <div className="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
-                  目前無可預覽 PDF，請改用附件清單檢視。
+                <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-600">
+                  <p>目前無法內嵌預覽此案件 PDF。</p>
+                  <p className="text-xs text-slate-500">
+                    可能原因：尚未產生 PDF、雲端連結未寫入，或檔案權限未開放。
+                  </p>
+                  <Link
+                    href="/admin/dashboard"
+                    className="text-xs font-medium text-blue-700 hover:underline"
+                  >
+                    可至提案清單嘗試「檢視 PDF」
+                  </Link>
                 </div>
               )}
             </div>
           </section>
-          <section className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm ring-1 ring-blue-50">
-            <h2 className="text-base font-semibold text-slate-900">評分區</h2>
-            <p className="mt-1 text-sm text-slate-500">請填寫序位（序位法先決）、分數與審查評語；可重複儲存以更新。</p>
-            {evaluationSchemaIssue ? (
+
+          <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm ring-1 ring-blue-50 sm:p-6">
+            <h2 className="text-base font-semibold text-slate-900">評分與審查意見</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              序位法為先決：請先填序位，再填分數與評語。
+            </p>
+            {evaluationSchemaIssue === "table_missing" ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                <p className="font-medium">
-                  {rankColumnMissing
-                    ? "資料庫尚未建立序位欄位，暫可儲存分數與評語；請管理員套用 migration 後即可儲存序位。"
-                    : "資料庫尚未建立委員評分表，請管理員執行下列 SQL 後再儲存評分。"}
-                </p>
-                {!rankColumnMissing ? (
-                  <pre className="mt-2 max-h-36 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">
-                    {COMMITTEE_EVALUATION_SCHEMA_FIX_SQL}
-                  </pre>
-                ) : null}
+                <p className="font-medium">資料庫尚未建立委員評分表，儲存可能失敗。請管理員執行下列 SQL：</p>
+                <pre className="mt-2 max-h-36 overflow-auto rounded bg-slate-900 p-2 text-xs text-slate-100">
+                  {COMMITTEE_EVALUATION_SCHEMA_FIX_SQL}
+                </pre>
+              </div>
+            ) : evaluationSchemaIssue === "rank_column_missing" ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                資料庫尚未建立序位欄位；可先儲存分數與評語，序位待 migration 套用後即可寫入。
               </div>
             ) : null}
             <div className="mt-6">
@@ -317,7 +195,7 @@ export default async function CommitteeApplicationDetailPage({ params }: PagePro
                 initialScore={existingEval?.score ?? null}
                 initialRank={existingEval?.rank ?? null}
                 initialComment={existingEval?.comment ?? null}
-                rankOptional={rankColumnMissing}
+                rankOptional={evaluationSchemaIssue === "rank_column_missing"}
               />
             </div>
           </section>
