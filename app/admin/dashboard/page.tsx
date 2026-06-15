@@ -11,6 +11,7 @@ import type { AdminApplicationTableRow } from "@/components/admin/AdminApplicati
 import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
+import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
 import { prisma } from "@/lib/prisma";
 import { canOperateApplications, isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
@@ -149,8 +150,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
     );
   }
 
+  const displayFieldsMap = await resolveApplicationDisplayFieldsBatch(
+    applications.map((row) => ({
+      id: row.id,
+      submissionMode: row.submissionMode,
+      description: row.description,
+      applicantName: row.applicant.name,
+    })),
+  );
+
   const tableRows: AdminApplicationTableRow[] = applications.map((row) => {
-    const applicantLabel = [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
+    const display = displayFieldsMap.get(row.id);
+    const companyName = display?.companyName?.trim() || "";
+    const applicantLabel = companyName
+      ? [companyName, row.applicant.email].filter(Boolean).join(" · ")
+      : [row.applicant.name, row.applicant.email].filter(Boolean).join(" · ") || "—";
     const planTitleRaw = row.title?.trim() ?? "";
     const isBlankPlanTitle = !planTitleRaw;
     const titleText = planTitleRaw || "（未命名計畫）";
@@ -177,6 +191,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
       applicantEmail: row.applicant.email,
       updatedAtMs: updatedMs,
       createdAtMs: createdMs,
+      exportCompanyName: companyName || undefined,
+      exportContactPerson: display?.contactPerson?.trim() || undefined,
+      exportContactPhone: display?.contactPhone?.trim() || undefined,
     };
   });
 

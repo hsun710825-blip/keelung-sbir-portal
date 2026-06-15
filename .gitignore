@@ -51,3 +51,4 @@ _deploy_capture.txt
 _fix_log.py
 _patch_build.py
 DEPLOY_LOG.txt
+backup_data/

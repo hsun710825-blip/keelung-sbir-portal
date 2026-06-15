@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "eslint",
     "lint:a11y": "eslint --config eslint.a11y.config.mjs \"app/**/*.{js,jsx,ts,tsx}\" \"components/**/*.{js,jsx,ts,tsx}\"",
-    "deploy": "npx vercel deploy --prod --yes"
+    "deploy": "npx vercel deploy --prod --yes",
+    "phase1:backup": "npx tsx scripts/phase1-data-cleanup.ts backup",
+    "phase1:verify": "npx tsx scripts/phase1-data-cleanup.ts verify",
+    "phase1:delete": "npx tsx scripts/phase1-data-cleanup.ts delete --confirm"
   },
   "dependencies": {
     "@fontsource/noto-sans-tc": "^5.2.9",

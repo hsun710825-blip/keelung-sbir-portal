@@ -7,7 +7,7 @@ import { AccountOverviewExportButton } from "@/app/admin/accounts-overview/Accou
 import type { AccountOverviewRow } from "@/app/admin/accounts-overview/types";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { isReviewerRole } from "@/lib/rbac";
-import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
+import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
 import { prisma } from "@/lib/prisma";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
@@ -18,14 +18,6 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function pickFirst(parsed: Record<string, string>, keys: string[]): string {
-  for (const k of keys) {
-    const v = String(parsed[k] || "").trim();
-    if (v) return v;
-  }
-  return "";
-}
 
 export default async function AccountsOverviewPage() {
   const session = await getServerSession(authOptions);
@@ -54,11 +46,20 @@ export default async function AccountsOverviewPage() {
     },
   });
 
+  const displayFieldsMap = await resolveApplicationDisplayFieldsBatch(
+    applications.map((app) => ({
+      id: app.id,
+      submissionMode: app.submissionMode,
+      description: app.description,
+      applicantName: app.applicant.name,
+    })),
+  );
+
   const rows: AccountOverviewRow[] = applications.map((app) => {
-    const parsed = parseKeyValueDescription(app.description);
-    const companyName = app.applicant.name?.trim() || pickFirst(parsed, ["公司名稱", "公司"]);
-    const contactPerson = pickFirst(parsed, ["聯絡人", "計畫主持人", "負責人"]);
-    const contactPhone = pickFirst(parsed, ["聯絡電話", "聯絡電話含分機", "手機"]);
+    const fields = displayFieldsMap.get(app.id);
+    const companyName = fields?.companyName?.trim() || "—";
+    const contactPerson = fields?.contactPerson?.trim() || "—";
+    const contactPhone = fields?.contactPhone?.trim() || "—";
     return {
       applicationId: app.id,
       lastOpAtLabel: formatTaipeiDateTime(app.updatedAt),
