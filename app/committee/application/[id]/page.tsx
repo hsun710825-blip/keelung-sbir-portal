@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { CommitteeScoringFormClient } from "@/components/committee/CommitteeScoringFormClient";
 import { CommitteeProposalPdfViewer } from "@/components/committee/CommitteeProposalPdfViewer";
+import { getReviewerDbUser } from "@/lib/cachedAuth";
 import { resolveCommitteePresentationPdfSource } from "@/lib/resolveCommitteePresentationPdf";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
@@ -14,7 +13,6 @@ import { parseScoresJson } from "@/lib/committeeScoringRubric";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { loadCommitteeApplicationReview } from "@/lib/loadCommitteeApplicationReview";
 import { prisma } from "@/lib/prisma";
-import { isReviewerRole } from "@/lib/rbac";
 import { resolveApplicationDisplayFields } from "@/lib/resolveApplicationDisplayFields";
 import { isReviewMeetingDate, reviewMeetingDateLabel } from "@/lib/reviewMeetingAgenda";
 import { isMissingEvaluationSchemaError } from "@/lib/safeCommitteeEvaluation";
@@ -50,15 +48,8 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   }
   const meetingDate = meetingRaw;
 
-  const session = await getServerSession(authOptions);
-  const emailRaw = session?.user?.email?.trim() || "";
-  if (!session?.user?.email || !emailRaw) redirect("/");
-
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { id: true, role: true },
-  });
-  if (!dbUser || !isReviewerRole(dbUser.role)) redirect("/");
+  const dbUser = await getReviewerDbUser();
+  if (!dbUser) redirect("/");
 
   let application;
   try {
@@ -81,15 +72,18 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   if (!application) notFound();
   if (!isCommitteeVisibleStatus(application.status)) redirect(`/committee/meeting/${meetingDate}`);
 
-  const display = await resolveApplicationDisplayFields({
-    id: application.id,
-    submissionMode: application.submissionMode,
-    description: application.description,
-  });
+  const [display, locked] = await Promise.all([
+    resolveApplicationDisplayFields({
+      id: application.id,
+      submissionMode: application.submissionMode,
+      description: application.description,
+    }),
+    (async () => {
+      await ensureEvaluationSchema();
+      return isMeetingLockedForCommittee(dbUser.id, meetingDate);
+    })(),
+  ]);
   const companyLabel = display.companyName?.trim() || application.applicant.email || "—";
-
-  await ensureEvaluationSchema();
-  const locked = await isMeetingLockedForCommittee(dbUser.id, meetingDate);
 
   let existingEval: {
     score: number;
@@ -114,7 +108,9 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   const submissionLabel =
     String(application.submissionMode || "").toUpperCase() === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF";
 
-  const presentationSource = await resolveCommitteePresentationPdfSource(application.id);
+  const presentationSource = await resolveCommitteePresentationPdfSource(application.id, {
+    companyName: display.companyName,
+  });
   const hasPresentation = presentationSource.kind === "drive_file";
 
   return (

@@ -8,6 +8,7 @@ import {
   type ReviewMeetingDate,
 } from "@/lib/reviewMeetingAgenda";
 import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
+import { buildMeetingRowsForDate, type MeetingApplicationRow } from "@/lib/loadAllMeetingApplications";
 
 export async function assignReviewMeetingsFromAgenda(): Promise<{
   matched: number;
@@ -47,8 +48,7 @@ export async function assignReviewMeetingsFromAgenda(): Promise<{
   return { matched, unmatched };
 }
 
-export async function loadMeetingApplications(meetingDate: ReviewMeetingDate) {
-  const config = getReviewMeetingConfig(meetingDate);
+export async function loadMeetingApplications(meetingDate: ReviewMeetingDate): Promise<MeetingApplicationRow[]> {
   const apps = await prisma.application.findMany({
     where: {
       status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES },
@@ -64,54 +64,9 @@ export async function loadMeetingApplications(meetingDate: ReviewMeetingDate) {
       id: a.id,
       submissionMode: a.submissionMode,
       description: a.description,
-      displayCompanyName: "displayCompanyName" in a ? (a as { displayCompanyName?: string | null }).displayCompanyName : null,
+      displayCompanyName: a.displayCompanyName,
     })),
   );
 
-  const byOrder = new Map<number, (typeof apps)[number]>();
-  const extras: typeof apps = [];
-
-  for (const app of apps) {
-    if (app.reviewAgendaOrder != null) {
-      byOrder.set(app.reviewAgendaOrder, app);
-    } else {
-      extras.push(app);
-    }
-  }
-
-  const ordered = config.cases
-    .map((c) => {
-      const app = byOrder.get(c.order);
-      if (!app) return null;
-      const display = displayMap.get(app.id);
-      const companyName = display?.companyName?.trim() || c.company;
-      return {
-        agendaOrder: c.order,
-        agendaTime: c.time,
-        application: app,
-        companyName,
-        agendaProject: c.project,
-      };
-    })
-    .filter(Boolean) as Array<{
-    agendaOrder: number;
-    agendaTime: string;
-    application: (typeof apps)[number];
-    companyName: string;
-    agendaProject: string;
-  }>;
-
-  for (const app of extras) {
-    const display = displayMap.get(app.id);
-    ordered.push({
-      agendaOrder: app.reviewAgendaOrder ?? 999,
-      agendaTime: "—",
-      application: app,
-      companyName: display?.companyName?.trim() || "—",
-      agendaProject: app.title?.trim() || "—",
-    });
-  }
-
-  ordered.sort((a, b) => a.agendaOrder - b.agendaOrder);
-  return ordered;
+  return buildMeetingRowsForDate(meetingDate, apps, displayMap);
 }

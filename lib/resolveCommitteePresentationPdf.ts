@@ -2,15 +2,20 @@ import { AttachmentCategory } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import {
-  buildPresentationFolderIndex,
   resolvePresentationPdfFileId,
   type PresentationFolderIndex,
 } from "@/lib/reviewPresentationPdf";
+import { getCachedPresentationFolderIndex } from "@/lib/cachedDriveIndexes";
 import { resolveApplicationDisplayFields } from "@/lib/resolveApplicationDisplayFields";
 
 export type CommitteePresentationPdfSource =
   | { kind: "drive_file"; fileId: string }
   | { kind: "not_found" };
+
+type ResolvePresentationOptions = {
+  companyName?: string | null;
+  presentationIndex?: PresentationFolderIndex | null;
+};
 
 function resolveLegacyPresentationAttachment(
   attachments: Array<{ category: AttachmentCategory; driveFileId: string | null; fileName: string }>,
@@ -35,7 +40,7 @@ function resolveLegacyPresentationAttachment(
 
 export async function resolveCommitteePresentationPdfSource(
   applicationId: string,
-  presentationIndex?: PresentationFolderIndex | null,
+  options?: ResolvePresentationOptions,
 ): Promise<CommitteePresentationPdfSource> {
   let row: {
     title: string | null;
@@ -83,17 +88,19 @@ export async function resolveCommitteePresentationPdfSource(
 
   if (!row) return { kind: "not_found" };
 
+  const cachedCompanyName = options?.companyName?.trim() || row.displayCompanyName?.trim() || "";
   const companyName =
-    row.displayCompanyName?.trim() ||
+    cachedCompanyName ||
     (
       await resolveApplicationDisplayFields({
         id: applicationId,
         submissionMode: row.submissionMode,
         description: row.description,
+        displayCompanyName: row.displayCompanyName,
       })
     ).companyName;
 
-  const index = presentationIndex ?? (await buildPresentationFolderIndex());
+  const index = options?.presentationIndex ?? (await getCachedPresentationFolderIndex());
   const folderFileId = await resolvePresentationPdfFileId({
     reviewMeetingDate: row.reviewMeetingDate,
     reviewAgendaOrder: row.reviewAgendaOrder,

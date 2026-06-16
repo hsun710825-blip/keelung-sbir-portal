@@ -40,6 +40,7 @@ type AppRow = {
   title: string | null;
   description: string | null;
   submissionMode: string;
+  displayCompanyName: string | null;
   reviewMeetingDate: string | null;
   reviewAgendaOrder: number | null;
   reviewProposalType: string | null;
@@ -59,6 +60,7 @@ const APP_SELECT = {
   reviewMeetingDate: true,
   reviewAgendaOrder: true,
   reviewProposalType: true,
+  displayCompanyName: true,
   settlementAppliedSubsidy: true,
   settlementAppliedSelfFund: true,
   settlementAppliedTotal: true,
@@ -133,6 +135,7 @@ async function loadSettlementApplications(): Promise<
       rows.map((r) => ({
         ...r,
         reviewProposalType: null as string | null,
+        displayCompanyName: null,
         settlementAppliedSubsidy: null,
         settlementAppliedSelfFund: null,
         settlementAppliedTotal: null,
@@ -145,6 +148,7 @@ async function loadSettlementApplications(): Promise<
       id: a.id,
       submissionMode: a.submissionMode,
       description: a.description,
+      displayCompanyName: a.displayCompanyName,
     })),
   );
 
@@ -198,32 +202,56 @@ function pickAppliedAmount(
   return null;
 }
 
-export async function buildSettlementRows(
-  jointOnly: boolean,
-  committeeConfig?: SettlementCommitteeConfig,
-): Promise<SettlementRow[]> {
-  const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
-  const committeeIds = config.slots.map((s) => s.userId);
+type SettlementAppItem = Awaited<ReturnType<typeof loadSettlementApplications>>[number];
 
+type SettlementBuildContext = {
+  items: SettlementAppItem[];
+  committeeIds: string[];
+  evaluations: Array<{ applicationId: string; committeeId: string; score: number }>;
+  budgetMap: Awaited<ReturnType<typeof resolveApplicationBudgetBatch>>;
+  briefingMaps: ReturnType<typeof computeBriefingOrders>;
+};
+
+async function createSettlementBuildContext(
+  committeeConfig: SettlementCommitteeConfig,
+): Promise<SettlementBuildContext> {
   const items = await loadSettlementApplications();
-  const filtered = items.filter((item) => (jointOnly ? item.isJoint : !item.isJoint));
+  const applicationIds = items.map((item) => item.app.id);
+  const committeeIds = committeeConfig.slots.map((s) => s.userId);
 
-  const [evaluations, briefingMaps, budgetMap] = await Promise.all([
-    prisma.evaluation.findMany({
-      select: {
-        applicationId: true,
-        committeeId: true,
-        score: true,
-      },
-    }),
-    Promise.resolve(computeBriefingOrders()),
+  const [evaluations, budgetMap] = await Promise.all([
+    applicationIds.length > 0
+      ? prisma.evaluation.findMany({
+          where: { applicationId: { in: applicationIds } },
+          select: {
+            applicationId: true,
+            committeeId: true,
+            score: true,
+          },
+        })
+      : Promise.resolve([]),
     resolveApplicationBudgetBatch(
-      filtered.map((item) => ({ id: item.app.id, submissionMode: item.app.submissionMode })),
+      items.map((item) => ({ id: item.app.id, submissionMode: item.app.submissionMode })),
     ),
   ]);
 
+  return {
+    items,
+    committeeIds,
+    evaluations,
+    budgetMap,
+    briefingMaps: computeBriefingOrders(),
+  };
+}
+
+function buildSettlementRowsFromContext(
+  context: SettlementBuildContext,
+  jointOnly: boolean,
+): SettlementRow[] {
+  const filtered = context.items.filter((item) => (jointOnly ? item.isJoint : !item.isJoint));
+
   const evalByAppCommittee = new Map<string, { score: number }>();
-  for (const ev of evaluations) {
+  for (const ev of context.evaluations) {
     evalByAppCommittee.set(`${ev.applicationId}:${ev.committeeId}`, ev);
   }
 
@@ -232,21 +260,21 @@ export async function buildSettlementRows(
   for (const item of filtered) {
     const scores: [number | null, number | null, number | null] = [null, null, null];
 
-    committeeIds.forEach((cid, idx) => {
+    context.committeeIds.forEach((cid, idx) => {
       if (!cid) return;
       const ev = evalByAppCommittee.get(`${item.app.id}:${cid}`);
       if (ev) scores[idx] = ev.score;
     });
 
-    const draftBudget = budgetMap.get(item.app.id);
+    const draftBudget = context.budgetMap.get(item.app.id);
     const appliedSubsidy = pickAppliedAmount(item.app.settlementAppliedSubsidy, draftBudget?.subsidy);
     const appliedSelfFund = pickAppliedAmount(item.app.settlementAppliedSelfFund, draftBudget?.selfFund);
     const appliedTotal = pickAppliedAmount(item.app.settlementAppliedTotal, draftBudget?.total);
 
     const agendaKey = `${item.meetingDate}:${item.agendaOrder}`;
     const briefingOrder = item.isJoint
-      ? briefingMaps.jointBriefingByKey.get(agendaKey) || "—"
-      : String(briefingMaps.standardBriefingByKey.get(agendaKey) ?? "—");
+      ? context.briefingMaps.jointBriefingByKey.get(agendaKey) || "—"
+      : String(context.briefingMaps.standardBriefingByKey.get(agendaKey) ?? "—");
 
     rows.push({
       applicationId: item.app.id,
@@ -274,18 +302,35 @@ export async function buildSettlementRows(
   return sorted;
 }
 
+export async function buildSettlementRows(
+  jointOnly: boolean,
+  committeeConfig?: SettlementCommitteeConfig,
+): Promise<SettlementRow[]> {
+  const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
+  const context = await createSettlementBuildContext(config);
+  return buildSettlementRowsFromContext(context, jointOnly);
+}
+
+export async function loadSettlementRowsForExport(committeeConfig?: SettlementCommitteeConfig) {
+  const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
+  const context = await createSettlementBuildContext(config);
+  return {
+    standardRows: buildSettlementRowsFromContext(context, false),
+    jointRows: buildSettlementRowsFromContext(context, true),
+  };
+}
+
 export async function loadSettlementPageData() {
   const committeeConfig = await loadSettlementCommitteeConfig();
   const { listReviewerOptionsForSettlement } = await import("@/lib/settlementConfig");
-  const [standard, joint, reviewerOptions] = await Promise.all([
-    buildSettlementRows(false, committeeConfig),
-    buildSettlementRows(true, committeeConfig),
+  const [context, reviewerOptions] = await Promise.all([
+    createSettlementBuildContext(committeeConfig),
     listReviewerOptionsForSettlement(),
   ]);
 
   return {
-    standardRows: standard,
-    jointRows: joint,
+    standardRows: buildSettlementRowsFromContext(context, false),
+    jointRows: buildSettlementRowsFromContext(context, true),
     committeeConfig,
     reviewerOptions,
     memberNames: committeeConfig.slots.map((s) => s.displayName),

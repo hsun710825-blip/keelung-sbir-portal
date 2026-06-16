@@ -4,10 +4,10 @@ import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
 import { googleDriveFileViewUrl, extractGoogleDriveFileId } from "@/lib/driveLinks";
 import { prisma } from "@/lib/prisma";
 import {
-  buildReviewFolderPdfIndex,
   resolveReviewCompleteProposalPdfFileId,
   type ReviewFolderPdfIndex,
 } from "@/lib/reviewCompleteProposalPdf";
+import { getCachedReviewFolderPdfIndex } from "@/lib/cachedDriveIndexes";
 
 type AttachmentRow = {
   category: AttachmentCategory;
@@ -169,6 +169,8 @@ export async function resolveApplicationProposalPdfSourceById(
     return { kind: "not_found", externalViewUrl: null, source: "none" };
   }
 
+  const resolvedReviewIndex = reviewIndex ?? (await getCachedReviewFolderPdfIndex());
+
   return resolveApplicationProposalPdfSource({
     applicationId,
     submissionMode: row.submissionMode,
@@ -178,7 +180,7 @@ export async function resolveApplicationProposalPdfSourceById(
     reviewAgendaOrder: row.reviewAgendaOrder,
     title: row.title,
     companyName: row.displayCompanyName,
-    reviewIndex,
+    reviewIndex: resolvedReviewIndex,
   });
 }
 
@@ -194,7 +196,7 @@ export async function resolveApplicationProposalPdfViewUrlsBatch(
     attachments: AttachmentRow[];
   }>,
 ): Promise<Map<string, string | null>> {
-  const reviewIndex = await buildReviewFolderPdfIndex();
+  const reviewIndex = await getCachedReviewFolderPdfIndex();
   const out = new Map<string, string | null>();
   for (const app of apps) {
     const source = await resolveApplicationProposalPdfSource({

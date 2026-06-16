@@ -31,7 +31,6 @@ export function CommitteeProposalPdfViewer({
       try {
         const res = await fetch(pdfApiPath ?? `/api/committee/applications/${applicationId}/proposal-pdf`, {
           credentials: "include",
-          cache: "no-store",
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as { error?: string } | null;

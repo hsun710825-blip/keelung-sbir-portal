@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { CommitteeCombinedScoreTable } from "@/components/committee/CommitteeCombinedScoreTable";
+import { getReviewerDbUser } from "@/lib/cachedAuth";
 import { loadCombinedCommitteePersonalScores } from "@/lib/committeePersonalScores";
-import { prisma } from "@/lib/prisma";
-import { isReviewerRole } from "@/lib/rbac";
 
 export const metadata: Metadata = {
   title: "我的評分總表",
@@ -17,15 +14,8 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function CommitteeSummaryPage() {
-  const session = await getServerSession(authOptions);
-  const emailRaw = session?.user?.email?.trim() || "";
-  if (!session?.user?.email || !emailRaw) redirect("/");
-
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { id: true, role: true },
-  });
-  if (!dbUser || !isReviewerRole(dbUser.role)) redirect("/");
+  const dbUser = await getReviewerDbUser();
+  if (!dbUser) redirect("/");
 
   const data = await loadCombinedCommitteePersonalScores(dbUser.id);
 

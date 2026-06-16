@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { buildSettlementWorkbook } from "@/lib/exportSettlementWorkbook";
 import { loadSettlementCommitteeConfig } from "@/lib/settlementConfig";
-import { buildSettlementRows } from "@/lib/settlementTable";
+import { loadSettlementRowsForExport } from "@/lib/settlementTable";
 import { canOperateApplications } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +18,7 @@ export async function GET() {
 
   const committeeConfig = await loadSettlementCommitteeConfig();
   const memberNames = committeeConfig.slots.map((s) => s.displayName);
-  const [standardRows, jointRows] = await Promise.all([
-    buildSettlementRows(false, committeeConfig),
-    buildSettlementRows(true, committeeConfig),
-  ]);
+  const { standardRows, jointRows } = await loadSettlementRowsForExport(committeeConfig);
 
   const buffer = buildSettlementWorkbook(standardRows, jointRows, memberNames);
   const filename = encodeURIComponent("115決算清表.xlsx");

@@ -3,7 +3,7 @@ import { parseScoresJson } from "@/lib/committeeScoringRubric";
 import { compareByTotalThenBreakdown } from "@/lib/committeeScoreSort";
 import { loadAllMeetingApplications } from "@/lib/loadAllMeetingApplications";
 import { sessionStatusLabel } from "@/lib/committeeScoringRubric";
-import { getOrCreateReviewSession, isMeetingLockedForCommittee } from "@/lib/committeeReviewSession";
+import { getMeetingLockMap, listReviewSessionsForCommittee } from "@/lib/committeeReviewSession";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
 import { REVIEW_MEETING_DATES } from "@/lib/reviewMeetingAgenda";
@@ -44,7 +44,7 @@ function sortAndRankRows(rows: CombinedPersonalScoreRow[]): CombinedPersonalScor
 export async function loadCombinedCommitteePersonalScores(committeeId: string) {
   await ensureEvaluationSchema();
 
-  const [allApps, evaluations, sessions, locked0622, locked0701] = await Promise.all([
+  const [allApps, evaluations, sessions, lockMap] = await Promise.all([
     loadAllMeetingApplications(),
     prisma.evaluation.findMany({
       where: { committeeId },
@@ -58,12 +58,11 @@ export async function loadCombinedCommitteePersonalScores(committeeId: string) {
         meetingDate: true,
       },
     }),
-    Promise.all(REVIEW_MEETING_DATES.map((d) => getOrCreateReviewSession(committeeId, d))),
-    isMeetingLockedForCommittee(committeeId, "0622"),
-    isMeetingLockedForCommittee(committeeId, "0701"),
+    listReviewSessionsForCommittee(committeeId, [...REVIEW_MEETING_DATES]),
+    getMeetingLockMap(committeeId, [...REVIEW_MEETING_DATES]),
   ]);
 
-  const anyLocked = locked0622 || locked0701;
+  const anyLocked = REVIEW_MEETING_DATES.some((d) => lockMap.get(d));
   const evalByApp = new Map(evaluations.map((e) => [e.applicationId, e]));
 
   const regular: CombinedPersonalScoreRow[] = [];
@@ -95,7 +94,10 @@ export async function loadCombinedCommitteePersonalScores(committeeId: string) {
 
   const allScored = [...regularRows, ...jointRows];
 
-  const sessionLabels = sessions.map((s) => sessionStatusLabel(s.status)).join(" / ");
+  const sessionLabels = REVIEW_MEETING_DATES.map((meetingDate) => {
+    const session = sessions.find((s) => s.meetingDate === meetingDate);
+    return sessionStatusLabel(session?.status);
+  }).join(" / ");
 
   return {
     regularRows,

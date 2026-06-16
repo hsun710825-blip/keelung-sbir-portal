@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
+import { getReviewerDbUser } from "@/lib/cachedAuth";
 import { loadMeetingApplications } from "@/lib/committeeMeetingApplications";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
-import { isReviewerRole } from "@/lib/rbac";
 import {
   getReviewMeetingConfig,
   isReviewMeetingDate,
@@ -31,15 +29,8 @@ export default async function CommitteeMeetingPage({ params }: PageProps) {
   if (!isReviewMeetingDate(date)) notFound();
   const meetingDate = date as ReviewMeetingDate;
 
-  const session = await getServerSession(authOptions);
-  const emailRaw = session?.user?.email?.trim() || "";
-  if (!session?.user?.email || !emailRaw) redirect("/");
-
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: emailRaw, mode: "insensitive" } },
-    select: { id: true, role: true },
-  });
-  if (!dbUser || !isReviewerRole(dbUser.role)) redirect("/");
+  const dbUser = await getReviewerDbUser();
+  if (!dbUser) redirect("/");
 
   await ensureEvaluationSchema();
   const config = getReviewMeetingConfig(meetingDate);

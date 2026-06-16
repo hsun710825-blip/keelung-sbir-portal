@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
+import { COMMITTEE_PDF_CACHE_CONTROL } from "@/lib/committeePdfCache";
 import { downloadDriveFileBytes } from "@/lib/downloadDriveFileBytes";
 import { resolveCommitteePresentationPdfSource } from "@/lib/resolveCommitteePresentationPdf";
 import { prisma } from "@/lib/prisma";
@@ -18,12 +19,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const dbUser = await prisma.user.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
-    select: { role: true },
-  });
-  const role = dbUser?.role ?? (typeof token?.role === "string" ? token.role : null);
-  if (!dbUser || !isReviewerRole(role)) {
+  const role = typeof token?.role === "string" ? token.role : null;
+  if (!isReviewerRole(role)) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
@@ -55,7 +52,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${encodeURIComponent(filename)}"`,
-        "Cache-Control": "private, no-store",
+        "Cache-Control": COMMITTEE_PDF_CACHE_CONTROL,
         "X-Frame-Options": "SAMEORIGIN",
         "Content-Security-Policy": "frame-ancestors 'self'",
       },
