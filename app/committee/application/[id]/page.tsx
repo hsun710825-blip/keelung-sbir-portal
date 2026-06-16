@@ -170,7 +170,7 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
 
           <section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm ring-1 ring-violet-50">
             <h2 className="text-base font-semibold text-slate-900">簡報 PDF</h2>
-            <p className="mt-1 text-xs text-slate-500">複審簡報（管理員匯入後顯示）</p>
+            <p className="mt-1 text-xs text-slate-500">複審簡報（由業者上傳資料夾自動對照）</p>
             <div className="mt-4">
               {hasPresentation ? (
                 <CommitteeProposalPdfViewer
@@ -181,7 +181,7 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
                 />
               ) : (
                 <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-sm text-slate-500">
-                  簡報 PDF 尚未上傳，待管理員匯入後即可於此檢視。
+                  業者尚未上傳簡報，此欄位暫留空白。
                 </div>
               )}
             </div>

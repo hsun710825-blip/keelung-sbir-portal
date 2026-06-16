@@ -25,7 +25,7 @@ type DrivePdfFile = {
 let cachedIndex: { builtAt: number; index: ReviewFolderPdfIndex } | null = null;
 const INDEX_TTL_MS = 10 * 60 * 1000;
 
-function normalizeCompanyLabel(raw: string): string {
+export function normalizeCompanyLabel(raw: string): string {
   return String(raw || "")
     .replace(/\.pdf$/i, "")
     .replace(/\(主提案\)/g, "")

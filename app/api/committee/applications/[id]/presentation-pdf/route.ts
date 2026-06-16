@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   const source = await resolveCommitteePresentationPdfSource(applicationId);
   if (source.kind !== "drive_file") {
     return NextResponse.json(
-      { ok: false, error: "尚未上傳簡報 PDF（待管理員匯入後即可檢視）" },
+      { ok: false, error: "業者尚未上傳簡報 PDF" },
       { status: 404 },
     );
   }
