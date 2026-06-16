@@ -1,0 +1,12 @@
+---
+description: 基隆 SBIR 專案慣例與交接（換機／新對話請遵守）
+alwaysApply: true
+---
+
+# 基隆 SBIR Portal
+
+- 正式站：https://www.keelungsbir.tw ；部署：`npm run deploy`（push `main` 後）
+- 詳細現況見專案根目錄 `AGENTS.md`
+- 未明確要求時勿改 `app/page.tsx`（申請人 UI）
+- 決算清表、簡報 Drive 對照、計畫書 PDF 優先順序：見 `AGENTS.md`，勿改業務邏輯除非用戶要求
+- 完成實作後：build → commit/push（用戶同意時）→ deploy
