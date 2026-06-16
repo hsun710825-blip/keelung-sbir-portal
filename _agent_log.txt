@@ -1,0 +1,48 @@
+﻿node.exe : Environment variables loaded from .env
+位於 線路:1 字元:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Environment variables loaded from .env:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Prisma schema loaded from prisma\schema.prisma
+
+??Generated Prisma Client (v6.19.3) to .\node_modules\@prisma\client in 70ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+
+> keelung-sbir-portal@0.1.0 build
+> next build
+
+??Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+
+node.exe : ??The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org
+/docs/messages/middleware-to-proxy
+位於 線路:1 字元:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (??The "middlewa...leware-to-proxy:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Creating an optimized production build ...
+??Compiled successfully in 12.6s
+  Running TypeScript ...
+Failed to compile.
+
+./app/admin/application/[id]/page.tsx:19:7
+Type error: Property 'PRESENTATION_PDF' is missing in type '{ DRAFT_PDF: string; SLOT_ATTACHMENT: string; FINAL_APPROVE
+D_PDF: string; GENERAL: string; OTHER: string; }' but required in type 'Record<AttachmentCategory, string>'.
+
+[0m [90m 17 |[39m [36mexport[39m [36mconst[39m dynamic [33m=[39m [32m"force-dynamic"[39m[33m;[39m
+ [90m 18 |[39m
+[31m[1m>[22m[39m[90m 19 |[39m [36mconst[39m [33mCATEGORY_LABEL[39m[33m:[39m [33mRecord[39m[33m<[39m[33
+mAttachmentCategory[39m[33m,[39m string[33m>[39m [33m=[39m {
+ [90m    |[39m       [31m[1m^[22m[39m
+ [90m 20 |[39m   [33mDRAFT_PDF[39m[33m:[39m [32m"閮?貊阮 PDF"[39m[33m,[39m
+ [90m 21 |[39m   [33mSLOT_ATTACHMENT[39m[33m:[39m [32m"甈??辣"[39m[33m,[39m
+ [90m 22 |[39m   [33mFINAL_APPROVED_PDF[39m[33m:[39m [32m"?詨???PDF"[39m[33m,[39m[0m
+Next.js build worker exited with code: 1 and signal: null

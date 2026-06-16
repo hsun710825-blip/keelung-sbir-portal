@@ -1,8 +1,10 @@
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
 import { matchApplicationToAgenda } from "@/lib/matchApplicationToAgenda";
+import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
 import {
   getReviewMeetingConfig,
+  isAgendaJointProposal,
   type ReviewMeetingDate,
 } from "@/lib/reviewMeetingAgenda";
 import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
@@ -11,6 +13,7 @@ export async function assignReviewMeetingsFromAgenda(): Promise<{
   matched: number;
   unmatched: string[];
 }> {
+  await ensureEvaluationSchema();
   const apps = await prisma.application.findMany({
     where: { status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES } },
     select: { id: true, title: true, description: true, submissionMode: true },
@@ -35,6 +38,7 @@ export async function assignReviewMeetingsFromAgenda(): Promise<{
       data: {
         reviewMeetingDate: hit.meetingDate,
         reviewAgendaOrder: hit.order,
+        reviewProposalType: isAgendaJointProposal(hit.agendaCase) ? "JOINT" : "STANDARD",
       },
     });
     matched += 1;

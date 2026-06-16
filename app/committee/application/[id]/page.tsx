@@ -4,9 +4,9 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
-import { AdminSignOutButton } from "@/components/admin/AdminSignOutButton";
 import { CommitteeScoringFormClient } from "@/components/committee/CommitteeScoringFormClient";
 import { CommitteeProposalPdfViewer } from "@/components/committee/CommitteeProposalPdfViewer";
+import { resolveCommitteePresentationPdfSource } from "@/lib/resolveCommitteePresentationPdf";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { isMeetingLockedForCommittee } from "@/lib/committeeReviewSession";
@@ -114,9 +114,11 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   const submissionLabel =
     String(application.submissionMode || "").toUpperCase() === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF";
 
+  const presentationSource = await resolveCommitteePresentationPdfSource(application.id);
+  const hasPresentation = presentationSource.kind === "drive_file";
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <section className="space-y-6">
         <header className="mb-6 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <Link
@@ -142,10 +144,9 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
                 rel="noopener noreferrer"
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-slate-50"
               >
-                新分頁開啟 PDF
+                新分頁開啟計畫書
               </a>
             ) : null}
-            <AdminSignOutButton />
           </div>
         </header>
 
@@ -155,28 +156,39 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
           </p>
         ) : null}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <div className="grid gap-6 lg:grid-cols-2">
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">計畫書 PDF</h2>
             <div className="mt-4">
               {application.pdfEmbedUrl ? (
                 <CommitteeProposalPdfViewer applicationId={application.id} fallbackViewUrl={application.pdfViewUrl} />
-              ) : application.pdfViewUrl ? (
-                <a
-                  href={application.pdfViewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-700 hover:underline"
-                >
-                  新分頁開啟 PDF
-                </a>
               ) : (
-                <p className="text-sm text-slate-500">目前無法載入 PDF</p>
+                <p className="text-sm text-slate-500">目前無法載入計畫書 PDF</p>
               )}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm ring-1 ring-blue-50">
+          <section className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm ring-1 ring-violet-50">
+            <h2 className="text-base font-semibold text-slate-900">簡報 PDF</h2>
+            <p className="mt-1 text-xs text-slate-500">複審簡報（管理員匯入後顯示）</p>
+            <div className="mt-4">
+              {hasPresentation ? (
+                <CommitteeProposalPdfViewer
+                  applicationId={application.id}
+                  fallbackViewUrl={null}
+                  pdfApiPath={`/api/committee/applications/${application.id}/presentation-pdf`}
+                  loadingLabel="簡報 PDF"
+                />
+              ) : (
+                <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-sm text-slate-500">
+                  簡報 PDF 尚未上傳，待管理員匯入後即可於此檢視。
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm ring-1 ring-blue-50">
             <h2 className="text-base font-semibold text-slate-900">100 分制評分表</h2>
             <p className="mt-1 text-sm text-slate-500">儲存送出後狀態為暫存（DRAFT），並導回個人總表。</p>
             <div className="mt-6">
@@ -189,8 +201,6 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
               />
             </div>
           </section>
-        </div>
-      </div>
-    </main>
+    </section>
   );
 }

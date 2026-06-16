@@ -53,6 +53,10 @@ export async function ensureEvaluationSchema(): Promise<void> {
 
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "reviewMeetingDate" TEXT;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "reviewAgendaOrder" INTEGER;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "reviewProposalType" TEXT DEFAULT 'STANDARD';`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementSuggestedSubsidy" INTEGER;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementSuggestedSelfFund" INTEGER;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementSuggestedTotal" INTEGER;`);
     await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Application_reviewMeetingDate_reviewAgendaOrder_idx"
       ON "Application"("reviewMeetingDate", "reviewAgendaOrder");

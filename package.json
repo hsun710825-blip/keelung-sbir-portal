@@ -14,7 +14,8 @@
     "phase1:verify": "npx tsx scripts/phase1-data-cleanup.ts verify",
     "phase1:delete": "npx tsx scripts/phase1-data-cleanup.ts delete --confirm",
     "eval:clear": "npx tsx scripts/clear-evaluations.ts",
-    "review:assign-meetings": "npx tsx --env-file=.env --env-file=.env.local scripts/assign-review-meetings.ts"
+    "review:assign-meetings": "npx tsx --env-file=.env --env-file=.env.local scripts/assign-review-meetings.ts",
+    "app:delete-unnamed": "npx tsx --env-file=.env --env-file=.env.local scripts/delete-unnamed-test-app.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-tc": "^5.2.9",

@@ -70,6 +70,8 @@ enum AttachmentCategory {
   DRAFT_PDF
   SLOT_ATTACHMENT
   FINAL_APPROVED_PDF
+  /// 複審簡報 PDF
+  PRESENTATION_PDF
   GENERAL
   OTHER
 }
@@ -122,6 +124,14 @@ model Application {
   reviewMeetingDate String?
   /// 該場次議程簡報順序
   reviewAgendaOrder Int?
+  /// STANDARD | JOINT（聯合提案另列決算／總表）
+  reviewProposalType String? @default("STANDARD")
+  /// PO 決算建議補助款（千元）
+  settlementSuggestedSubsidy Int?
+  /// PO 決算建議自籌款（千元）
+  settlementSuggestedSelfFund Int?
+  /// PO 決算建議總經費（千元）
+  settlementSuggestedTotal Int?
   periodYear  Int?
   description String? @db.Text
   /// 管理員狀態更新說明（通知信與審查紀錄）

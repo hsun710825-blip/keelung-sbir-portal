@@ -20,6 +20,7 @@ const CATEGORY_LABEL: Record<AttachmentCategory, string> = {
   DRAFT_PDF: "計畫書稿 PDF",
   SLOT_ATTACHMENT: "欄位附件",
   FINAL_APPROVED_PDF: "核定本 PDF",
+  PRESENTATION_PDF: "簡報 PDF",
   GENERAL: "一般附件",
   OTHER: "其他",
 };

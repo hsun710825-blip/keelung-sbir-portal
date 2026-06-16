@@ -139,11 +139,11 @@ export async function saveCommitteeScoringAction(
     },
   });
 
-  revalidatePath(`/committee/application/${applicationId}`);
+  revalidatePath("/committee/summary");
   revalidatePath(`/committee/meeting/${meetingDate}`);
-  revalidatePath(`/committee/meeting/${meetingDate}/summary`);
   revalidatePath("/admin/committee-evaluations");
   revalidatePath("/admin/review-progress");
+  revalidatePath("/admin/settlement");
 
-  redirect(`/committee/meeting/${meetingDate}/summary`);
+  redirect("/committee/summary");
 }

@@ -5,9 +5,13 @@ import { useEffect, useState } from "react";
 export function CommitteeProposalPdfViewer({
   applicationId,
   fallbackViewUrl,
+  pdfApiPath,
+  loadingLabel = "計畫書 PDF",
 }: {
   applicationId: string;
   fallbackViewUrl: string | null;
+  pdfApiPath?: string;
+  loadingLabel?: string;
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +29,7 @@ export function CommitteeProposalPdfViewer({
       });
 
       try {
-        const res = await fetch(`/api/committee/applications/${applicationId}/proposal-pdf`, {
+        const res = await fetch(pdfApiPath ?? `/api/committee/applications/${applicationId}/proposal-pdf`, {
           credentials: "include",
           cache: "no-store",
         });
@@ -51,7 +55,7 @@ export function CommitteeProposalPdfViewer({
     return () => {
       active = false;
     };
-  }, [applicationId]);
+  }, [applicationId, pdfApiPath]);
 
   useEffect(() => {
     return () => {
@@ -62,7 +66,7 @@ export function CommitteeProposalPdfViewer({
   if (loading) {
     return (
       <div className="flex h-[min(80vh,900px)] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-600">
-        正在載入計畫書 PDF…
+        正在載入{loadingLabel}…
       </div>
     );
   }
@@ -90,10 +94,10 @@ export function CommitteeProposalPdfViewer({
       data={objectUrl}
       type="application/pdf"
       className="h-[min(80vh,900px)] w-full rounded-xl border border-slate-200 bg-white"
-      aria-label="計畫書 PDF 預覽"
+      aria-label={`${loadingLabel}預覽`}
     >
       <iframe
-        title="計畫書 PDF 預覽"
+        title={`${loadingLabel}預覽`}
         src={objectUrl}
         className="h-[min(80vh,900px)] w-full rounded-xl border border-slate-200 bg-white"
       />

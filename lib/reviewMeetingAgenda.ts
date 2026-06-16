@@ -8,6 +8,7 @@ export type AgendaCase = {
   company: string;
   pi: string;
   project: string;
+  isJointProposal?: boolean;
 };
 
 export type ReviewMeetingConfig = {
@@ -40,6 +41,10 @@ export function getAllAgendaCases(): Array<AgendaCase & { meetingDate: ReviewMee
 
 export function reviewMeetingDateLabel(date: ReviewMeetingDate): string {
   return AGENDA[date].label;
+}
+
+export function isAgendaJointProposal(caseRow: AgendaCase): boolean {
+  return Boolean(caseRow.isJointProposal) || /聯合案/.test(caseRow.project);
 }
 
 export function reviewMeetingAdminLabel(date: ReviewMeetingDate): string {

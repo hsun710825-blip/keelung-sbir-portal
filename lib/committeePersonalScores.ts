@@ -1,58 +1,102 @@
-import { Role } from "@prisma/client";
-
-import type { PersonalScoreRow } from "@/components/committee/CommitteePersonalScoreTable";
-import { loadMeetingApplications } from "@/lib/committeeMeetingApplications";
+import type { CommitteeScoreBreakdown } from "@/lib/committeeScoringRubric";
+import { parseScoresJson } from "@/lib/committeeScoringRubric";
+import { compareByTotalThenBreakdown } from "@/lib/committeeScoreSort";
+import { loadAllMeetingApplications } from "@/lib/loadAllMeetingApplications";
 import { sessionStatusLabel } from "@/lib/committeeScoringRubric";
 import { getOrCreateReviewSession, isMeetingLockedForCommittee } from "@/lib/committeeReviewSession";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
-import type { ReviewMeetingDate } from "@/lib/reviewMeetingAgenda";
+import { REVIEW_MEETING_DATES } from "@/lib/reviewMeetingAgenda";
 
-export async function loadCommitteePersonalScores(committeeId: string, meetingDate: ReviewMeetingDate) {
+export type CombinedPersonalScoreRow = {
+  applicationId: string;
+  title: string;
+  companyName: string;
+  meetingDate: string;
+  agendaOrder: number;
+  isJoint: boolean;
+  totalScore: number;
+  rank: number | null;
+  status: string;
+  comment: string | null;
+  breakdown: CommitteeScoreBreakdown | null;
+};
+
+function isJointApp(reviewProposalType: string | null | undefined): boolean {
+  return String(reviewProposalType || "").toUpperCase() === "JOINT";
+}
+
+function sortAndRankRows(rows: CombinedPersonalScoreRow[]): CombinedPersonalScoreRow[] {
+  const sorted = [...rows].sort((a, b) =>
+    compareByTotalThenBreakdown({
+      totalA: a.totalScore,
+      totalB: b.totalScore,
+      breakdownA: a.breakdown,
+      breakdownB: b.breakdown,
+    }),
+  );
+  sorted.forEach((row, idx) => {
+    row.rank = idx + 1;
+  });
+  return sorted;
+}
+
+export async function loadCombinedCommitteePersonalScores(committeeId: string) {
   await ensureEvaluationSchema();
 
-  const [meetingApps, evaluations, session, locked] = await Promise.all([
-    loadMeetingApplications(meetingDate),
+  const [allApps, evaluations, sessions, locked0622, locked0701] = await Promise.all([
+    loadAllMeetingApplications(),
     prisma.evaluation.findMany({
-      where: { committeeId, meetingDate },
+      where: { committeeId },
       select: {
         applicationId: true,
         score: true,
         status: true,
         comment: true,
         rank: true,
+        scoresJson: true,
+        meetingDate: true,
       },
     }),
-    getOrCreateReviewSession(committeeId, meetingDate),
-    isMeetingLockedForCommittee(committeeId, meetingDate),
+    Promise.all(REVIEW_MEETING_DATES.map((d) => getOrCreateReviewSession(committeeId, d))),
+    isMeetingLockedForCommittee(committeeId, "0622"),
+    isMeetingLockedForCommittee(committeeId, "0701"),
   ]);
 
+  const anyLocked = locked0622 || locked0701;
   const evalByApp = new Map(evaluations.map((e) => [e.applicationId, e]));
 
-  const scored: PersonalScoreRow[] = meetingApps
-    .map((row) => {
-      const ev = evalByApp.get(row.application.id);
-      if (!ev) return null;
-      return {
-        applicationId: row.application.id,
-        title: row.application.title?.trim() || row.agendaProject,
-        companyName: row.companyName,
-        totalScore: ev.score,
-        rank: null as number | null,
-        status: locked ? "LOCKED" : ev.status,
-        comment: ev.comment,
-      };
-    })
-    .filter(Boolean) as PersonalScoreRow[];
+  const regular: CombinedPersonalScoreRow[] = [];
+  const joint: CombinedPersonalScoreRow[] = [];
 
-  scored.sort((a, b) => (b.totalScore ?? 0) - (a.totalScore ?? 0));
-  scored.forEach((row, idx) => {
-    row.rank = idx + 1;
-  });
+  for (const row of allApps) {
+    const ev = evalByApp.get(row.application.id);
+    if (!ev) continue;
+    const jointCase = isJointApp(row.application.reviewProposalType);
+    const item: CombinedPersonalScoreRow = {
+      applicationId: row.application.id,
+      title: row.application.title?.trim() || row.agendaProject,
+      companyName: row.companyName,
+      meetingDate: row.application.reviewMeetingDate || "",
+      agendaOrder: row.agendaOrder,
+      isJoint: jointCase,
+      totalScore: ev.score,
+      rank: null,
+      status: anyLocked ? "LOCKED" : ev.status,
+      comment: ev.comment,
+      breakdown: parseScoresJson(ev.scoresJson),
+    };
+    if (jointCase) joint.push(item);
+    else regular.push(item);
+  }
 
-  if (scored.length > 0) {
+  const regularRows = sortAndRankRows(regular);
+  const jointRows = sortAndRankRows(joint);
+
+  const allScored = [...regularRows, ...jointRows];
+  if (allScored.length > 0) {
     await Promise.all(
-      scored.map((row) =>
+      allScored.map((row) =>
         prisma.evaluation.updateMany({
           where: { committeeId, applicationId: row.applicationId },
           data: { rank: row.rank },
@@ -61,16 +105,21 @@ export async function loadCommitteePersonalScores(committeeId: string, meetingDa
     );
   }
 
+  const sessionLabels = sessions.map((s) => sessionStatusLabel(s.status)).join(" / ");
+
   return {
-    rows: scored,
-    sessionStatus: sessionStatusLabel(session.status),
-    canEdit: !locked,
-    totalCases: meetingApps.length,
-    scoredCount: scored.length,
+    regularRows,
+    jointRows,
+    sessionStatus: sessionLabels,
+    canEdit: !anyLocked,
+    totalCases: allApps.length,
+    scoredCount: allScored.length,
   };
 }
 
-export async function loadReviewProgressForAdmin(meetingDate: ReviewMeetingDate) {
+export async function loadReviewProgressForAdmin(meetingDate: import("@/lib/reviewMeetingAgenda").ReviewMeetingDate) {
+  const { Role } = await import("@prisma/client");
+  const { loadMeetingApplications } = await import("@/lib/committeeMeetingApplications");
   await ensureEvaluationSchema();
 
   const [committeeMembers, meetingApps, evaluations, sessions] = await Promise.all([
