@@ -16,11 +16,11 @@ export async function assignReviewMeetingsFromAgenda(): Promise<{
   await ensureEvaluationSchema();
   const apps = await prisma.application.findMany({
     where: { status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES } },
-    select: { id: true, title: true, description: true, submissionMode: true },
+    select: { id: true, title: true, description: true, submissionMode: true, displayCompanyName: true },
   });
 
   const displayMap = await resolveApplicationDisplayFieldsBatch(
-    apps.map((a) => ({ id: a.id, submissionMode: a.submissionMode, description: a.description })),
+    apps.map((a) => ({ id: a.id, submissionMode: a.submissionMode, description: a.description, displayCompanyName: a.displayCompanyName ?? null })),
   );
 
   let matched = 0;
@@ -64,6 +64,7 @@ export async function loadMeetingApplications(meetingDate: ReviewMeetingDate) {
       id: a.id,
       submissionMode: a.submissionMode,
       description: a.description,
+      displayCompanyName: "displayCompanyName" in a ? (a as { displayCompanyName?: string | null }).displayCompanyName : null,
     })),
   );
 

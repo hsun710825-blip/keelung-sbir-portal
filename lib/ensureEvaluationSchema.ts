@@ -1,10 +1,37 @@
+import { ensurePortalSettingsTable } from "@/lib/settlementConfig";
 import { prisma } from "@/lib/prisma";
 
 let ensured = false;
+const SCHEMA_FLAG_KEY = "evaluation_schema_ready_v1";
+
+async function isEvaluationSchemaReady(): Promise<boolean> {
+  try {
+    await ensurePortalSettingsTable();
+    const rows = await prisma.$queryRaw<Array<{ value: string }>>`
+      SELECT "value" FROM "PortalSetting" WHERE "key" = ${SCHEMA_FLAG_KEY} LIMIT 1
+    `;
+    return rows[0]?.value === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function markEvaluationSchemaReady(): Promise<void> {
+  await ensurePortalSettingsTable();
+  await prisma.$executeRaw`
+    INSERT INTO "PortalSetting" ("key", "value", "updatedAt")
+    VALUES (${SCHEMA_FLAG_KEY}, ${"1"}, CURRENT_TIMESTAMP)
+    ON CONFLICT ("key") DO UPDATE SET "value" = ${"1"}, "updatedAt" = CURRENT_TIMESTAMP
+  `;
+}
 
 /** 正式 DB 若尚未跑 migration，自動建立／擴充委員評分相關表與欄位（冪等）。 */
 export async function ensureEvaluationSchema(): Promise<void> {
   if (ensured) return;
+  if (await isEvaluationSchemaReady()) {
+    ensured = true;
+    return;
+  }
 
   try {
     await prisma.$executeRawUnsafe(`
@@ -60,6 +87,7 @@ export async function ensureEvaluationSchema(): Promise<void> {
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedSubsidy" INTEGER;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedSelfFund" INTEGER;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedTotal" INTEGER;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "displayCompanyName" TEXT;`);
     await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Application_reviewMeetingDate_reviewAgendaOrder_idx"
       ON "Application"("reviewMeetingDate", "reviewAgendaOrder");
@@ -102,6 +130,7 @@ export async function ensureEvaluationSchema(): Promise<void> {
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
   `);
 
+    await markEvaluationSchemaReady();
     ensured = true;
   } catch (error) {
     ensured = false;

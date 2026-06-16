@@ -9,8 +9,9 @@ import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { ApplicationListWithFilters } from "@/app/admin/dashboard/ApplicationListWithFilters";
 import type { AdminApplicationTableRow } from "@/components/admin/AdminApplicationsTable";
 import { normalizePlanTitleForDedupe } from "@/lib/applicationDedupeKey";
+import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
-import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
+import { resolveApplicationProposalPdfViewUrlsBatch } from "@/lib/resolveApplicationProposalPdf";
 import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
 import { prisma } from "@/lib/prisma";
 import { canOperateApplications, isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
@@ -25,18 +26,25 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type ApplicationListRow = Prisma.ApplicationGetPayload<{
-  include: {
-    applicant: { select: { name: true; email: true } };
-    attachments: {
-      select: {
-        category: true;
-        driveFileId: true;
-        createdAt: true;
-      };
-    };
-  };
-}>;
+type ApplicationListRow = {
+  id: string;
+  title: string | null;
+  status: import("@prisma/client").ApplicationStatus;
+  submissionMode: string;
+  uploadedProposalUrl: string | null;
+  description: string | null;
+  displayCompanyName: string | null;
+  reviewMeetingDate: string | null;
+  reviewAgendaOrder: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  applicant: { name: string | null; email: string };
+  attachments: Array<{
+    category: import("@prisma/client").AttachmentCategory;
+    driveFileId: string | null;
+    createdAt: Date;
+  }>;
+};
 
 type DashboardSearchParams = { q?: string | string[] };
 
@@ -65,6 +73,8 @@ export default async function AdminDashboardPage({
   const isReviewer = isReviewerRole(jwtRole);
   const isGov = isGovReadOnlyRole(jwtRole);
 
+  await ensureEvaluationSchema();
+
   let applications: ApplicationListRow[];
   try {
     applications = await prisma.application.findMany({
@@ -78,7 +88,18 @@ export default async function AdminDashboardPage({
           }
         : undefined,
       orderBy: { updatedAt: "desc" },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        submissionMode: true,
+        uploadedProposalUrl: true,
+        description: true,
+        displayCompanyName: true,
+        reviewMeetingDate: true,
+        reviewAgendaOrder: true,
+        createdAt: true,
+        updatedAt: true,
         applicant: {
           select: {
             name: true,
@@ -155,6 +176,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
       id: row.id,
       submissionMode: row.submissionMode,
       description: row.description,
+      displayCompanyName: row.displayCompanyName ?? null,
+    })),
+  );
+
+  const pdfViewUrlMap = await resolveApplicationProposalPdfViewUrlsBatch(
+    applications.map((row) => ({
+      id: row.id,
+      submissionMode: row.submissionMode,
+      uploadedProposalUrl: row.uploadedProposalUrl,
+      title: row.title,
+      reviewMeetingDate: row.reviewMeetingDate ?? null,
+      reviewAgendaOrder: row.reviewAgendaOrder ?? null,
+      displayCompanyName: displayFieldsMap.get(row.id)?.companyName || row.displayCompanyName || null,
+      attachments: row.attachments,
     })),
   );
 
@@ -170,11 +205,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Application_driveProjectFolderId_key"
     const createdMs = row.createdAt.getTime();
     const updatedMs = row.updatedAt.getTime();
     const showCreatedSub = Math.abs(updatedMs - createdMs) > 60_000;
-    const pdfViewUrl = resolveApplicationPdfViewUrl({
-      submissionMode: row.submissionMode,
-      uploadedProposalUrl: row.uploadedProposalUrl,
-      attachments: row.attachments,
-    });
+    const pdfViewUrl = pdfViewUrlMap.get(row.id) ?? null;
     return {
       id: row.id,
       titleText,

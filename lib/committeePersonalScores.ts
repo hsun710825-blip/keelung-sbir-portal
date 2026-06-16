@@ -94,16 +94,6 @@ export async function loadCombinedCommitteePersonalScores(committeeId: string) {
   const jointRows = sortAndRankRows(joint);
 
   const allScored = [...regularRows, ...jointRows];
-  if (allScored.length > 0) {
-    await Promise.all(
-      allScored.map((row) =>
-        prisma.evaluation.updateMany({
-          where: { committeeId, applicationId: row.applicationId },
-          data: { rank: row.rank },
-        }),
-      ),
-    );
-  }
 
   const sessionLabels = sessions.map((s) => sessionStatusLabel(s.status)).join(" / ");
 

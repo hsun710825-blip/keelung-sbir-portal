@@ -138,6 +138,8 @@ model Application {
   settlementAppliedSelfFund Int?
   /// PO 覆寫申請總經費（千元）；未填則由計畫書帶入
   settlementAppliedTotal Int?
+  /// 列表／PDF 解析快取之公司名稱（避免每次讀 Drive 草稿）
+  displayCompanyName String?
   periodYear  Int?
   description String? @db.Text
   /// 管理員狀態更新說明（通知信與審查紀錄）

@@ -7,7 +7,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminAssistUpload } from "@/components/admin/AdminAssistUpload";
 import { ApplicationStatusControl } from "@/components/admin/ApplicationStatusControl";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
-import { resolveApplicationPdfViewUrl } from "@/lib/adminApplicationPdfViewUrl";
+import { resolveApplicationProposalPdfSourceById } from "@/lib/resolveApplicationProposalPdf";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
@@ -90,15 +90,11 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
   const driveFolder = parsedDesc["Drive"] ?? null;
   const sheetRow = parsedDesc["試算表列"] ?? null;
 
-  const pdfViewUrl = resolveApplicationPdfViewUrl({
-    submissionMode: application.submissionMode,
-    uploadedProposalUrl: application.uploadedProposalUrl,
-    attachments: application.attachments.map((a) => ({
-      category: a.category,
-      driveFileId: a.driveFileId,
-      createdAt: a.createdAt,
-    })),
-  });
+  const pdfSource = await resolveApplicationProposalPdfSourceById(application.id);
+  const pdfViewUrl =
+    pdfSource.kind === "drive_file"
+      ? pdfSource.externalViewUrl
+      : pdfSource.externalViewUrl;
   const isOnline = String(application.submissionMode || "").toUpperCase() === "ONLINE";
   const formViewHref = `/admin/application/${application.id}/form-view`;
 
