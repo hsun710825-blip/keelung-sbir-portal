@@ -38,6 +38,16 @@ export function canManageBackofficeAccounts(role: string | Role | null | undefin
   return isSuperAdminRole(role);
 }
 
+/** PO 或最高管理員可刪除審查委員帳號（含評分資料） */
+export function canDeleteReviewerAccounts(role: string | Role | null | undefined): boolean {
+  return canOperateApplications(role);
+}
+
+/** 後台帳號管理頁：最高管理員全功能；PO 僅管理審查委員 */
+export function canAccessAdminUsersPage(role: string | Role | null | undefined): boolean {
+  return canManageBackofficeAccounts(role) || canDeleteReviewerAccounts(role);
+}
+
 export function roleDisplayLabel(role: Role | string | null | undefined): string {
   const r = String(role || "");
   if (r === "SUPER_ADMIN") return "管理員";

@@ -6,8 +6,10 @@ import { Role } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { ensureRbacRoleEnumValues } from "@/lib/ensureRbacRoleEnums";
+import { deleteReviewerUserById } from "@/lib/deleteReviewerUser";
 import { prisma } from "@/lib/prisma";
 import {
+  canDeleteReviewerAccounts,
   canManageBackofficeAccounts,
   normalizeEmailForCompare,
   roleDisplayLabel,
@@ -43,14 +45,18 @@ async function persistUserRole(emailNorm: string, role: Role, existingId: string
   }
 }
 
-async function requireSuperAdminUserId(): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+async function requireOperatorUserId(): Promise<
+  { ok: true; id: string; isSuperAdmin: boolean } | { ok: false; error: string }
+> {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim();
   if (!session?.user || !email) {
     return { ok: false, error: "未登入" };
   }
-  if (!canManageBackofficeAccounts(session.user.role)) {
-    return { ok: false, error: "僅限最高管理員（SUPER_ADMIN）操作帳號權限" };
+  const isSuperAdmin = canManageBackofficeAccounts(session.user.role);
+  const canDeleteReviewer = canDeleteReviewerAccounts(session.user.role);
+  if (!isSuperAdmin && !canDeleteReviewer) {
+    return { ok: false, error: "無權限操作帳號管理" };
   }
   const admin = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
@@ -59,7 +65,16 @@ async function requireSuperAdminUserId(): Promise<{ ok: true; id: string } | { o
   if (!admin) {
     return { ok: false, error: "找不到操作者帳號" };
   }
-  return { ok: true, id: admin.id };
+  return { ok: true, id: admin.id, isSuperAdmin };
+}
+
+async function requireSuperAdminUserId(): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const gate = await requireOperatorUserId();
+  if (!gate.ok) return gate;
+  if (!gate.isSuperAdmin) {
+    return { ok: false, error: "僅限最高管理員（SUPER_ADMIN）操作帳號權限" };
+  }
+  return { ok: true, id: gate.id };
 }
 
 function isBackofficeAssignableRole(role: Role): boolean {
@@ -109,6 +124,37 @@ export async function grantBackofficeRoleAction(
 }
 
 export type RevokeRoleResult = { ok: true } | { ok: false; error: string };
+
+export type DeleteReviewerResult = { ok: true; email: string } | { ok: false; error: string };
+
+/**
+ * 刪除審查委員帳號（含 Evaluation／ApplicationScore／CommitteeReviewSession）。
+ * PO 或 SUPER_ADMIN 可操作。
+ */
+export async function deleteReviewerAccountAction(userId: string): Promise<DeleteReviewerResult> {
+  const gate = await requireOperatorUserId();
+  if (!gate.ok) {
+    return { ok: false, error: gate.error };
+  }
+
+  try {
+    const result = await deleteReviewerUserById(userId, gate.id);
+    if (!result.ok) {
+      return result;
+    }
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/admin/settlement");
+    revalidatePath("/admin/review-progress");
+    revalidatePath("/committee/summary");
+    return result;
+  } catch (e) {
+    console.error("[deleteReviewerAccountAction]", e);
+    const msg = e instanceof Error ? e.message : "刪除委員失敗";
+    return { ok: false, error: msg };
+  }
+}
 
 /**
  * 移除後台權限：將 role 改回 USER（僅 SUPER_ADMIN；不可動受保護之最高管理員帳號）。

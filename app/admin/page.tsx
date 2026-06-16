@@ -75,6 +75,13 @@ export default async function AdminPage() {
       desc: "僅最高管理員：新增／移除 PO人員、市府人員與審查委員。",
       icon: "users",
     });
+  } else if (canOperateApplications(jwtRole)) {
+    cards.push({
+      href: "/admin/users",
+      title: "委員帳號管理",
+      desc: "刪除審查委員帳號，並一併清除其評分資料。",
+      icon: "users",
+    });
   }
 
   return (

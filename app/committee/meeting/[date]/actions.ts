@@ -141,7 +141,6 @@ export async function saveCommitteeScoringAction(
 
   revalidatePath("/committee/summary");
   revalidatePath(`/committee/meeting/${meetingDate}`);
-  revalidatePath("/admin/committee-evaluations");
   revalidatePath("/admin/review-progress");
   revalidatePath("/admin/settlement");
 

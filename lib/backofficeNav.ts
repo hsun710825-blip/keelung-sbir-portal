@@ -45,13 +45,6 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
       matchPrefix: "/admin/settlement",
     });
     navItems.push({
-      href: "/admin/committee-evaluations",
-      label: "委員評分彙總",
-      description: "序位法排序與委員分數明細",
-      icon: "evaluations",
-      matchPrefix: "/admin/committee-evaluations",
-    });
-    navItems.push({
       href: "/admin/review-progress",
       label: "審查進度監看",
       description: "即時監看委員評分與鎖定",
@@ -64,8 +57,17 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
     navItems.push({
       href: "/admin/users",
       label: "帳號權限管理",
-      description: "僅最高管理員：PO／市府／委員",
+      description: "最高管理員：PO／市府／委員授權",
       icon: "users",
+      matchPrefix: "/admin/users",
+    });
+  } else if (canOperateApplications(jwtRole)) {
+    navItems.push({
+      href: "/admin/users",
+      label: "委員帳號管理",
+      description: "刪除審查委員及其評分資料",
+      icon: "users",
+      matchPrefix: "/admin/users",
     });
   }
 

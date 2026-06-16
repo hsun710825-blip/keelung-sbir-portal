@@ -5,10 +5,19 @@ import { Prisma, Role } from "@prisma/client";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { AdminGrantRoleForm } from "@/components/admin/AdminGrantRoleForm";
+import { DeleteReviewerAccountButton } from "@/components/admin/DeleteReviewerAccountButton";
 import { RevokeBackofficeRoleButton } from "@/components/admin/RevokeBackofficeRoleButton";
 import { ensureRbacRoleEnumValues } from "@/lib/ensureRbacRoleEnums";
 import { prisma } from "@/lib/prisma";
-import { canManageBackofficeAccounts, normalizeEmailForCompare, roleDisplayLabel, SUPER_ADMIN_EMAIL_FORCED } from "@/lib/rbac";
+import {
+  canAccessAdminUsersPage,
+  canDeleteReviewerAccounts,
+  canManageBackofficeAccounts,
+  isReviewerRole,
+  normalizeEmailForCompare,
+  roleDisplayLabel,
+  SUPER_ADMIN_EMAIL_FORCED,
+} from "@/lib/rbac";
 import { formatTaipeiDateTime } from "@/lib/taipeiTime";
 
 type PrivilegedUserRow = {
@@ -20,11 +29,15 @@ type PrivilegedUserRow = {
   updatedAt: Date;
 };
 
-async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadError: string | null }> {
+async function loadPrivilegedUsers(reviewerOnly: boolean): Promise<{ rows: PrivilegedUserRow[]; loadError: string | null }> {
   await ensureRbacRoleEnumValues();
+  const where = reviewerOnly
+    ? { role: { in: [Role.REVIEWER, Role.COMMITTEE] } }
+    : { role: { not: Role.USER } };
+
   try {
     const rows = await prisma.user.findMany({
-      where: { role: { not: Role.USER } },
+      where,
       orderBy: [{ role: "asc" }, { email: "asc" }],
       select: {
         id: true,
@@ -42,6 +55,9 @@ async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadE
   } catch (e) {
     console.error("[admin/users] prisma.user.findMany failed:", e);
     try {
+      const roleFilter = reviewerOnly
+        ? Prisma.sql`role::text IN ('REVIEWER', 'COMMITTEE')`
+        : Prisma.sql`role::text <> 'USER'`;
       const raw = await prisma.$queryRaw<
         Array<{
           id: string;
@@ -54,7 +70,7 @@ async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadE
       >(Prisma.sql`
         SELECT id, email, name, role::text AS role, "createdAt", "updatedAt"
         FROM "User"
-        WHERE role::text <> 'USER'
+        WHERE ${roleFilter}
         ORDER BY role ASC, email ASC
       `);
       return { rows: raw, loadError: null };
@@ -67,7 +83,7 @@ async function loadPrivilegedUsers(): Promise<{ rows: PrivilegedUserRow[]; loadE
 
 export const metadata: Metadata = {
   title: "後台權限管理",
-  description: "最高管理員：PO／市府／委員帳號授權",
+  description: "PO／最高管理員：審查委員與後台帳號管理",
 };
 
 export const dynamic = "force-dynamic";
@@ -88,23 +104,29 @@ export default async function AdminUsersPage() {
   }
 
   const jwtRole = session.user.role ?? null;
-  if (!canManageBackofficeAccounts(jwtRole)) {
+  if (!canAccessAdminUsersPage(jwtRole)) {
     redirect("/admin/dashboard");
   }
 
-  const { rows: privileged, loadError } = await loadPrivilegedUsers();
+  const isSuperAdmin = canManageBackofficeAccounts(jwtRole);
+  const canDeleteReviewer = canDeleteReviewerAccounts(jwtRole);
+  const { rows: privileged, loadError } = await loadPrivilegedUsers(!isSuperAdmin);
 
   return (
     <section className="mx-auto max-w-4xl px-1 py-2 sm:px-2">
       <header className="mb-8 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">後台權限管理</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+            {isSuperAdmin ? "後台權限管理" : "委員帳號管理"}
+          </h1>
           <p className="mt-2 text-sm text-slate-600">
             {session.user.name ?? "管理員"} · {session.user.email}
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            僅最高管理員可新增／移除 PO人員、市府人員與審查委員。受保護之最高管理員帳號不可移除此處權限。
+            {isSuperAdmin
+              ? "最高管理員可新增／移除 PO、市府與委員；審查委員可「刪除委員」並一併清除評分。"
+              : "PO 可刪除審查委員帳號，並一併刪除其評分資料（決算清表將不再計入該委員分數）。"}
           </p>
         </div>
       </header>
@@ -115,18 +137,22 @@ export default async function AdminUsersPage() {
         </div>
       ) : null}
 
-      <section className="mb-8 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-800">新增／更新授權</h2>
-        <p className="mt-1 text-sm text-slate-500">若 Email 已存在於系統，將只更新角色；否則建立新 User 列（待首次 OAuth 綁定）。</p>
-        <div className="mt-6">
-          <AdminGrantRoleForm />
-        </div>
-      </section>
+      {isSuperAdmin ? (
+        <section className="mb-8 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-800">新增／更新授權</h2>
+          <p className="mt-1 text-sm text-slate-500">若 Email 已存在於系統，將只更新角色；否則建立新 User 列（待首次 OAuth 綁定）。</p>
+          <div className="mt-6">
+            <AdminGrantRoleForm />
+          </div>
+        </section>
+      ) : null}
 
       <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-800">目前後台名單</h2>
-          <p className="mt-0.5 text-sm text-slate-500">具後台或委員權限之帳號（共 {privileged.length} 人）</p>
+          <h2 className="text-base font-semibold text-slate-800">
+            {isSuperAdmin ? "目前後台名單" : "審查委員名單"}
+          </h2>
+          <p className="mt-0.5 text-sm text-slate-500">共 {privileged.length} 人</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
@@ -143,13 +169,15 @@ export default async function AdminUsersPage() {
               {privileged.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-12 text-center text-slate-500">
-                    尚無後台帳號。
+                    尚無帳號。
                   </td>
                 </tr>
               ) : (
                 privileged.map((row) => {
                   const displayRole = row.role === "COMMITTEE" ? "REVIEWER" : row.role;
                   const protectedSuper = normalizeEmailForCompare(row.email) === normalizeEmailForCompare(SUPER_ADMIN_EMAIL_FORCED);
+                  const reviewerRow = isReviewerRole(row.role);
+
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/80">
                       <td className="px-5 py-3.5 font-mono text-xs text-slate-800">{row.email}</td>
@@ -163,7 +191,28 @@ export default async function AdminUsersPage() {
                         {formatTaipeiDateTime(row.updatedAt)}
                       </td>
                       <td className="px-5 py-3.5">
-                        <RevokeBackofficeRoleButton userId={row.id} disabled={protectedSuper || row.role === "SUPER_ADMIN"} />
+                        <div className="flex flex-col items-end gap-2">
+                          {reviewerRow && canDeleteReviewer ? (
+                            <DeleteReviewerAccountButton
+                              userId={row.id}
+                              email={row.email}
+                              disabled={protectedSuper}
+                            />
+                          ) : null}
+                          {isSuperAdmin && !reviewerRow ? (
+                            <RevokeBackofficeRoleButton
+                              userId={row.id}
+                              disabled={protectedSuper || row.role === "SUPER_ADMIN"}
+                            />
+                          ) : null}
+                          {isSuperAdmin && reviewerRow ? (
+                            <RevokeBackofficeRoleButton
+                              userId={row.id}
+                              label="改回一般使用者"
+                              disabled={protectedSuper}
+                            />
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
