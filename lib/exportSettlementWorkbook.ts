@@ -86,7 +86,42 @@ function applyGridToRange(
   }
 }
 
-function buildSheet(rows: SettlementRow[], memberNames: string[]): XLSX.WorkSheet {
+function appendCommitteeSignatureBlock(
+  ws: XLSX.WorkSheet,
+  contentLastRow: number,
+  lastCol: number,
+): number {
+  const sigStartCol = lastCol - 2;
+  const titleRow = contentLastRow + 2;
+  const boxStartRow = titleRow + 1;
+  const boxEndRow = boxStartRow + 3;
+
+  ws[`${colLetter(sigStartCol)}${titleRow}`] = {
+    t: "s",
+    v: "委員簽名",
+    s: cellStyle({
+      alignment: { horizontal: "center", vertical: "center" },
+      font: { bold: true },
+    }),
+  };
+
+  applyGridToRange(ws, boxStartRow - 1, boxEndRow - 1, sigStartCol, lastCol);
+
+  const merges = ws["!merges"] ?? [];
+  merges.push(
+    { s: { r: titleRow - 1, c: sigStartCol }, e: { r: titleRow - 1, c: lastCol } },
+    { s: { r: boxStartRow - 1, c: sigStartCol }, e: { r: boxEndRow - 1, c: lastCol } },
+  );
+  ws["!merges"] = merges;
+
+  return boxEndRow;
+}
+
+function buildSheet(
+  rows: SettlementRow[],
+  memberNames: string[],
+  appendSignature = false,
+): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {};
   const lastCol = 16; // A..Q
 
@@ -170,9 +205,14 @@ function buildSheet(rows: SettlementRow[], memberNames: string[]): XLSX.WorkShee
 
   setCell(ws, `B${totalRow + 1}`, "*本表係依據上開計畫之個案決議彙總表彙總而成");
 
-  const lastRowIndex = totalRow + 1;
+  const footnoteRow = totalRow + 1;
+  let lastRowIndex = footnoteRow;
+  if (appendSignature) {
+    lastRowIndex = appendCommitteeSignatureBlock(ws, footnoteRow, lastCol);
+  }
+
   ws["!ref"] = `A1:Q${lastRowIndex}`;
-  applyGridToRange(ws, 3, lastRowIndex - 1, 0, lastCol);
+  applyGridToRange(ws, 3, footnoteRow - 1, 0, lastCol);
   ws["!merges"] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
     { s: { r: 1, c: 0 }, e: { r: 2, c: 4 } },
@@ -182,7 +222,7 @@ function buildSheet(rows: SettlementRow[], memberNames: string[]): XLSX.WorkShee
     { s: { r: 3, c: 9 }, e: { r: 3, c: 11 } },
   ];
 
-  applyAutoColumnWidths(ws, lastCol + 1, lastRowIndex - 1);
+  applyAutoColumnWidths(ws, lastCol + 1, footnoteRow - 1);
   return ws;
 }
 
@@ -192,9 +232,10 @@ export function buildSettlementWorkbook(
   memberNames: string[],
 ): Buffer {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, buildSheet(standardRows, memberNames), "決算清表");
-  if (jointRows.length > 0) {
-    XLSX.utils.book_append_sheet(wb, buildSheet(jointRows, memberNames), "聯合提案");
+  const hasJointSheet = jointRows.length > 0;
+  XLSX.utils.book_append_sheet(wb, buildSheet(standardRows, memberNames, !hasJointSheet), "決算清表");
+  if (hasJointSheet) {
+    XLSX.utils.book_append_sheet(wb, buildSheet(jointRows, memberNames, true), "聯合提案");
   }
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 }
