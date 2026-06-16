@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
-import { SettlementEditableTable } from "@/components/admin/SettlementEditableTable";
+import {
+  SettlementCommitteeConfigPanel,
+  SettlementEditableTable,
+} from "@/components/admin/SettlementEditableTable";
 import { loadSettlementPageData } from "@/lib/settlementTable";
 import { canOperateApplications } from "@/lib/rbac";
 
@@ -45,17 +48,22 @@ export default async function AdminSettlementPage() {
         </div>
       </header>
 
+      <SettlementCommitteeConfigPanel
+        config={data.committeeConfig}
+        reviewerOptions={data.reviewerOptions}
+      />
+
       <SettlementEditableTable
         title="一般提案（合併排序）"
         rows={data.standardRows}
-        memberNames={data.templateMemberNames}
+        memberNames={data.memberNames}
       />
 
       {data.jointRows.length > 0 ? (
         <SettlementEditableTable
           title="聯合提案"
           rows={data.jointRows}
-          memberNames={data.templateMemberNames}
+          memberNames={data.memberNames}
         />
       ) : null}
     </section>

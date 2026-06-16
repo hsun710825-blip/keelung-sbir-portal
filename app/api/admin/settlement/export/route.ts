@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { buildSettlementWorkbook } from "@/lib/exportSettlementWorkbook";
+import { loadSettlementCommitteeConfig } from "@/lib/settlementConfig";
 import { buildSettlementRows } from "@/lib/settlementTable";
 import { canOperateApplications } from "@/lib/rbac";
 
@@ -15,12 +16,14 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
+  const committeeConfig = await loadSettlementCommitteeConfig();
+  const memberNames = committeeConfig.slots.map((s) => s.displayName);
   const [standardRows, jointRows] = await Promise.all([
-    buildSettlementRows(false),
-    buildSettlementRows(true),
+    buildSettlementRows(false, committeeConfig),
+    buildSettlementRows(true, committeeConfig),
   ]);
 
-  const buffer = buildSettlementWorkbook(standardRows, jointRows);
+  const buffer = buildSettlementWorkbook(standardRows, jointRows, memberNames);
   const filename = encodeURIComponent("115決算清表.xlsx");
 
   return new NextResponse(new Uint8Array(buffer), {
