@@ -33,7 +33,7 @@ export default async function AdminSettlementPage() {
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-900">決算清表</h1>
         <p className="mt-2 text-sm text-slate-600">
-          6/22 與 7/1 全部案件合併排序（序位加總小者在前；同序位比平均分）。聯合提案另列於匯出檔第二分頁。申請經費欄暫留白。
+          依委員平均分數由高至低排序（同分跳號並列）。申請經費由計畫書自動帶入，建議自籌預設同申請自籌；各經費欄皆可編輯。聯合提案另列於匯出檔第二分頁。
         </p>
         <div className="mt-4">
           <a

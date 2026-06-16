@@ -1,5 +1,4 @@
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
-import { compareByRankSumThenTotal } from "@/lib/committeeScoreSort";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { matchApplicationToAgenda } from "@/lib/matchApplicationToAgenda";
 import { prisma } from "@/lib/prisma";
@@ -10,22 +9,25 @@ import {
   REVIEW_MEETING_DATES,
   type ReviewMeetingDate,
 } from "@/lib/reviewMeetingAgenda";
+import { resolveApplicationBudgetBatch } from "@/lib/settlementBudget";
 import {
   loadSettlementCommitteeConfig,
   type SettlementCommitteeConfig,
 } from "@/lib/settlementConfig";
+import { assignSkipTieRanks, avgCommitteeScore, sortRowsByAvgScoreDesc } from "@/lib/settlementRank";
 
 export type SettlementRow = {
   applicationId: string;
   companyName: string;
   title: string;
+  appliedSubsidy: number | null;
+  appliedSelfFund: number | null;
+  appliedTotal: number | null;
   suggestedSubsidy: number | null;
   suggestedSelfFund: number | null;
   suggestedTotal: number | null;
   committeeScores: [number | null, number | null, number | null];
-  committeeRanks: [number | null, number | null, number | null];
   avgScore: number | null;
-  rankSum: number | null;
   overallRank: number | null;
   briefingOrder: string;
   isJoint: boolean;
@@ -41,22 +43,41 @@ type AppRow = {
   reviewMeetingDate: string | null;
   reviewAgendaOrder: number | null;
   reviewProposalType: string | null;
+  settlementAppliedSubsidy: number | null;
+  settlementAppliedSelfFund: number | null;
+  settlementAppliedTotal: number | null;
   settlementSuggestedSubsidy: number | null;
   settlementSuggestedSelfFund: number | null;
   settlementSuggestedTotal: number | null;
 };
 
-function avgOf(values: Array<number | null>): number | null {
-  const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
-  if (nums.length === 0) return null;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
-}
+const APP_SELECT = {
+  id: true,
+  title: true,
+  description: true,
+  submissionMode: true,
+  reviewMeetingDate: true,
+  reviewAgendaOrder: true,
+  reviewProposalType: true,
+  settlementAppliedSubsidy: true,
+  settlementAppliedSelfFund: true,
+  settlementAppliedTotal: true,
+  settlementSuggestedSubsidy: true,
+  settlementSuggestedSelfFund: true,
+  settlementSuggestedTotal: true,
+} as const;
 
-function sumOf(values: Array<number | null>): number | null {
-  const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
-  if (nums.length === 0) return null;
-  return nums.reduce((a, b) => a + b, 0);
-}
+const APP_SELECT_FALLBACK = {
+  id: true,
+  title: true,
+  description: true,
+  submissionMode: true,
+  reviewMeetingDate: true,
+  reviewAgendaOrder: true,
+  settlementSuggestedSubsidy: true,
+  settlementSuggestedSelfFund: true,
+  settlementSuggestedTotal: true,
+} as const;
 
 function computeBriefingOrders(): {
   standardBriefingByKey: Map<string, number>;
@@ -100,39 +121,21 @@ async function loadSettlementApplications(): Promise<
   try {
     apps = await prisma.application.findMany({
       where: { status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES } },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        submissionMode: true,
-        reviewMeetingDate: true,
-        reviewAgendaOrder: true,
-        reviewProposalType: true,
-        settlementSuggestedSubsidy: true,
-        settlementSuggestedSelfFund: true,
-        settlementSuggestedTotal: true,
-      },
+      select: APP_SELECT,
       orderBy: [{ reviewMeetingDate: "asc" }, { reviewAgendaOrder: "asc" }],
     });
   } catch {
     apps = await prisma.application.findMany({
       where: { status: { in: COMMITTEE_VISIBLE_APPLICATION_STATUSES } },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        submissionMode: true,
-        reviewMeetingDate: true,
-        reviewAgendaOrder: true,
-        settlementSuggestedSubsidy: true,
-        settlementSuggestedSelfFund: true,
-        settlementSuggestedTotal: true,
-      },
+      select: APP_SELECT_FALLBACK,
       orderBy: [{ reviewMeetingDate: "asc" }, { reviewAgendaOrder: "asc" }],
     }).then((rows) =>
       rows.map((r) => ({
         ...r,
         reviewProposalType: null as string | null,
+        settlementAppliedSubsidy: null,
+        settlementAppliedSelfFund: null,
+        settlementAppliedTotal: null,
       })),
     );
   }
@@ -186,6 +189,15 @@ async function loadSettlementApplications(): Promise<
   return out;
 }
 
+function pickAppliedAmount(
+  override: number | null | undefined,
+  draft: number | null | undefined,
+): number | null {
+  if (override != null) return override;
+  if (draft != null) return draft;
+  return null;
+}
+
 export async function buildSettlementRows(
   jointOnly: boolean,
   committeeConfig?: SettlementCommitteeConfig,
@@ -193,40 +205,43 @@ export async function buildSettlementRows(
   const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
   const committeeIds = config.slots.map((s) => s.userId);
 
-  const [items, evaluations, briefingMaps] = await Promise.all([
-    loadSettlementApplications(),
+  const items = await loadSettlementApplications();
+  const filtered = items.filter((item) => (jointOnly ? item.isJoint : !item.isJoint));
+
+  const [evaluations, briefingMaps, budgetMap] = await Promise.all([
     prisma.evaluation.findMany({
       select: {
         applicationId: true,
         committeeId: true,
         score: true,
-        rank: true,
       },
     }),
     Promise.resolve(computeBriefingOrders()),
+    resolveApplicationBudgetBatch(
+      filtered.map((item) => ({ id: item.app.id, submissionMode: item.app.submissionMode })),
+    ),
   ]);
 
-  const evalByAppCommittee = new Map<string, { score: number; rank: number | null }>();
+  const evalByAppCommittee = new Map<string, { score: number }>();
   for (const ev of evaluations) {
     evalByAppCommittee.set(`${ev.applicationId}:${ev.committeeId}`, ev);
   }
 
   const rows: SettlementRow[] = [];
 
-  for (const item of items) {
-    if (jointOnly !== item.isJoint) continue;
-
+  for (const item of filtered) {
     const scores: [number | null, number | null, number | null] = [null, null, null];
-    const ranks: [number | null, number | null, number | null] = [null, null, null];
 
     committeeIds.forEach((cid, idx) => {
       if (!cid) return;
       const ev = evalByAppCommittee.get(`${item.app.id}:${cid}`);
-      if (ev) {
-        scores[idx] = ev.score;
-        ranks[idx] = ev.rank;
-      }
+      if (ev) scores[idx] = ev.score;
     });
+
+    const draftBudget = budgetMap.get(item.app.id);
+    const appliedSubsidy = pickAppliedAmount(item.app.settlementAppliedSubsidy, draftBudget?.subsidy);
+    const appliedSelfFund = pickAppliedAmount(item.app.settlementAppliedSelfFund, draftBudget?.selfFund);
+    const appliedTotal = pickAppliedAmount(item.app.settlementAppliedTotal, draftBudget?.total);
 
     const agendaKey = `${item.meetingDate}:${item.agendaOrder}`;
     const briefingOrder = item.isJoint
@@ -237,13 +252,15 @@ export async function buildSettlementRows(
       applicationId: item.app.id,
       companyName: item.companyName,
       title: item.app.title?.trim() || item.agendaProject,
+      appliedSubsidy,
+      appliedSelfFund,
+      appliedTotal,
       suggestedSubsidy: item.app.settlementSuggestedSubsidy ?? null,
-      suggestedSelfFund: item.app.settlementSuggestedSelfFund ?? null,
+      suggestedSelfFund:
+        item.app.settlementSuggestedSelfFund ?? appliedSelfFund ?? null,
       suggestedTotal: item.app.settlementSuggestedTotal ?? null,
       committeeScores: scores,
-      committeeRanks: ranks,
-      avgScore: avgOf(scores),
-      rankSum: sumOf(ranks),
+      avgScore: avgCommitteeScore(scores),
       overallRank: null,
       briefingOrder,
       isJoint: item.isJoint,
@@ -252,20 +269,9 @@ export async function buildSettlementRows(
     });
   }
 
-  rows.sort((a, b) =>
-    compareByRankSumThenTotal({
-      rankSumA: a.rankSum,
-      rankSumB: b.rankSum,
-      totalA: a.avgScore,
-      totalB: b.avgScore,
-    }),
-  );
-
-  rows.forEach((r, i) => {
-    r.overallRank = i + 1;
-  });
-
-  return rows;
+  const sorted = sortRowsByAvgScoreDesc(rows);
+  assignSkipTieRanks(sorted);
+  return sorted;
 }
 
 export async function loadSettlementPageData() {

@@ -38,6 +38,7 @@
     "reactflow": "^11.11.4",
     "typeface-noto-sans-tc": "^1.1.13",
     "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0",
     "xss": "^1.0.15"
   },
   "devDependencies": {

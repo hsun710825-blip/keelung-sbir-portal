@@ -10,47 +10,55 @@ import {
 import type { SettlementCommitteeConfig } from "@/lib/settlementConfig";
 import type { SettlementRow } from "@/lib/settlementTable";
 
+function FundingInput({
+  formId,
+  name,
+  defaultValue,
+}: {
+  formId: string;
+  name: string;
+  defaultValue: number | null;
+}) {
+  return (
+    <input
+      form={formId}
+      name={name}
+      type="number"
+      min={0}
+      defaultValue={defaultValue ?? ""}
+      className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
+      placeholder="千"
+    />
+  );
+}
+
 function SettlementRowEditor({ row }: { row: SettlementRow }) {
   const [state, action, pending] = useActionState(saveSettlementRowAction, {} as SettlementActionState);
+  const formId = `settlement-row-${row.applicationId}`;
 
   return (
     <>
-      <td className="px-2 py-2 tabular-nums text-center font-semibold">{row.overallRank}</td>
+      <td className="px-2 py-2 tabular-nums text-center font-semibold">{row.overallRank ?? "—"}</td>
       <td className="px-2 py-2 tabular-nums text-center">{row.briefingOrder}</td>
-      <td className="px-2 py-2">{row.companyName}</td>
-      <td className="max-w-[200px] px-2 py-2 text-sm">{row.title}</td>
+      <td className="min-w-[120px] px-2 py-2">{row.companyName}</td>
+      <td className="min-w-[160px] px-2 py-2 text-sm">{row.title}</td>
       <td className="px-2 py-2">
-        <input
-          form={`settlement-row-${row.applicationId}`}
-          name="suggestedSubsidy"
-          type="number"
-          min={0}
-          defaultValue={row.suggestedSubsidy ?? ""}
-          className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
-          placeholder="千"
-        />
+        <FundingInput formId={formId} name="appliedSubsidy" defaultValue={row.appliedSubsidy} />
       </td>
       <td className="px-2 py-2">
-        <input
-          form={`settlement-row-${row.applicationId}`}
-          name="suggestedSelfFund"
-          type="number"
-          min={0}
-          defaultValue={row.suggestedSelfFund ?? ""}
-          className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
-          placeholder="千"
-        />
+        <FundingInput formId={formId} name="appliedSelfFund" defaultValue={row.appliedSelfFund} />
       </td>
       <td className="px-2 py-2">
-        <input
-          form={`settlement-row-${row.applicationId}`}
-          name="suggestedTotal"
-          type="number"
-          min={0}
-          defaultValue={row.suggestedTotal ?? ""}
-          className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
-          placeholder="千"
-        />
+        <FundingInput formId={formId} name="appliedTotal" defaultValue={row.appliedTotal} />
+      </td>
+      <td className="px-2 py-2">
+        <FundingInput formId={formId} name="suggestedSubsidy" defaultValue={row.suggestedSubsidy} />
+      </td>
+      <td className="px-2 py-2">
+        <FundingInput formId={formId} name="suggestedSelfFund" defaultValue={row.suggestedSelfFund} />
+      </td>
+      <td className="px-2 py-2">
+        <FundingInput formId={formId} name="suggestedTotal" defaultValue={row.suggestedTotal} />
       </td>
       {row.committeeScores.map((s, i) => (
         <td key={`s-${i}`} className="px-2 py-2 tabular-nums text-center">
@@ -60,14 +68,8 @@ function SettlementRowEditor({ row }: { row: SettlementRow }) {
       <td className="px-2 py-2 tabular-nums text-center">
         {row.avgScore != null ? row.avgScore.toFixed(1) : "—"}
       </td>
-      {row.committeeRanks.map((r, i) => (
-        <td key={`r-${i}`} className="px-2 py-2 tabular-nums text-center">
-          {r ?? "—"}
-        </td>
-      ))}
-      <td className="px-2 py-2 tabular-nums text-center">{row.rankSum ?? "—"}</td>
       <td className="px-2 py-2">
-        <form id={`settlement-row-${row.applicationId}`} action={action}>
+        <form id={formId} action={action}>
           <input type="hidden" name="applicationId" value={row.applicationId} />
           <button
             type="submit"
@@ -97,13 +99,16 @@ export function SettlementEditableTable({
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1400px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs">
               <th className="px-2 py-2">總排序</th>
               <th className="px-2 py-2">編號排序</th>
               <th className="px-2 py-2">申請單位</th>
               <th className="px-2 py-2">計畫名稱</th>
+              <th className="px-2 py-2">申請補助(千)</th>
+              <th className="px-2 py-2">申請自籌(千)</th>
+              <th className="px-2 py-2">申請總計(千)</th>
               <th className="px-2 py-2">建議補助(千)</th>
               <th className="px-2 py-2">建議自籌(千)</th>
               <th className="px-2 py-2">建議總計(千)</th>
@@ -113,12 +118,6 @@ export function SettlementEditableTable({
                 </th>
               ))}
               <th className="px-2 py-2">平均</th>
-              {memberNames.map((n) => (
-                <th key={`r-${n}`} className="px-2 py-2">
-                  {n}序
-                </th>
-              ))}
-              <th className="px-2 py-2">序位加總</th>
               <th className="px-2 py-2">操作</th>
             </tr>
           </thead>

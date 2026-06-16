@@ -132,6 +132,12 @@ model Application {
   settlementSuggestedSelfFund Int?
   /// PO 決算建議總經費（千元）
   settlementSuggestedTotal Int?
+  /// PO 覆寫申請補助款（千元）；未填則由計畫書帶入
+  settlementAppliedSubsidy Int?
+  /// PO 覆寫申請自籌款（千元）；未填則由計畫書帶入
+  settlementAppliedSelfFund Int?
+  /// PO 覆寫申請總經費（千元）；未填則由計畫書帶入
+  settlementAppliedTotal Int?
   periodYear  Int?
   description String? @db.Text
   /// 管理員狀態更新說明（通知信與審查紀錄）
