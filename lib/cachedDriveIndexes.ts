@@ -3,8 +3,8 @@ import { unstable_cache } from "next/cache";
 import { buildPresentationFolderIndex } from "@/lib/reviewPresentationPdf";
 import { buildReviewFolderPdfIndex } from "@/lib/reviewCompleteProposalPdf";
 
-const REVIEW_INDEX_KEY = "review-folder-pdf-index-v1";
-const PRESENTATION_INDEX_KEY = "presentation-folder-index-v1";
+const REVIEW_INDEX_KEY = "review-folder-pdf-index-v2";
+const PRESENTATION_INDEX_KEY = "presentation-folder-index-v2";
 const INDEX_REVALIDATE_SECONDS = 600;
 
 export const getCachedReviewFolderPdfIndex = unstable_cache(
