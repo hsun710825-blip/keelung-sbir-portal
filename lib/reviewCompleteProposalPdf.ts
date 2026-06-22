@@ -11,8 +11,8 @@ export const REVIEW_COMPLETE_PDF_FOLDERS: Record<ReviewMeetingDate, string> = {
 };
 
 export type ReviewFolderPdfIndex = {
-  byMeetingOrder: Map<string, string>;
-  byMeetingCompany: Map<string, string>;
+  byMeetingOrder: Record<string, string>;
+  byMeetingCompany: Record<string, string>;
 };
 
 type DrivePdfFile = {
@@ -82,17 +82,17 @@ export async function buildReviewFolderPdfIndex(force = false): Promise<ReviewFo
     return cachedIndex.index;
   }
 
-  const byMeetingOrder = new Map<string, string>();
-  const byMeetingCompany = new Map<string, string>();
+  const byMeetingOrder: Record<string, string> = {};
+  const byMeetingCompany: Record<string, string> = {};
 
   for (const meetingDate of Object.keys(REVIEW_COMPLETE_PDF_FOLDERS) as ReviewMeetingDate[]) {
     const folderId = REVIEW_COMPLETE_PDF_FOLDERS[meetingDate];
     const files = await listFolderPdfFiles(folderId);
     for (const file of files) {
-      byMeetingOrder.set(`${meetingDate}:${file.order}`, file.id);
+      byMeetingOrder[`${meetingDate}:${file.order}`] = file.id;
       const companyKey = normalizeCompanyLabel(file.label);
       if (companyKey) {
-        byMeetingCompany.set(`${meetingDate}:${companyKey}`, file.id);
+        byMeetingCompany[`${meetingDate}:${companyKey}`] = file.id;
       }
     }
   }
@@ -129,15 +129,15 @@ export async function resolveReviewCompleteProposalPdfFileId(input: {
   const meeting = meetingDate as ReviewMeetingDate;
   const index = input.index ?? (await buildReviewFolderPdfIndex());
   const orderKey = `${meeting}:${agendaOrder}`;
-  const fromOrder = index.byMeetingOrder.get(orderKey);
+  const fromOrder = index.byMeetingOrder[orderKey];
   if (fromOrder) return fromOrder;
 
   const companyNorm = normalizeCompanyLabel(input.companyName || "");
   if (companyNorm) {
-    const fromCompany = index.byMeetingCompany.get(`${meeting}:${companyNorm}`);
+    const fromCompany = index.byMeetingCompany[`${meeting}:${companyNorm}`];
     if (fromCompany) return fromCompany;
 
-    for (const [key, fileId] of index.byMeetingCompany.entries()) {
+    for (const [key, fileId] of Object.entries(index.byMeetingCompany)) {
       if (!key.startsWith(`${meeting}:`)) continue;
       const label = key.slice(meeting.length + 1);
       if (label.includes(companyNorm) || companyNorm.includes(label)) {

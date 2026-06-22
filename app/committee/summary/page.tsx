@@ -17,7 +17,20 @@ export default async function CommitteeSummaryPage() {
   const dbUser = await getReviewerDbUser();
   if (!dbUser) redirect("/");
 
-  const data = await loadCombinedCommitteePersonalScores(dbUser.id);
+  let data;
+  try {
+    data = await loadCombinedCommitteePersonalScores(dbUser.id);
+  } catch (error) {
+    console.error("[committee/summary] load failed:", error);
+    return (
+      <section className="space-y-6">
+        <header className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <h1 className="text-2xl font-semibold text-slate-900">我的評分總表</h1>
+          <p className="mt-3 text-sm text-red-700">無法載入評分總表，請稍後再試或聯絡專案辦公室。</p>
+        </header>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-6">

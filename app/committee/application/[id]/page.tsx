@@ -110,6 +110,9 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
 
   const presentationSource = await resolveCommitteePresentationPdfSource(application.id, {
     companyName: display.companyName,
+  }).catch((error) => {
+    console.error("[committee/application] presentation resolve failed:", error);
+    return { kind: "not_found" as const };
   });
   const hasPresentation = presentationSource.kind === "drive_file";
 
