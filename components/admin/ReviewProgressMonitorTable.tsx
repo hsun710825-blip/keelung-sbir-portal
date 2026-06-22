@@ -2,7 +2,7 @@
 
 import { PoLockMeetingButton } from "@/components/admin/PoLockMeetingButton";
 import { evaluationStatusLabel, sessionStatusLabel } from "@/lib/committeeScoringRubric";
-import { getReviewProgressCell } from "@/lib/reviewProgressCells";
+import { getReviewProgressCell, type ReviewProgressEvalEntry } from "@/lib/reviewProgressCells";
 import type { ReviewMeetingDate } from "@/lib/reviewMeetingAgenda";
 
 type Member = { id: string; name: string | null; email: string };
@@ -22,8 +22,8 @@ export function ReviewProgressMonitorTable({
   meetingDate: ReviewMeetingDate;
   committeeMembers: Member[];
   meetingApps: MeetingApp[];
-  sessionByCommittee: Map<string, { status: string; submittedAt: Date | null; lockedAt: Date | null }>;
-  evalMap: Map<string, { score: number; status: string; comment: string | null }>;
+  sessionByCommittee: Record<string, { status: string }>;
+  evalMap: Record<string, ReviewProgressEvalEntry>;
 }) {
   return (
     <div className="space-y-6">
@@ -43,7 +43,7 @@ export function ReviewProgressMonitorTable({
       </div>
 
       {committeeMembers.map((member) => {
-        const session = sessionByCommittee.get(member.id);
+        const session = sessionByCommittee[member.id];
         const sessionStatus = session?.status || "ACTIVE";
         const label = member.name?.trim() || member.email;
         const scored = meetingApps.filter((app) =>

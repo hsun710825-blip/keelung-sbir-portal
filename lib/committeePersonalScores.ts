@@ -142,10 +142,17 @@ export async function loadReviewProgressForAdmin(meetingDate: import("@/lib/revi
     }),
   ]);
 
-  const sessionByCommittee = new Map(sessions.map((s) => [s.committeeId, s]));
-  const evalMap = new Map<string, (typeof evaluations)[number]>();
+  const sessionByCommittee: Record<string, { status: string }> = {};
+  for (const session of sessions) {
+    sessionByCommittee[session.committeeId] = { status: session.status };
+  }
+
+  const evalMap: Record<
+    string,
+    { score: number; status: string; comment: string | null }
+  > = {};
   for (const ev of evaluations) {
-    evalMap.set(`${ev.committeeId}:${ev.applicationId}`, ev);
+    evalMap[`${ev.committeeId}:${ev.applicationId}`] = ev;
   }
 
   return {

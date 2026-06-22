@@ -5,13 +5,19 @@ export type ReviewProgressCell = {
   hasData: boolean;
 };
 
+export type ReviewProgressEvalEntry = {
+  score: number;
+  status: string;
+  comment: string | null;
+};
+
 export function getReviewProgressCell(
-  evalMap: Map<string, { score: number; status: string; comment: string | null }>,
+  evalMap: Record<string, ReviewProgressEvalEntry>,
   committeeId: string,
   applicationId: string,
   sessionStatus: string,
 ): ReviewProgressCell {
-  const ev = evalMap.get(`${committeeId}:${applicationId}`);
+  const ev = evalMap[`${committeeId}:${applicationId}`];
   if (!ev) {
     return { score: null, status: "NONE", comment: null, hasData: false };
   }
