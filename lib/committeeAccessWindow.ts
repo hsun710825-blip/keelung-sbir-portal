@@ -1,7 +1,7 @@
 import { normalizeEmailForCompare } from "@/lib/rbac";
 
 /** 115 複審：指定委員開放窗口（台北時間）。 */
-export const COMMITTEE_ACCESS_OPEN_START_ISO = "2026-07-01T00:00:00+08:00";
+export const COMMITTEE_ACCESS_OPEN_START_ISO = "2026-07-01T06:00:00+08:00";
 export const COMMITTEE_ACCESS_OPEN_END_ISO = "2026-07-01T17:00:00+08:00";
 
 export const RESTRICTED_COMMITTEE_EMAILS = [

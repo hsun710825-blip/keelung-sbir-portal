@@ -5,11 +5,7 @@ import { redirect } from "next/navigation";
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { CommitteeAccessLockedView } from "@/components/auth/CommitteeAccessLockedView";
 import { recordCommitteeAccessBlockedLog } from "@/lib/committeeAccessLog";
-import {
-  COMMITTEE_ACCESS_OPEN_START_ISO,
-  isRestrictedCommitteeLocked,
-} from "@/lib/committeeAccessWindow";
-import { formatTaipeiDateTime } from "@/lib/taipeiTime";
+import { isRestrictedCommitteeLocked } from "@/lib/committeeAccessWindow";
 
 export const metadata: Metadata = {
   title: "委員權限鎖定中",
@@ -33,7 +29,5 @@ export default async function CommitteeAccessLockedPage() {
     userId: session?.user?.id,
   });
 
-  const nextOpenLabel = formatTaipeiDateTime(COMMITTEE_ACCESS_OPEN_START_ISO);
-
-  return <CommitteeAccessLockedView nextOpenLabel={nextOpenLabel} />;
+  return <CommitteeAccessLockedView />;
 }

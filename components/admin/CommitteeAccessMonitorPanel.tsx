@@ -44,7 +44,7 @@ export function CommitteeAccessMonitorPanel({ logs }: Props) {
               ))}
             </ul>
             <p className="mt-3 text-slate-600">
-              開放時段：2026/07/01 00:00 ～ 17:00（台北時間）；其餘時間鎖定。
+              開放時段：2026/07/01 06:00 ～ 17:00（台北時間）；其餘時間鎖定。
             </p>
           </div>
 
