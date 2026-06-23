@@ -3,10 +3,11 @@ import { ApplicationStatus as AS } from "@prisma/client";
 
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 
-/** 總表篩選「審查中」：含形式審查與委員審查階段 */
+/** 總表篩選「審查中」：含形式審查、委員審查與已寄重要通知（審查仍進行） */
 export const ADMIN_REVIEW_IN_PROGRESS_STATUSES: ApplicationStatus[] = [
   AS.UNDER_REVIEW,
   AS.COMMITTEE_REVIEW,
+  AS.IMPORTANT_NOTICE,
 ];
 
 /** 案件總表「案件狀態」篩選（含全部與複合「審查中」） */
