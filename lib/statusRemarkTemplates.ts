@@ -1,6 +1,9 @@
 import type { ApplicationStatus } from "@prisma/client";
 import { ApplicationStatus as AS } from "@prisma/client";
 
+import { buildImportantNoticeRemarksTemplate } from "@/lib/importantNoticeMail";
+import type { AgendaMatch } from "@/lib/matchApplicationToAgenda";
+
 /** 退回補件狀態：Textarea placeholder */
 export const REVISION_REQUIRED_PLACEHOLDER =
   "請詳細說明需補件或修改之文件與內容...";
@@ -12,9 +15,13 @@ export const REVISION_REQUIRED_PLACEHOLDER =
 export function defaultAdminRemarksForStatus(
   status: ApplicationStatus,
   planTitle: string,
+  agendaMatch?: AgendaMatch | null,
 ): string | null {
   const t = planTitle.trim() || "（未命名計畫）";
   switch (status) {
+    case AS.IMPORTANT_NOTICE:
+      if (!agendaMatch) return null;
+      return buildImportantNoticeRemarksTemplate(agendaMatch);
     case AS.PRE_REVIEW_PASSED:
       return "恭喜通過初審，複審日期訂於O月O日，請於系統網址首頁下載簡報模板後製做，並於Ｏ月Ｏ日前上傳至系統。";
     case AS.REJECTED:

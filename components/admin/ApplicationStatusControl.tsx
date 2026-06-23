@@ -7,17 +7,21 @@ import type { ApplicationStatus } from "@prisma/client";
 import { updateApplicationStatusAction } from "@/app/admin/application/[id]/actions";
 import { APPLICATION_STATUS_OPTIONS, applicationStatusOptionLabel } from "@/lib/applicationStatusOptions";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
+import type { AgendaMatch } from "@/lib/matchApplicationToAgenda";
+import { canSelectImportantNoticeStatus } from "@/lib/importantNoticeEligibility";
 import {
   defaultAdminRemarksForStatus,
   REVISION_REQUIRED_PLACEHOLDER,
   statusUsesRemarkPlaceholder,
 } from "@/lib/statusRemarkTemplates";
+import { ApplicationStatus as AS } from "@prisma/client";
 
 type Props = {
   applicationId: string;
   currentStatus: ApplicationStatus;
   initialAdminRemarks: string | null;
   planTitle: string;
+  agendaMatch: AgendaMatch | null;
   /** 市府人員等唯讀身分：不顯示變更與儲存 */
   readOnly?: boolean;
 };
@@ -27,6 +31,7 @@ export function ApplicationStatusControl({
   currentStatus,
   initialAdminRemarks,
   planTitle,
+  agendaMatch,
   readOnly = false,
 }: Props) {
   const router = useRouter();
@@ -48,11 +53,18 @@ export function ApplicationStatusControl({
 
   const onStatusChange = (next: ApplicationStatus) => {
     setValue(next);
-    const tpl = defaultAdminRemarksForStatus(next, planTitle);
+    const tpl = defaultAdminRemarksForStatus(next, planTitle, agendaMatch);
     if (tpl !== null) {
       setRemarks(tpl);
     }
   };
+
+  const statusOptions = APPLICATION_STATUS_OPTIONS.filter((s) => {
+    if (s === AS.IMPORTANT_NOTICE) {
+      return canSelectImportantNoticeStatus(agendaMatch, currentStatus);
+    }
+    return true;
+  });
 
   const save = () => {
     setMsg(null);
@@ -104,7 +116,7 @@ export function ApplicationStatusControl({
               onChange={(e) => onStatusChange(e.target.value as ApplicationStatus)}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60"
             >
-              {APPLICATION_STATUS_OPTIONS.map((s) => (
+              {statusOptions.map((s) => (
                 <option key={s} value={s}>
                   {applicationStatusOptionLabel(s)}
                 </option>

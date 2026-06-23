@@ -10,6 +10,7 @@ const LABELS: Record<ApplicationStatus, string> = {
   REVISION_REQUIRED: "退回補件",
   PRE_REVIEW_PASSED: "初審通過",
   REVIEW_PASSED: "審查通過",
+  IMPORTANT_NOTICE: "重要通知",
   APPROVED: "已核定",
   REJECTED: "未通過",
   CLOSED: "結案",

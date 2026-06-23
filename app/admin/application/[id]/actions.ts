@@ -8,8 +8,10 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { isApplicationStatusString } from "@/lib/applicationStatusOptions";
 import { buildStatusUpdateMailBodies, sendStatusUpdateEmail } from "@/lib/mail";
+import { ensureApplicationStatusEnumValues } from "@/lib/ensureApplicationStatusEnums";
 import { prisma } from "@/lib/prisma";
 import { canOperateApplications } from "@/lib/rbac";
+import { resolveApplicationAgendaMatch } from "@/lib/resolveApplicationAgendaMatch";
 
 export type UpdateStatusResult = { ok: true } | { ok: false; error: string };
 
@@ -38,6 +40,15 @@ export async function updateApplicationStatusAction(
 
   if (!isApplicationStatusString(nextStatusRaw)) {
     return { ok: false, error: "無效的狀態值" };
+  }
+
+  await ensureApplicationStatusEnumValues();
+
+  if (nextStatusRaw === "IMPORTANT_NOTICE") {
+    const agendaMatch = await resolveApplicationAgendaMatch(applicationId);
+    if (!agendaMatch) {
+      return { ok: false, error: "此案件未對應審查議程，無法設定為重要通知" };
+    }
   }
 
   const remarks = adminRemarks ?? "";

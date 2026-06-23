@@ -42,6 +42,8 @@ enum ApplicationStatus {
   PRE_REVIEW_PASSED
   /// 複審／委員審查通過（待核定）
   REVIEW_PASSED
+  /// PO 寄發之重要通知（如簡報時間異動）
+  IMPORTANT_NOTICE
   APPROVED
   REJECTED
   CLOSED

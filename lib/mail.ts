@@ -1,6 +1,8 @@
 import type { ApplicationStatus } from "@prisma/client";
 import nodemailer from "nodemailer";
 
+import { importantNoticeMailSubject } from "@/lib/importantNoticeMail";
+
 /** 與 mailer.ts 一致，避免 .env UTF-8 在平台解析異常 */
 export const SMTP_FROM_NAME = "基隆SBIR系統自動發信通知";
 
@@ -129,6 +131,10 @@ function isRevisionRequiredStatus(status: ApplicationStatus | string | undefined
   return status === "REVISION_REQUIRED";
 }
 
+function isImportantNoticeStatus(status: ApplicationStatus | string | undefined): boolean {
+  return status === "IMPORTANT_NOTICE";
+}
+
 export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput): StatusUpdateMailBodies {
   const { applicantDisplayName, planTitle, statusLabelZh, adminRemarksText, announcement, applicationStatus } =
     input;
@@ -137,6 +143,7 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
   const remarksBlock = adminRemarksText.trim() || "（管理員未留下額外說明）";
   const portalUrl = portalBaseUrl();
   const revisionRequiredMail = isRevisionRequiredStatus(applicationStatus);
+  const importantNoticeMail = isImportantNoticeStatus(applicationStatus);
 
   const lineText = `如有問題請聯繫《115基隆SBIR幫》Line官方帳號：${LINE_OFFICIAL_URL}`;
 
@@ -144,7 +151,11 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
   let leadText: string;
   let remarksHeading: string;
 
-  if (revisionRequiredMail) {
+  if (importantNoticeMail) {
+    subject = importantNoticeMailSubject(plan);
+    leadText = "";
+    remarksHeading = "";
+  } else if (revisionRequiredMail) {
     subject = REVISION_REQUIRED_MAIL_SUBJECT;
     leadText =
       announcement === "remarks_only"
@@ -163,19 +174,28 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
     remarksHeading = "案件狀態說明";
   }
 
-  const text = [
-    `${name} 您好，`,
-    "",
-    leadText,
-    "",
-    `── ${remarksHeading} ──`,
-    remarksBlock,
-    "",
-    `登入系統：${portalUrl}`,
-    "",
-    "此信件由系統自動寄出，請勿直接回覆。",
-    lineText,
-  ].join("\n");
+  const text = importantNoticeMail
+    ? [
+        remarksBlock,
+        "",
+        `登入系統：${portalUrl}`,
+        "",
+        "此信件由系統自動寄出，請勿直接回覆。",
+        lineText,
+      ].join("\n")
+    : [
+        `${name} 您好，`,
+        "",
+        leadText,
+        "",
+        `── ${remarksHeading} ──`,
+        remarksBlock,
+        "",
+        `登入系統：${portalUrl}`,
+        "",
+        "此信件由系統自動寄出，請勿直接回覆。",
+        lineText,
+      ].join("\n");
 
   const safeName = escapeHtml(name);
   const safePlan = escapeHtml(plan);
@@ -185,7 +205,9 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
   const safeIntro = escapeHtml(REVISION_REQUIRED_MAIL_INTRO);
   const lineHtml = `<p>如有問題請聯繫《115基隆SBIR幫》Line官方帳號：<a href="${escapeHtml(LINE_OFFICIAL_URL)}">${escapeHtml(LINE_OFFICIAL_URL)}</a></p>`;
 
-  const leadHtml = revisionRequiredMail
+  const leadHtml = importantNoticeMail
+    ? ""
+    : revisionRequiredMail
     ? announcement === "remarks_only"
       ? `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 目前為<strong style="color:#b45309;">退回補件</strong>。</p>
 <p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#b45309;">${safeIntro}</p>`
@@ -195,25 +217,33 @@ export function buildStatusUpdateMailBodies(input: StatusUpdateMailContentInput)
       ? `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 目前狀態仍為：<strong style="color:#0369a1;">${safeStatus}</strong>，管理員已更新說明如下：</p>`
       : `<p style="margin:0 0 8px;">您的計畫 <strong>${safePlan}</strong> 狀態已更新為：<strong style="color:#0369a1;">${safeStatus}</strong></p>`;
 
-  const remarksBoxTitle = revisionRequiredMail ? safeIntro : "案件狀態說明";
+  const remarksBoxTitle = importantNoticeMail
+    ? ""
+    : revisionRequiredMail
+      ? safeIntro
+      : "案件狀態說明";
+
+  const remarksHtml = importantNoticeMail
+    ? `<div style="margin:0;font-size:14px;color:#1e293b;white-space:pre-wrap;">${safeRemarks}</div>`
+    : `<div style="margin-top:20px;padding:16px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:8px;">
+<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">${remarksBoxTitle}</p>
+<div style="margin:0;font-size:14px;color:#422006;white-space:pre-wrap;">${safeRemarks}</div>
+</div>`;
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body style="font-family:'Noto Sans TC',sans-serif;line-height:1.65;color:#1e293b;background:#f8fafc;padding:24px;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
 <tr><td style="padding:20px 24px;background:linear-gradient(90deg,#0f172a,#1e3a5f);color:#fff;font-size:18px;font-weight:600;">基隆市 SBIR 計畫申請系統</td></tr>
 <tr><td style="padding:24px;">
-<p style="margin:0 0 12px;">${safeName} 您好，</p>
+${importantNoticeMail ? "" : `<p style="margin:0 0 12px;">${safeName} 您好，</p>`}
 ${leadHtml}
-<div style="margin-top:20px;padding:16px 18px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:8px;">
-<p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">${remarksBoxTitle}</p>
-<div style="margin:0;font-size:14px;color:#422006;white-space:pre-wrap;">${safeRemarks}</div>
-</div>
+${remarksHtml}
 <p style="margin:24px 0 8px;"><a href="${safePortal}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;">前往系統首頁</a></p>
 <p style="margin:0;font-size:12px;color:#64748b;">此信件由系統自動寄出，請勿直接回覆。</p>
 ${lineHtml}
 </td></tr></table>
 </body></html>`;
 
-  return { subject, html, text, highPriority: revisionRequiredMail };
+  return { subject, html, text, highPriority: revisionRequiredMail || importantNoticeMail };
 }
 
 export type StatusUpdateMailResult = {

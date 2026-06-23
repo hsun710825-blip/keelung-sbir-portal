@@ -8,6 +8,7 @@ import { AdminAssistUpload } from "@/components/admin/AdminAssistUpload";
 import { ApplicationStatusControl } from "@/components/admin/ApplicationStatusControl";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import { resolveApplicationProposalPdfSourceById } from "@/lib/resolveApplicationProposalPdf";
+import { resolveApplicationAgendaMatch } from "@/lib/resolveApplicationAgendaMatch";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
 import { prisma } from "@/lib/prisma";
@@ -91,6 +92,7 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
   const sheetRow = parsedDesc["試算表列"] ?? null;
 
   const pdfSource = await resolveApplicationProposalPdfSourceById(application.id);
+  const agendaMatch = await resolveApplicationAgendaMatch(application.id);
   const pdfViewUrl =
     pdfSource.kind === "drive_file"
       ? pdfSource.externalViewUrl
@@ -165,6 +167,7 @@ export default async function AdminApplicationDetailPage({ params }: PageProps) 
             currentStatus={application.status}
             initialAdminRemarks={application.adminRemarks}
             planTitle={application.title ?? ""}
+            agendaMatch={agendaMatch}
             readOnly={isGov}
           />
         </div>
