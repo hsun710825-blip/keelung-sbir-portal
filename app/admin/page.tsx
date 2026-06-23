@@ -68,6 +68,14 @@ export default async function AdminPage() {
       icon: "overview",
     });
   }
+  if (canOperateApplications(jwtRole)) {
+    cards.push({
+      href: "/admin/committee-access",
+      title: "委員權限鎖定監看",
+      desc: "7/1 指定委員時間鎖定設定與鎖定期登入紀錄（可收合）。",
+      icon: "users",
+    });
+  }
   if (canManageBackofficeAccounts(jwtRole)) {
     cards.push({
       href: "/admin/users",

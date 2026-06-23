@@ -51,6 +51,13 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
       icon: "evaluations",
       matchPrefix: "/admin/review-progress",
     });
+    navItems.push({
+      href: "/admin/committee-access",
+      label: "委員權限鎖定",
+      description: "指定委員時間鎖定與登入紀錄",
+      icon: "users",
+      matchPrefix: "/admin/committee-access",
+    });
   }
 
   if (canManageBackofficeAccounts(jwtRole)) {

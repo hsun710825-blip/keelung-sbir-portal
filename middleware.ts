@@ -3,14 +3,31 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
+import {
+  COMMITTEE_ACCESS_LOCKED_PATH,
+  isCommitteeAccessLockedPath,
+  isRestrictedCommitteeLocked,
+} from "@/lib/committeeAccessWindow";
 import { isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
+
+function redirectCommitteeAccessLocked(req: NextRequest) {
+  return NextResponse.redirect(new URL(COMMITTEE_ACCESS_LOCKED_PATH, req.url));
+}
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const role = (token?.role as string | null) ?? null;
+  const email = (token?.email as string | null) ?? null;
   const path = req.nextUrl.pathname;
   const method = req.method.toUpperCase();
+  const reviewerTimeLocked = Boolean(token && isReviewerRole(role) && isRestrictedCommitteeLocked(email));
+
+  if (reviewerTimeLocked && !isCommitteeAccessLockedPath(path)) {
+    if (path.startsWith("/admin") || path.startsWith("/committee")) {
+      return redirectCommitteeAccessLocked(req);
+    }
+  }
 
   if (path.startsWith("/committee")) {
     if (!token || !isReviewerRole(role)) {
@@ -22,6 +39,9 @@ export async function middleware(req: NextRequest) {
   if (path.startsWith("/api/committee")) {
     if (!token || !isReviewerRole(role)) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
+    if (reviewerTimeLocked) {
+      return NextResponse.json({ ok: false, error: "委員權限鎖定中" }, { status: 403 });
     }
     return NextResponse.next();
   }
