@@ -1,17 +1,9 @@
-export type YouthSheetPersonFields = {
-  responsibleName: string | null;
-  registeredCity: string | null;
-  age: number | null;
-  qualifies: boolean | null;
-};
-
 export type YouthSheetRow = {
   rowIndex: number;
   companyName: string;
   email: string | null;
   uploadUrl: string | null;
   uploadDriveFileId: string | null;
-  fields: YouthSheetPersonFields;
 };
 
 export type YouthDriveFile = {
@@ -20,9 +12,19 @@ export type YouthDriveFile = {
   mimeType: string;
 };
 
-export type YouthResponsiblePerson = YouthSheetPersonFields & {
+export type YouthResponsiblePerson = {
   sheetCompanyName: string | null;
+  responsibleName: string | null;
+  registeredCity: string | null;
+  age: number | null;
+  qualifies: boolean | null;
   driveFile: YouthDriveFile | null;
+};
+
+export type YouthPersonDisplay = YouthResponsiblePerson & {
+  personIndex: number;
+  poSaved: boolean;
+  ocrReadError: string | null;
 };
 
 export type YouthVerificationRow = {
@@ -31,7 +33,7 @@ export type YouthVerificationRow = {
   title: string;
   isJoint: boolean;
   overallRank: number | null;
-  persons: YouthResponsiblePerson[];
+  persons: YouthPersonDisplay[];
   warnings: string[];
 };
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@napi-rs/canvas", "sharp"],
+  serverExternalPackages: ["@napi-rs/canvas", "sharp", "tesseract.js"],
   turbopack: {
     root: currentDirectory,
   },

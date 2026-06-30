@@ -4,12 +4,30 @@ import { prisma } from "@/lib/prisma";
 import { loadSettlementRowsForExport } from "@/lib/settlementTable";
 import {
   findSheetRowForCompanyName,
-  splitSettlementCompanyNames,
   youthCompanyCoreMatch,
 } from "@/lib/youthId/companyMatch";
-import { findDriveFileForCompany, loadYouthIdDriveFiles } from "@/lib/youthId/driveFiles";
+import { resolveJointSheetCompanyTargets } from "@/lib/youthId/jointMapping";
+import { ocrIdCardFromDriveFile } from "@/lib/youthId/idOcr";
+import {
+  loadStoredYouthPersons,
+  mergeStoredIntoPerson,
+  type StoredYouthPerson,
+  upsertOcrYouthPerson,
+} from "@/lib/youthId/persistence";
 import { loadYouthIdSheetRows } from "@/lib/youthId/sheetSync";
-import type { YouthResponsiblePerson, YouthVerificationRow, YouthVerificationTable } from "@/lib/youthId/types";
+import type {
+  YouthDriveFile,
+  YouthResponsiblePerson,
+  YouthSheetRow,
+  YouthVerificationRow,
+  YouthVerificationTable,
+} from "@/lib/youthId/types";
+
+export type YouthPersonDisplay = YouthResponsiblePerson & {
+  personIndex: number;
+  poSaved: boolean;
+  ocrReadError: string | null;
+};
 
 async function loadResponsibleNamesByAppId(applicationIds: string[]): Promise<Map<string, string>> {
   const apps = await prisma.application.findMany({
@@ -35,79 +53,126 @@ async function loadResponsibleNamesByAppId(applicationIds: string[]): Promise<Ma
   return out;
 }
 
-import type { YouthSheetRow } from "@/lib/youthId/types";
+function driveFileFromSheetRow(sheetRow: YouthSheetRow): YouthDriveFile | null {
+  if (!sheetRow.uploadDriveFileId) return null;
+  return {
+    id: sheetRow.uploadDriveFileId,
+    name: sheetRow.companyName,
+    mimeType: "application/octet-stream",
+  };
+}
 
-function buildPersonFromSheet(
-  sheetCompanyName: string,
-  sheetRow: YouthSheetRow,
-  driveFile: ReturnType<typeof findDriveFileForCompany>,
+function buildBasePerson(
+  sheetCompanyName: string | null,
+  sheetRow: YouthSheetRow | null,
   fallbackName: string | null,
 ): YouthResponsiblePerson {
   return {
     sheetCompanyName,
-    responsibleName: sheetRow.fields.responsibleName || fallbackName,
-    registeredCity: sheetRow.fields.registeredCity,
-    age: sheetRow.fields.age,
-    qualifies: sheetRow.fields.qualifies,
-    driveFile:
-      sheetRow.uploadDriveFileId && driveFile
-        ? driveFile
-        : driveFile || (sheetRow.uploadDriveFileId
-            ? { id: sheetRow.uploadDriveFileId, name: sheetCompanyName, mimeType: "application/octet-stream" }
-            : null),
+    responsibleName: fallbackName,
+    registeredCity: null,
+    age: null,
+    qualifies: null,
+    driveFile: sheetRow ? driveFileFromSheetRow(sheetRow) : null,
   };
 }
 
-export async function loadYouthVerificationTable(): Promise<YouthVerificationTable> {
-  const [sheetRows, driveFiles, settlementExport] = await Promise.all([
-    loadYouthIdSheetRows().then((r) => r.rows),
-    loadYouthIdDriveFiles(),
-    loadSettlementRowsForExport(),
-  ]);
+async function resolvePersonData(
+  applicationId: string,
+  personIndex: number,
+  person: YouthResponsiblePerson,
+  stored: StoredYouthPerson | undefined,
+  runOcr: boolean,
+): Promise<YouthPersonDisplay> {
+  const driveId = person.driveFile?.id ?? null;
 
+  if (stored?.poSaved) {
+    return mergeStoredIntoPerson(person, stored, personIndex);
+  }
+
+  if (
+    stored &&
+    driveId &&
+    stored.sourceDriveFileId === driveId &&
+    (stored.age != null || stored.registeredCity != null || stored.qualifies != null)
+  ) {
+    return mergeStoredIntoPerson(person, stored, personIndex);
+  }
+
+  if (!runOcr || !driveId) {
+    return {
+      ...mergeStoredIntoPerson(person, stored, personIndex),
+      ocrReadError: driveId ? null : "試算表無證件連結",
+    };
+  }
+
+  const ocr = await ocrIdCardFromDriveFile(driveId);
+  await upsertOcrYouthPerson(applicationId, personIndex, driveId, {
+    responsibleName: person.responsibleName,
+    registeredCity: ocr.registeredCity,
+    age: ocr.age,
+    qualifies: ocr.qualifies,
+    ocrRocBirthYear: ocr.rocBirthYear,
+  });
+
+  return {
+    ...person,
+    personIndex,
+    poSaved: false,
+    registeredCity: ocr.registeredCity,
+    age: ocr.age,
+    qualifies: ocr.qualifies,
+    ocrReadError: ocr.readError,
+  };
+}
+
+export async function loadYouthVerificationTable(options?: {
+  runOcr?: boolean;
+}): Promise<YouthVerificationTable> {
+  const runOcr = options?.runOcr ?? false;
+  const sheetRows = (await loadYouthIdSheetRows()).rows;
+  const settlementExport = await loadSettlementRowsForExport();
   const settlementRows = settlementExport.standardRows;
-  const usedSheet = new Set<(typeof sheetRows)[number]>();
+  const usedSheet = new Set<YouthSheetRow>();
   const applicationIds = settlementRows.map((r) => r.applicationId);
-  const responsibleByApp = await loadResponsibleNamesByAppId(applicationIds);
+  const [responsibleByApp, storedMap] = await Promise.all([
+    loadResponsibleNamesByAppId(applicationIds),
+    loadStoredYouthPersons(applicationIds),
+  ]);
 
   const rows: YouthVerificationRow[] = [];
 
   for (const sRow of settlementRows) {
-    const segments = splitSettlementCompanyNames(sRow.companyName);
-    const persons: YouthResponsiblePerson[] = [];
+    const targets = resolveJointSheetCompanyTargets(sRow.companyName, sRow.title, sRow.isJoint);
+    const persons: YouthPersonDisplay[] = [];
     const warnings: string[] = [];
 
-    for (const segment of segments) {
-      const matched = findSheetRowForCompanyName(segment, sheetRows, usedSheet);
+    for (let personIndex = 0; personIndex < targets.length; personIndex++) {
+      const target = targets[personIndex];
+      const matched = findSheetRowForCompanyName(target, sheetRows, usedSheet);
+      const fallbackName =
+        targets.length === 1
+          ? responsibleByApp.get(sRow.applicationId) ?? null
+          : personIndex === 0
+            ? responsibleByApp.get(sRow.applicationId) ?? null
+            : null;
+
       if (!matched) {
-        warnings.push(`試算表無對應資料：${segment}`);
-        persons.push({
-          sheetCompanyName: null,
-          responsibleName: segments.length === 1 ? responsibleByApp.get(sRow.applicationId) ?? null : null,
-          registeredCity: null,
-          age: null,
-          qualifies: null,
-          driveFile: findDriveFileForCompany(segment, driveFiles),
-        });
+        warnings.push(`試算表無對應資料：${target}`);
+        const base = buildBasePerson(null, null, fallbackName);
+        const stored = storedMap.get(sRow.applicationId)?.find((p) => p.personIndex === personIndex);
+        persons.push(await resolvePersonData(sRow.applicationId, personIndex, base, stored, runOcr));
         continue;
       }
+
       usedSheet.add(matched);
-      const driveFile =
-        (matched.uploadDriveFileId
-          ? driveFiles.find((f) => f.id === matched.uploadDriveFileId) ||
-            findDriveFileForCompany(matched.companyName, driveFiles)
-          : findDriveFileForCompany(matched.companyName, driveFiles)) ?? null;
-      if (!driveFile && !matched.uploadDriveFileId) {
-        warnings.push(`${matched.companyName}：找不到身分證檔案`);
+      if (!matched.uploadDriveFileId) {
+        warnings.push(`${matched.companyName}：試算表無證件連結`);
       }
-      persons.push(
-        buildPersonFromSheet(
-          matched.companyName,
-          matched,
-          driveFile,
-          responsibleByApp.get(sRow.applicationId) ?? null,
-        ),
-      );
+
+      const base = buildBasePerson(matched.companyName, matched, fallbackName);
+      const stored = storedMap.get(sRow.applicationId)?.find((p) => p.personIndex === personIndex);
+      persons.push(await resolvePersonData(sRow.applicationId, personIndex, base, stored, runOcr));
     }
 
     rows.push({
@@ -127,10 +192,8 @@ export async function loadYouthVerificationTable(): Promise<YouthVerificationTab
 
   const unmatchedSettlementCompanies = settlementRows
     .filter((row) => {
-      const segments = splitSettlementCompanyNames(row.companyName);
-      return segments.some(
-        (seg) => !sheetRows.some((sr) => youthCompanyCoreMatch(seg, sr.companyName)),
-      );
+      const targets = resolveJointSheetCompanyTargets(row.companyName, row.title, row.isJoint);
+      return targets.some((seg) => !sheetRows.some((sr) => youthCompanyCoreMatch(seg, sr.companyName)));
     })
     .map((r) => r.companyName);
 
@@ -143,7 +206,29 @@ export async function loadYouthVerificationTable(): Promise<YouthVerificationTab
   };
 }
 
+export async function runOcrForApplication(applicationId: string): Promise<YouthVerificationRow | null> {
+  const base = await loadYouthVerificationTable({ runOcr: false });
+  const row = base.rows.find((r) => r.applicationId === applicationId);
+  if (!row) return null;
+
+  const storedList = (await loadStoredYouthPersons([applicationId])).get(applicationId) ?? [];
+  const persons: YouthPersonDisplay[] = [];
+  for (let i = 0; i < row.persons.length; i++) {
+    const st = storedList.find((p) => p.personIndex === i);
+    persons.push(await resolvePersonData(applicationId, i, row.persons[i], st, true));
+  }
+  return { ...row, persons };
+}
+
 export async function loadYouthVerificationForApplication(applicationId: string) {
-  const table = await loadYouthVerificationTable();
-  return table.rows.find((r) => r.applicationId === applicationId) ?? null;
+  const table = await loadYouthVerificationTable({ runOcr: false });
+  const row = table.rows.find((r) => r.applicationId === applicationId);
+  if (!row) return null;
+
+  const storedList = (await loadStoredYouthPersons([applicationId])).get(applicationId) ?? [];
+  const persons = row.persons.map((person, i) => {
+    const st = storedList.find((p) => p.personIndex === i);
+    return st ? mergeStoredIntoPerson(person, st, i) : person;
+  });
+  return { ...row, persons };
 }

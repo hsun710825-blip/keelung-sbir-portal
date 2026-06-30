@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   try {
-    const table = await loadYouthVerificationTable();
+    const table = await loadYouthVerificationTable({ runOcr: false });
     const buffer = await buildYouthIdWordDocument(table.rows);
     const filename = encodeURIComponent("115年基隆市地方型SBIR提案業者身分證件彙整表.docx");
     return new NextResponse(new Uint8Array(buffer), {

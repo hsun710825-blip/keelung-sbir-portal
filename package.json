@@ -41,6 +41,7 @@
     "react-dom": "19.2.3",
     "reactflow": "^11.11.4",
     "sharp": "^0.35.2",
+    "tesseract.js": "^7.0.0",
     "typeface-noto-sans-tc": "^1.1.13",
     "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0",

@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { YouthIdVerificationExportButton } from "@/components/admin/YouthIdVerificationExportButton";
-import { YouthIdVerificationTable } from "@/components/admin/YouthIdVerificationTable";
+import { YouthIdVerificationEditor } from "@/components/admin/YouthIdVerificationEditor";
 import { isBackofficePrismaRole } from "@/lib/backofficeRole";
 import { isReviewerRole } from "@/lib/rbac";
 import { loadYouthVerificationTable } from "@/lib/youthId/loadVerificationTable";
@@ -28,10 +28,10 @@ export default async function YouthIdVerificationPage() {
   let table;
   let loadError: string | null = null;
   try {
-    table = await loadYouthVerificationTable();
+    table = await loadYouthVerificationTable({ runOcr: false });
   } catch (error) {
     console.error("[youth-id-verification]", error);
-    loadError = "無法同步 Google 試算表或 Drive，請確認服務帳戶權限後再試。";
+    loadError = "無法同步 Google 試算表，請確認服務帳戶權限後再試。";
     table = {
       rows: [],
       unmatchedSheetCompanies: [],
@@ -50,7 +50,7 @@ export default async function YouthIdVerificationPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-semibold text-slate-900">青年設籍查證彙整</h1>
           <p className="mt-2 text-sm text-slate-600">
-            依決算清表順序顯示；資料自動同步 Google 試算表。聯合提案一列內分兩組負責人。
+            試算表僅供公司名稱與證件連結對應；縣市、年齡、是否符合由證件自動判讀，PO 可修改後儲存，委員端顯示儲存結果。
           </p>
           <p className="mt-1 text-xs text-slate-500">
             最後同步：{formatTaipeiDateTime(table.syncedAt)} · 試算表 {table.sheetRowCount} 筆
@@ -78,13 +78,10 @@ export default async function YouthIdVerificationPage() {
               {table.unmatchedSettlementCompanies.join("、")}
             </p>
           ) : null}
-          <p className="mt-2 text-xs text-amber-800">
-            試算表可新增欄位：負責人姓名、設籍縣市、年齡、是否符合（是／否），同步後即顯示查證結果。
-          </p>
         </div>
       )}
 
-      <YouthIdVerificationTable rows={table.rows} />
+      <YouthIdVerificationEditor initialRows={table.rows} />
     </section>
   );
 }
