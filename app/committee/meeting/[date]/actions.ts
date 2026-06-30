@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
@@ -17,7 +16,19 @@ import { prisma } from "@/lib/prisma";
 import { isReviewerRole } from "@/lib/rbac";
 import { isReviewMeetingDate } from "@/lib/reviewMeetingAgenda";
 
-export type CommitteeMeetingActionState = { error?: string; message?: string };
+import { findNextMeetingApplicationId } from "@/lib/committeeNextApplication";
+import type { ReviewMeetingDate } from "@/lib/reviewMeetingAgenda";
+
+export type CommitteeMeetingActionState = {
+  error?: string;
+  message?: string;
+  submitted?: {
+    planTitle: string;
+    totalScore: number;
+    meetingDate: string;
+    nextApplicationId: string | null;
+  };
+};
 
 async function requireCommitteeUser() {
   const session = await getServerSession(authOptions);
@@ -107,7 +118,7 @@ export async function saveCommitteeScoringAction(
 
   const app = await prisma.application.findUnique({
     where: { id: applicationId },
-    select: { id: true, status: true, reviewMeetingDate: true },
+    select: { id: true, title: true, status: true, reviewMeetingDate: true },
   });
   if (!app) return { error: "找不到案件" };
   if (!isCommitteeVisibleStatus(app.status)) return { error: "此案件狀態不開放委員評分" };
@@ -139,10 +150,23 @@ export async function saveCommitteeScoringAction(
     },
   });
 
+  revalidatePath(`/committee/application/${applicationId}`);
   revalidatePath("/committee/summary");
   revalidatePath(`/committee/meeting/${meetingDate}`);
   revalidatePath("/admin/review-progress");
   revalidatePath("/admin/settlement");
 
-  redirect("/committee/summary");
+  const nextApplicationId = await findNextMeetingApplicationId(
+    meetingDate as ReviewMeetingDate,
+    applicationId,
+  );
+
+  return {
+    submitted: {
+      planTitle: app.title?.trim() || "（未命名計畫）",
+      totalScore: total,
+      meetingDate,
+      nextApplicationId,
+    },
+  };
 }

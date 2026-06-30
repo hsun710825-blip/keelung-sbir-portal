@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import {
   saveCommitteeScoringAction,
   type CommitteeMeetingActionState,
 } from "@/app/committee/meeting/[date]/actions";
 import { CommitteeScoringForm } from "@/components/committee/CommitteeScoringForm";
+import { CommitteeSubmitSuccessDialog } from "@/components/committee/CommitteeSubmitSuccessDialog";
 import type { CommitteeScoreBreakdown } from "@/lib/committeeScoringRubric";
 
 export function CommitteeScoringFormClient({
@@ -23,15 +24,39 @@ export function CommitteeScoringFormClient({
   readOnly?: boolean;
 }) {
   const [state, action] = useActionState(saveCommitteeScoringAction, {} as CommitteeMeetingActionState);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submittedSnapshot, setSubmittedSnapshot] = useState<
+    CommitteeMeetingActionState["submitted"] | null
+  >(null);
+
+  useEffect(() => {
+    if (state.submitted) {
+      setSubmittedSnapshot(state.submitted);
+      setDialogOpen(true);
+    }
+  }, [state.submitted]);
+
   return (
-    <CommitteeScoringForm
-      applicationId={applicationId}
-      meetingDate={meetingDate}
-      initialBreakdown={initialBreakdown}
-      initialComment={initialComment}
-      readOnly={readOnly}
-      action={action}
-      state={state}
-    />
+    <>
+      <CommitteeScoringForm
+        applicationId={applicationId}
+        meetingDate={meetingDate}
+        initialBreakdown={initialBreakdown}
+        initialComment={initialComment}
+        readOnly={readOnly}
+        action={action}
+        state={state}
+      />
+
+      {dialogOpen && submittedSnapshot ? (
+        <CommitteeSubmitSuccessDialog
+          planTitle={submittedSnapshot.planTitle}
+          totalScore={submittedSnapshot.totalScore}
+          meetingDate={submittedSnapshot.meetingDate}
+          nextApplicationId={submittedSnapshot.nextApplicationId}
+          onEditCurrent={() => setDialogOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

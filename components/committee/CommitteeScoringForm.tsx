@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
+import type { CommitteeMeetingActionState } from "@/app/committee/meeting/[date]/actions";
 import {
   BASE_SCORE_FIELDS,
   BONUS_SCORE_FIELDS,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/committeeScoringRubric";
 
 type BaseFieldKey = (typeof BASE_SCORE_FIELDS)[number]["key"];
+type BonusFieldKey = (typeof BONUS_SCORE_FIELDS)[number]["key"];
 
 function initBaseInputs(initialBreakdown: CommitteeScoreBreakdown | null): Record<BaseFieldKey, string> {
   const out = {} as Record<BaseFieldKey, string>;
@@ -44,6 +46,54 @@ const EDITABLE_INPUT_CLASS =
 const READONLY_INPUT_CLASS =
   "mt-1 w-full cursor-not-allowed rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600";
 
+function BonusOptionGroup({
+  fieldKey,
+  label,
+  options,
+  value,
+  readOnly,
+  onChange,
+}: {
+  fieldKey: BonusFieldKey;
+  label: string;
+  options: readonly number[];
+  value: number;
+  readOnly: boolean;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div>
+      <p className="block text-sm font-medium text-slate-800">{label}</p>
+      <input type="hidden" name={fieldKey} value={value} />
+      <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={label}>
+        {options.map((opt) => {
+          const selected = value === opt;
+          const base =
+            "min-w-[3.25rem] rounded-lg border px-3 py-2 text-sm font-medium tabular-nums transition";
+          const selectedClass = readOnly
+            ? "border-slate-400 bg-slate-200 text-slate-800"
+            : "border-blue-600 bg-blue-600 text-white shadow-sm";
+          const unselectedClass = readOnly
+            ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500"
+            : "border-slate-300 bg-white text-slate-900 hover:border-blue-300 hover:bg-blue-50";
+          return (
+            <button
+              key={opt}
+              type="button"
+              disabled={readOnly}
+              onClick={() => onChange(opt)}
+              className={`${base} ${selected ? selectedClass : unselectedClass}`}
+              aria-pressed={selected}
+            >
+              {opt} 分
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function CommitteeScoringForm({
   applicationId,
   meetingDate,
@@ -59,7 +109,7 @@ export function CommitteeScoringForm({
   initialComment: string | null;
   readOnly?: boolean;
   action: (payload: FormData) => void;
-  state: { error?: string; message?: string };
+  state: CommitteeMeetingActionState;
 }) {
   const [baseInputs, setBaseInputs] = useState(() => initBaseInputs(initialBreakdown));
   const [breakdown, setBreakdown] = useState<CommitteeScoreBreakdown>(
@@ -86,9 +136,8 @@ export function CommitteeScoringForm({
     }
   }
 
-  function setBonusField(key: keyof CommitteeScoreBreakdown, raw: string) {
-    const n = parseInt(raw, 10);
-    setBreakdown((prev) => ({ ...prev, [key]: Number.isFinite(n) ? n : 0 }));
+  function setBonusField(key: BonusFieldKey, value: number) {
+    setBreakdown((prev) => ({ ...prev, [key]: value }));
   }
 
   const fieldClass = readOnly ? READONLY_INPUT_CLASS : EDITABLE_INPUT_CLASS;
@@ -101,11 +150,6 @@ export function CommitteeScoringForm({
       {state.error ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
           {state.error}
-        </p>
-      ) : null}
-      {state.message ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          {state.message}
         </p>
       ) : null}
 
@@ -150,27 +194,17 @@ export function CommitteeScoringForm({
         className={`rounded-xl border p-4 ${readOnly ? "border-slate-300 bg-slate-100/80" : "border-amber-100 bg-amber-50/50"}`}
       >
         <p className="text-sm font-semibold text-slate-900">加分項目（滿分 14 分）</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {BONUS_SCORE_FIELDS.map((field) => (
-            <div key={field.key}>
-              <label htmlFor={field.key} className="block text-sm font-medium text-slate-800">
-                {field.label}
-              </label>
-              <select
-                id={field.key}
-                name={field.key}
-                disabled={readOnly}
-                value={breakdown[field.key]}
-                onChange={(e) => setBonusField(field.key, e.target.value)}
-                className={fieldClass}
-              >
-                {field.options.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt} 分
-                  </option>
-                ))}
-              </select>
-            </div>
+            <BonusOptionGroup
+              key={field.key}
+              fieldKey={field.key}
+              label={field.label}
+              options={field.options}
+              value={breakdown[field.key]}
+              readOnly={readOnly}
+              onChange={(value) => setBonusField(field.key, value)}
+            />
           ))}
         </div>
       </div>
