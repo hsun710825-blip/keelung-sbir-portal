@@ -87,15 +87,11 @@ export async function loadCommitteeApplicationReview(
     attachments,
   });
 
-  const hasPdfSource =
-    Boolean(pdfViewUrl) ||
-    attachments.some((a) => a.driveFileId) ||
-    Boolean(core.uploadedProposalUrl?.trim());
-
   return {
     ...core,
     pdfViewUrl,
-    pdfEmbedUrl: hasPdfSource ? `/api/committee/applications/${core.id}/proposal-pdf` : null,
+    /** 一律走站內 API（含審查完整版資料夾）；由 viewer 處理 404，避免漏判僅存在審查資料夾的 PDF。 */
+    pdfEmbedUrl: `/api/committee/applications/${core.id}/proposal-pdf`,
     pdfAttachmentsLoaded,
   };
 }

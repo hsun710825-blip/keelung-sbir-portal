@@ -29,16 +29,19 @@ export function buildMeetingRowsForDate(
   const ordered: MeetingApplicationRow[] = [];
 
   for (const c of config.cases) {
-    const app = apps.find((candidate) => {
-      const companyName = displayMap.get(candidate.id)?.companyName?.trim() || "";
-      const placement = resolveAgendaPlacement({
-        title: candidate.title,
-        companyName,
+    const app =
+      apps.find(
+        (candidate) =>
+          candidate.reviewMeetingDate === meetingDate && candidate.reviewAgendaOrder === c.order,
+      ) ??
+      apps.find((candidate) => {
+        const companyName = displayMap.get(candidate.id)?.companyName?.trim() || "";
+        const placement = resolveAgendaPlacement({
+          title: candidate.title,
+          companyName,
+        });
+        return placement?.meetingDate === meetingDate && placement.agendaOrder === c.order;
       });
-      return (
-        placement?.meetingDate === meetingDate && placement.agendaOrder === c.order
-      );
-    });
     if (!app) continue;
 
     const display = displayMap.get(app.id);

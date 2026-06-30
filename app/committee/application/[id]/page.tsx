@@ -74,7 +74,7 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   if (!application) notFound();
   if (!isCommitteeVisibleStatus(application.status)) redirect(`/committee/meeting/${meetingDate}`);
 
-  const [display, locked] = await Promise.all([
+  const [display, locked, existingEval, presentationSource, youthRow] = await Promise.all([
     resolveApplicationDisplayFields({
       id: application.id,
       submissionMode: application.submissionMode,
@@ -84,49 +84,37 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
       await ensureEvaluationSchema();
       return isMeetingLockedForCommittee(dbUser.id, meetingDate);
     })(),
+    (async () => {
+      try {
+        return await prisma.evaluation.findUnique({
+          where: {
+            applicationId_committeeId: { applicationId: application.id, committeeId: dbUser.id },
+          },
+          select: { score: true, comment: true, scoresJson: true, status: true },
+        });
+      } catch (error) {
+        if (!isMissingEvaluationSchemaError(error)) throw error;
+        return null;
+      }
+    })(),
+    resolveCommitteePresentationPdfSource(application.id).catch((error) => {
+      console.error("[committee/application] presentation resolve failed:", error);
+      return { kind: "not_found" as const };
+    }),
+    loadYouthVerificationForApplication(application.id).catch((error) => {
+      console.error("[committee/application] youth verification load failed:", error);
+      return null;
+    }),
   ]);
   const companyLabel = display.companyName?.trim() || application.applicant.email || "—";
-
-  let existingEval: {
-    score: number;
-    comment: string | null;
-    scoresJson: string | null;
-    status: string;
-  } | null = null;
-
-  try {
-    existingEval = await prisma.evaluation.findUnique({
-      where: {
-        applicationId_committeeId: { applicationId: application.id, committeeId: dbUser.id },
-      },
-      select: { score: true, comment: true, scoresJson: true, status: true },
-    });
-  } catch (error) {
-    if (!isMissingEvaluationSchemaError(error)) throw error;
-  }
 
   const breakdown = parseScoresJson(existingEval?.scoresJson);
   const titleText = application.title?.trim() || "（未命名計畫）";
   const submissionLabel =
     String(application.submissionMode || "").toUpperCase() === "UPLOAD" ? "自行上傳 PDF" : "線上撰寫產製 PDF";
 
-  const presentationSource = await resolveCommitteePresentationPdfSource(application.id, {
-    companyName: display.companyName,
-  }).catch((error) => {
-    console.error("[committee/application] presentation resolve failed:", error);
-    return { kind: "not_found" as const };
-  });
   const hasPresentation = presentationSource.kind === "drive_file";
-
-  let youthVerificationNote: string | null = null;
-  try {
-    const youthRow = await loadYouthVerificationForApplication(application.id);
-    if (youthRow) {
-      youthVerificationNote = formatYouthVerificationNote(youthRow.persons);
-    }
-  } catch (error) {
-    console.error("[committee/application] youth verification load failed:", error);
-  }
+  const youthVerificationNote = youthRow ? formatYouthVerificationNote(youthRow.persons) : null;
 
   return (
     <section className="space-y-6">
@@ -171,11 +159,10 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
             <h2 className="text-base font-semibold text-slate-900">計畫書 PDF</h2>
             <div className="mt-4">
-              {application.pdfEmbedUrl ? (
-                <CommitteeProposalPdfViewer applicationId={application.id} fallbackViewUrl={application.pdfViewUrl} />
-              ) : (
-                <p className="text-sm text-slate-500">目前無法載入計畫書 PDF</p>
-              )}
+              <CommitteeProposalPdfViewer
+                applicationId={application.id}
+                fallbackViewUrl={application.pdfViewUrl}
+              />
             </div>
           </section>
 

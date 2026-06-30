@@ -34,12 +34,13 @@ export default async function CommitteeMeetingPage({ params }: PageProps) {
 
   await ensureEvaluationSchema();
   const config = getReviewMeetingConfig(meetingDate);
-  const rows = await loadMeetingApplications(meetingDate);
-
-  const evaluations = await prisma.evaluation.findMany({
-    where: { committeeId: dbUser.id, meetingDate },
-    select: { applicationId: true, score: true },
-  });
+  const [rows, evaluations] = await Promise.all([
+    loadMeetingApplications(meetingDate),
+    prisma.evaluation.findMany({
+      where: { committeeId: dbUser.id, meetingDate },
+      select: { applicationId: true, score: true },
+    }),
+  ]);
   const evalByApp = new Map(evaluations.map((e) => [e.applicationId, e]));
 
   return (

@@ -1,6 +1,7 @@
 import { pickRegistryFieldsFromFormData } from "@/app/api/_registrySheet";
-import { extractFormDataFromDraftPayload } from "@/lib/resolveApplicationDisplayFields";
+import { extractFormDataFromDraftPayload, resolveApplicationDisplayFields } from "@/lib/resolveApplicationDisplayFields";
 import { prisma } from "@/lib/prisma";
+import { getCachedYouthIdSheetRows } from "@/lib/cachedYouthIdSheet";
 import { loadSettlementRowsForExport } from "@/lib/settlementTable";
 import {
   findSheetRowForCompanyName,
@@ -14,7 +15,6 @@ import {
   type StoredYouthPerson,
   upsertOcrYouthPerson,
 } from "@/lib/youthId/persistence";
-import { loadYouthIdSheetRows } from "@/lib/youthId/sheetSync";
 import type {
   YouthDriveFile,
   YouthResponsiblePerson,
@@ -130,7 +130,7 @@ export async function loadYouthVerificationTable(options?: {
   runOcr?: boolean;
 }): Promise<YouthVerificationTable> {
   const runOcr = options?.runOcr ?? false;
-  const sheetRows = (await loadYouthIdSheetRows()).rows;
+  const sheetRows = (await getCachedYouthIdSheetRows()).rows;
   const settlementExport = await loadSettlementRowsForExport();
   const settlementRows = settlementExport.combinedRows;
   const usedSheet = new Set<YouthSheetRow>();
@@ -220,15 +220,79 @@ export async function runOcrForApplication(applicationId: string): Promise<Youth
   return { ...row, persons };
 }
 
-export async function loadYouthVerificationForApplication(applicationId: string) {
-  const table = await loadYouthVerificationTable({ runOcr: false });
-  const row = table.rows.find((r) => r.applicationId === applicationId);
-  if (!row) return null;
-
-  const storedList = (await loadStoredYouthPersons([applicationId])).get(applicationId) ?? [];
-  const persons = row.persons.map((person, i) => {
-    const st = storedList.find((p) => p.personIndex === i);
-    return st ? mergeStoredIntoPerson(person, st, i) : person;
+export async function loadYouthVerificationForApplication(
+  applicationId: string,
+): Promise<YouthVerificationRow | null> {
+  const app = await prisma.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      submissionMode: true,
+      displayCompanyName: true,
+      reviewProposalType: true,
+    },
   });
-  return { ...row, persons };
+  if (!app) return null;
+
+  const isJoint = String(app.reviewProposalType || "").toUpperCase() === "JOINT";
+  const title = app.title?.trim() || "";
+
+  const [display, sheetRows, storedMap, responsibleByApp] = await Promise.all([
+    resolveApplicationDisplayFields({
+      id: app.id,
+      submissionMode: app.submissionMode,
+      description: app.description,
+      displayCompanyName: app.displayCompanyName,
+    }),
+    getCachedYouthIdSheetRows().then((sheet) => sheet.rows),
+    loadStoredYouthPersons([applicationId]),
+    loadResponsibleNamesByAppId([applicationId]),
+  ]);
+
+  const companyName = display.companyName?.trim() || "";
+  const usedSheet = new Set<YouthSheetRow>();
+  const targets = resolveJointSheetCompanyTargets(companyName, title, isJoint);
+  const storedList = storedMap.get(applicationId) ?? [];
+  const persons: YouthPersonDisplay[] = [];
+  const warnings: string[] = [];
+
+  for (let personIndex = 0; personIndex < targets.length; personIndex++) {
+    const target = targets[personIndex];
+    const matched = findSheetRowForCompanyName(target, sheetRows, usedSheet);
+    const fallbackName =
+      targets.length === 1
+        ? responsibleByApp.get(applicationId) ?? null
+        : personIndex === 0
+          ? responsibleByApp.get(applicationId) ?? null
+          : null;
+
+    if (!matched) {
+      warnings.push(`試算表無對應資料：${target}`);
+      const base = buildBasePerson(null, null, fallbackName);
+      const stored = storedList.find((p) => p.personIndex === personIndex);
+      persons.push(await resolvePersonData(applicationId, personIndex, base, stored, false));
+      continue;
+    }
+
+    usedSheet.add(matched);
+    if (!matched.uploadDriveFileId) {
+      warnings.push(`${matched.companyName}：試算表無證件連結`);
+    }
+
+    const base = buildBasePerson(matched.companyName, matched, fallbackName);
+    const stored = storedList.find((p) => p.personIndex === personIndex);
+    persons.push(await resolvePersonData(applicationId, personIndex, base, stored, false));
+  }
+
+  return {
+    applicationId,
+    companyName,
+    title,
+    isJoint,
+    overallRank: null,
+    persons,
+    warnings,
+  };
 }
