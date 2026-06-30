@@ -11,11 +11,13 @@ import { isCommitteeVisibleStatus } from "@/lib/committeeApplicationStatuses";
 import { isMeetingLockedForCommittee } from "@/lib/committeeReviewSession";
 import { parseScoresJson } from "@/lib/committeeScoringRubric";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
+import { isMissingEvaluationSchemaError } from "@/lib/safeCommitteeEvaluation";
 import { loadCommitteeApplicationReview } from "@/lib/loadCommitteeApplicationReview";
 import { prisma } from "@/lib/prisma";
 import { resolveApplicationDisplayFields } from "@/lib/resolveApplicationDisplayFields";
 import { isReviewMeetingDate, reviewMeetingDateLabel } from "@/lib/reviewMeetingAgenda";
-import { isMissingEvaluationSchemaError } from "@/lib/safeCommitteeEvaluation";
+import { loadYouthVerificationForApplication } from "@/lib/youthId/loadVerificationTable";
+import { formatYouthVerificationNote } from "@/lib/youthId/formatCommitteeNote";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +118,16 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
   });
   const hasPresentation = presentationSource.kind === "drive_file";
 
+  let youthVerificationNote: string | null = null;
+  try {
+    const youthRow = await loadYouthVerificationForApplication(application.id);
+    if (youthRow) {
+      youthVerificationNote = formatYouthVerificationNote(youthRow.persons);
+    }
+  } catch (error) {
+    console.error("[committee/application] youth verification load failed:", error);
+  }
+
   return (
     <section className="space-y-6">
         <header className="mb-6 flex flex-col gap-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
@@ -197,6 +209,7 @@ export default async function CommitteeApplicationDetailPage({ params, searchPar
                 initialBreakdown={breakdown}
                 initialComment={existingEval?.comment ?? null}
                 readOnly={locked}
+                youthVerificationNote={youthVerificationNote}
               />
             </div>
           </section>

@@ -53,6 +53,7 @@ function BonusOptionGroup({
   value,
   readOnly,
   onChange,
+  verificationNote,
 }: {
   fieldKey: BonusFieldKey;
   label: string;
@@ -60,10 +61,16 @@ function BonusOptionGroup({
   value: number;
   readOnly: boolean;
   onChange: (value: number) => void;
+  verificationNote?: string | null;
 }) {
   return (
     <div>
       <p className="block text-sm font-medium text-slate-800">{label}</p>
+      {verificationNote ? (
+        <p className="mt-1 rounded-md border border-blue-100 bg-blue-50/80 px-2.5 py-2 text-xs leading-relaxed text-blue-900">
+          {verificationNote}
+        </p>
+      ) : null}
       <input type="hidden" name={fieldKey} value={value} />
       <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={label}>
         {options.map((opt) => {
@@ -102,6 +109,7 @@ export function CommitteeScoringForm({
   readOnly = false,
   action,
   state,
+  youthVerificationNote = null,
 }: {
   applicationId: string;
   meetingDate: string;
@@ -110,6 +118,7 @@ export function CommitteeScoringForm({
   readOnly?: boolean;
   action: (payload: FormData) => void;
   state: CommitteeMeetingActionState;
+  youthVerificationNote?: string | null;
 }) {
   const [baseInputs, setBaseInputs] = useState(() => initBaseInputs(initialBreakdown));
   const [breakdown, setBreakdown] = useState<CommitteeScoreBreakdown>(
@@ -204,6 +213,7 @@ export function CommitteeScoringForm({
               value={breakdown[field.key]}
               readOnly={readOnly}
               onChange={(value) => setBonusField(field.key, value)}
+              verificationNote={field.key === "bonusYouth" ? youthVerificationNote : undefined}
             />
           ))}
         </div>

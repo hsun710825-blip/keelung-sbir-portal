@@ -55,7 +55,12 @@ export default function AdminNav({ items }: { items: AdminNavItem[] }) {
   return (
     <nav className="space-y-1" aria-label="管理後台導覽">
       {items.map((item) => {
-        const active = item.matchPrefix ? pathname.startsWith(item.matchPrefix) : pathname === item.href;
+        const childActive = item.children?.some((child) => isChildActive(child, pathname, meetingParam));
+        const active = childActive
+          ? true
+          : item.matchPrefix
+            ? pathname.startsWith(item.matchPrefix)
+            : pathname === item.href;
         return (
           <div key={item.href} className="space-y-0.5">
             <Link

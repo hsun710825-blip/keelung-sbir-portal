@@ -51,6 +51,14 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
       label: "帳號與案件總覽",
       description: "一筆案件一列，支援匯出",
       icon: "dashboard",
+      matchPrefix: "/admin/accounts-overview",
+      children: [
+        {
+          href: "/admin/youth-id-verification",
+          label: "青年設籍查證彙整",
+          matchPrefix: "/admin/youth-id-verification",
+        },
+      ],
     });
     navItems.push({
       href: "/admin/settlement",

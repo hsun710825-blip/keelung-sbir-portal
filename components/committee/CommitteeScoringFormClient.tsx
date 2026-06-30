@@ -16,12 +16,14 @@ export function CommitteeScoringFormClient({
   initialBreakdown,
   initialComment,
   readOnly,
+  youthVerificationNote = null,
 }: {
   applicationId: string;
   meetingDate: string;
   initialBreakdown: CommitteeScoreBreakdown | null;
   initialComment: string | null;
   readOnly?: boolean;
+  youthVerificationNote?: string | null;
 }) {
   const [state, action] = useActionState(saveCommitteeScoringAction, {} as CommitteeMeetingActionState);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -46,6 +48,7 @@ export function CommitteeScoringFormClient({
         readOnly={readOnly}
         action={action}
         state={state}
+        youthVerificationNote={youthVerificationNote}
       />
 
       {dialogOpen && submittedSnapshot ? (
