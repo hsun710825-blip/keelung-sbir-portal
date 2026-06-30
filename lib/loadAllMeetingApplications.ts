@@ -1,4 +1,5 @@
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
+import { resolveAgendaPlacement } from "@/lib/agendaMatchedApplication";
 import { prisma } from "@/lib/prisma";
 import {
   getReviewMeetingConfig,
@@ -25,45 +26,32 @@ export function buildMeetingRowsForDate(
   displayMap: Map<string, { companyName: string }>,
 ): MeetingApplicationRow[] {
   const config = getReviewMeetingConfig(meetingDate);
-  const byOrder = new Map<number, MeetingAppRecord>();
-  const extras: MeetingAppRecord[] = [];
+  const ordered: MeetingApplicationRow[] = [];
 
-  for (const app of apps) {
-    if (app.reviewAgendaOrder != null) {
-      byOrder.set(app.reviewAgendaOrder, app);
-    } else {
-      extras.push(app);
-    }
-  }
-
-  const ordered = config.cases
-    .map((c) => {
-      const app = byOrder.get(c.order);
-      if (!app) return null;
-      const display = displayMap.get(app.id);
-      const companyName = display?.companyName?.trim() || c.company;
-      return {
-        agendaOrder: c.order,
-        agendaTime: c.time,
-        application: app,
+  for (const c of config.cases) {
+    const app = apps.find((candidate) => {
+      const companyName = displayMap.get(candidate.id)?.companyName?.trim() || "";
+      const placement = resolveAgendaPlacement({
+        title: candidate.title,
         companyName,
-        agendaProject: c.project,
-      };
-    })
-    .filter(Boolean) as MeetingApplicationRow[];
+      });
+      return (
+        placement?.meetingDate === meetingDate && placement.agendaOrder === c.order
+      );
+    });
+    if (!app) continue;
 
-  for (const app of extras) {
     const display = displayMap.get(app.id);
+    const companyName = display?.companyName?.trim() || c.company;
     ordered.push({
-      agendaOrder: app.reviewAgendaOrder ?? 999,
-      agendaTime: "—",
+      agendaOrder: c.order,
+      agendaTime: c.time,
       application: app,
-      companyName: display?.companyName?.trim() || "—",
-      agendaProject: app.title?.trim() || "—",
+      companyName,
+      agendaProject: c.project,
     });
   }
 
-  ordered.sort((a, b) => a.agendaOrder - b.agendaOrder);
   return ordered;
 }
 

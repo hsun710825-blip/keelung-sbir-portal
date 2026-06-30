@@ -6,6 +6,7 @@ import { sessionStatusLabel } from "@/lib/committeeScoringRubric";
 import { getMeetingLockMap, listReviewSessionsForCommittee } from "@/lib/committeeReviewSession";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { prisma } from "@/lib/prisma";
+import { partitionReviewProgressMembers } from "@/lib/reviewProgressMembers";
 import { REVIEW_MEETING_DATES } from "@/lib/reviewMeetingAgenda";
 
 export type CombinedPersonalScoreRow = {
@@ -155,8 +156,11 @@ export async function loadReviewProgressForAdmin(meetingDate: import("@/lib/revi
     evalMap[`${ev.committeeId}:${ev.applicationId}`] = ev;
   }
 
+  const { primary, test } = await partitionReviewProgressMembers(committeeMembers);
+
   return {
-    committeeMembers,
+    primaryMembers: primary,
+    testMembers: test,
     meetingApps,
     sessionByCommittee,
     evalMap,

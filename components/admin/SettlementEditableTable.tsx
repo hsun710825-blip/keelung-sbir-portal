@@ -2,6 +2,8 @@
 
 import { useActionState } from "react";
 
+import { HorizontalScrollPanel } from "@/components/admin/HorizontalScrollPanel";
+
 import {
   saveSettlementCommitteeConfigAction,
   saveSettlementRowAction,
@@ -188,7 +190,7 @@ export function SettlementEditableTable({
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[calc(100vh-11rem)] overflow-auto">
+        <HorizontalScrollPanel>
           <table className="w-full min-w-[1500px] border-collapse text-left text-sm">
             <SettlementTableHeader memberNames={memberNames} />
             <tbody className="divide-y divide-slate-100">
@@ -207,7 +209,7 @@ export function SettlementEditableTable({
               )}
             </tbody>
           </table>
-        </div>
+        </HorizontalScrollPanel>
       </div>
     </div>
   );

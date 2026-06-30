@@ -1,7 +1,7 @@
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
 import { normalizeCompanyDisplayName } from "@/lib/companyNameNormalize";
+import { resolveAgendaPlacement } from "@/lib/agendaMatchedApplication";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
-import { matchApplicationToAgenda } from "@/lib/matchApplicationToAgenda";
 import { prisma } from "@/lib/prisma";
 import { resolveApplicationDisplayFieldsBatch } from "@/lib/resolveApplicationDisplayFields";
 import {
@@ -168,30 +168,23 @@ async function loadSettlementApplications(): Promise<
     agendaOrder: number;
     isJoint: boolean;
   }> = [];
+  const usedSlots = new Set<string>();
 
   for (const app of apps) {
     const companyName = displayMap.get(app.id)?.companyName?.trim() || "";
-    let meetingDate = app.reviewMeetingDate as ReviewMeetingDate | null;
-    let agendaOrder = app.reviewAgendaOrder;
-    let isJoint = String(app.reviewProposalType || "").toUpperCase() === "JOINT";
+    const placement = resolveAgendaPlacement({ title: app.title, companyName });
+    if (!placement) continue;
 
-    if (!meetingDate || agendaOrder == null) {
-      const hit = matchApplicationToAgenda({ title: app.title, companyName });
-      if (!hit) continue;
-      meetingDate = hit.meetingDate;
-      agendaOrder = hit.order;
-      isJoint = isAgendaJointProposal(hit.agendaCase);
-    }
+    const slotKey = `${placement.meetingDate}:${placement.agendaOrder}`;
+    if (usedSlots.has(slotKey)) continue;
+    usedSlots.add(slotKey);
 
-    if (!meetingDate || agendaOrder == null) continue;
-
-    const config = getReviewMeetingConfig(meetingDate);
-    const agendaCase = config.cases.find((c) => c.order === agendaOrder);
+    const { meetingDate, agendaOrder, agendaCase, isJoint } = placement;
 
     out.push({
       app,
-      companyName: companyName || agendaCase?.company || "—",
-      agendaProject: agendaCase?.project || app.title?.trim() || "—",
+      companyName: companyName || agendaCase.company || "—",
+      agendaProject: agendaCase.project || app.title?.trim() || "—",
       meetingDate,
       agendaOrder,
       isJoint,

@@ -63,7 +63,8 @@ export default async function AdminReviewProgressPage({ searchParams }: PageProp
 
       <ReviewProgressMonitorTable
         meetingDate={meetingDate}
-        committeeMembers={data.committeeMembers}
+        primaryMembers={data.primaryMembers}
+        testMembers={data.testMembers}
         meetingApps={data.meetingApps}
         sessionByCommittee={data.sessionByCommittee}
         evalMap={data.evalMap}
