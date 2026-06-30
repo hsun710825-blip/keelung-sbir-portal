@@ -27,6 +27,21 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
       description: "審查會議評分與總表",
       icon: "evaluations",
       matchPrefix: "/committee/",
+      children: [
+        { href: "/committee/summary", label: "所有評分總表" },
+        {
+          href: "/committee/meeting/0622",
+          label: "6/22",
+          matchPrefix: "/committee/meeting/0622",
+          meetingDateKey: "0622",
+        },
+        {
+          href: "/committee/meeting/0701",
+          label: "7/1",
+          matchPrefix: "/committee/meeting/0701",
+          meetingDateKey: "0701",
+        },
+      ],
     });
   }
 
