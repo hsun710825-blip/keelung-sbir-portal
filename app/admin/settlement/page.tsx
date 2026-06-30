@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 
@@ -33,7 +32,7 @@ export default async function AdminSettlementPage() {
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Admin</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-900">決算清表</h1>
         <p className="mt-2 text-sm text-slate-600">
-          依委員平均分數由高至低排序（同分跳號並列）。申請經費由計畫書自動帶入，建議自籌預設同申請自籌；各經費欄皆可編輯。聯合提案另列於匯出檔第二分頁。
+          依委員平均分數由高至低排序（同分跳號並列）。申請經費可自 Excel 匯入或手動編輯；建議補助依比例係數 R 計算（H=ROUND(G×R)）。匯出 Excel 含公式，聯合提案另列第二分頁。
         </p>
         <div className="mt-4">
           <a
@@ -42,9 +41,6 @@ export default async function AdminSettlementPage() {
           >
             下載 Excel 決算清表
           </a>
-          <Link href="/admin/committee-evaluations" className="ml-3 text-sm text-blue-700 hover:underline">
-            委員評分彙總
-          </Link>
         </div>
       </header>
 

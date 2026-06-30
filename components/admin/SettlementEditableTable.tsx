@@ -8,16 +8,19 @@ import {
   type SettlementActionState,
 } from "@/app/admin/settlement/actions";
 import type { SettlementCommitteeConfig } from "@/lib/settlementConfig";
+import { formatRatioPercent } from "@/lib/settlementFormulas";
 import type { SettlementRow } from "@/lib/settlementTable";
 
 function FundingInput({
   formId,
   name,
   defaultValue,
+  step = "1",
 }: {
   formId: string;
   name: string;
   defaultValue: number | null;
+  step?: string;
 }) {
   return (
     <input
@@ -25,6 +28,7 @@ function FundingInput({
       name={name}
       type="number"
       min={0}
+      step={step}
       defaultValue={defaultValue ?? ""}
       className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
       placeholder="千"
@@ -32,7 +36,7 @@ function FundingInput({
   );
 }
 
-function SettlementRowEditor({ row }: { row: SettlementRow }) {
+function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberNames: string[] }) {
   const [state, action, pending] = useActionState(saveSettlementRowAction, {} as SettlementActionState);
   const formId = `settlement-row-${row.applicationId}`;
 
@@ -61,12 +65,26 @@ function SettlementRowEditor({ row }: { row: SettlementRow }) {
         <FundingInput formId={formId} name="suggestedTotal" defaultValue={row.suggestedTotal} />
       </td>
       {row.committeeScores.map((s, i) => (
-        <td key={`s-${i}`} className="px-2 py-2 tabular-nums text-center">
+        <td key={`s-${memberNames[i] ?? i}`} className="px-2 py-2 tabular-nums text-center">
           {s != null ? s.toFixed(0) : "—"}
         </td>
       ))}
       <td className="px-2 py-2 tabular-nums text-center">
         {row.avgScore != null ? row.avgScore.toFixed(1) : "—"}
+      </td>
+      <td className="px-2 py-2 tabular-nums text-center text-xs">
+        {formatRatioPercent(row.subsidyRatio)}
+      </td>
+      <td className="px-2 py-2 tabular-nums text-center text-xs">
+        {formatRatioPercent(row.totalSubsidyRatio)}
+      </td>
+      <td className="px-2 py-2">
+        <FundingInput
+          formId={formId}
+          name="tierRate"
+          defaultValue={row.subsidyGradeRatio}
+          step="0.01"
+        />
       </td>
       <td className="px-2 py-2">
         <form id={formId} action={action}>
@@ -99,11 +117,11 @@ export function SettlementEditableTable({
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[1400px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1600px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-xs">
               <th className="px-2 py-2">總排序</th>
-              <th className="px-2 py-2">編號排序</th>
+              <th className="px-2 py-2">編號</th>
               <th className="px-2 py-2">申請單位</th>
               <th className="px-2 py-2">計畫名稱</th>
               <th className="px-2 py-2">申請補助(千)</th>
@@ -114,10 +132,13 @@ export function SettlementEditableTable({
               <th className="px-2 py-2">建議總計(千)</th>
               {memberNames.map((n) => (
                 <th key={`s-${n}`} className="px-2 py-2">
-                  {n}分
+                  {n}
                 </th>
               ))}
               <th className="px-2 py-2">平均</th>
+              <th className="px-2 py-2">補助款比例</th>
+              <th className="px-2 py-2">總補助比例</th>
+              <th className="px-2 py-2">比例係數(R)</th>
               <th className="px-2 py-2">操作</th>
             </tr>
           </thead>
@@ -131,7 +152,7 @@ export function SettlementEditableTable({
             ) : (
               rows.map((row) => (
                 <tr key={row.applicationId} className="hover:bg-slate-50/80">
-                  <SettlementRowEditor row={row} />
+                  <SettlementRowEditor row={row} memberNames={memberNames} />
                 </tr>
               ))
             )}
@@ -187,7 +208,7 @@ export function SettlementCommitteeConfigPanel({
             </label>
           </div>
         ))}
-        <div className="md:col-span-3 flex items-center gap-3">
+        <div className="flex items-center gap-3 md:col-span-3">
           <button
             type="submit"
             disabled={pending}

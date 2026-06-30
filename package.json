@@ -15,6 +15,7 @@
     "phase1:delete": "npx tsx scripts/phase1-data-cleanup.ts delete --confirm",
     "eval:clear": "npx tsx scripts/clear-evaluations.ts",
     "review:assign-meetings": "npx tsx --env-file=.env --env-file=.env.local scripts/assign-review-meetings.ts",
+    "settlement:import": "npx tsx --env-file=.env --env-file=.env.local scripts/import-settlement-reference.ts",
     "app:delete-unnamed": "npx tsx --env-file=.env --env-file=.env.local scripts/delete-unnamed-test-app.ts"
   },
   "dependencies": {

@@ -14,6 +14,7 @@ import {
   loadSettlementCommitteeConfig,
   type SettlementCommitteeConfig,
 } from "@/lib/settlementConfig";
+import { resolveSuggestedFunding } from "@/lib/settlementFormulas";
 import { assignSkipTieRanks, avgCommitteeScore, sortRowsByAvgScoreDesc } from "@/lib/settlementRank";
 
 export type SettlementRow = {
@@ -28,6 +29,9 @@ export type SettlementRow = {
   suggestedTotal: number | null;
   committeeScores: [number | null, number | null, number | null];
   avgScore: number | null;
+  subsidyGradeRatio: number | null;
+  subsidyRatio: number | null;
+  totalSubsidyRatio: number | null;
   overallRank: number | null;
   briefingOrder: string;
   isJoint: boolean;
@@ -50,6 +54,7 @@ type AppRow = {
   settlementSuggestedSubsidy: number | null;
   settlementSuggestedSelfFund: number | null;
   settlementSuggestedTotal: number | null;
+  settlementSubsidyTierRate: number | null;
 };
 
 const APP_SELECT = {
@@ -67,6 +72,7 @@ const APP_SELECT = {
   settlementSuggestedSubsidy: true,
   settlementSuggestedSelfFund: true,
   settlementSuggestedTotal: true,
+  settlementSubsidyTierRate: true,
 } as const;
 
 const APP_SELECT_FALLBACK = {
@@ -139,6 +145,7 @@ async function loadSettlementApplications(): Promise<
         settlementAppliedSubsidy: null,
         settlementAppliedSelfFund: null,
         settlementAppliedTotal: null,
+        settlementSubsidyTierRate: null,
       })),
     );
   }
@@ -191,6 +198,26 @@ async function loadSettlementApplications(): Promise<
   }
 
   return out;
+}
+
+function parseBriefingOrderValue(order: string): number {
+  const raw = String(order || "").trim();
+  if (/^A\d+/i.test(raw)) {
+    return 1000 + parseInt(raw.slice(1), 10);
+  }
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 9999;
+}
+
+function finalizeSettlementRows(rows: SettlementRow[]): SettlementRow[] {
+  const ranked = rows.filter((r) => r.avgScore != null);
+  const unranked = rows.filter((r) => r.avgScore == null);
+  const sortedRanked = sortRowsByAvgScoreDesc(ranked);
+  assignSkipTieRanks(sortedRanked);
+  const sortedUnranked = [...unranked].sort(
+    (a, b) => parseBriefingOrderValue(a.briefingOrder) - parseBriefingOrderValue(b.briefingOrder),
+  );
+  return [...sortedRanked, ...sortedUnranked];
 }
 
 function pickAppliedAmount(
@@ -276,6 +303,16 @@ function buildSettlementRowsFromContext(
       ? context.briefingMaps.jointBriefingByKey.get(agendaKey) || "—"
       : String(context.briefingMaps.standardBriefingByKey.get(agendaKey) ?? "—");
 
+    const funding = resolveSuggestedFunding({
+      appliedSubsidy,
+      appliedSelfFund,
+      appliedTotal,
+      tierRate: item.app.settlementSubsidyTierRate,
+      storedSuggestedSubsidy: item.app.settlementSuggestedSubsidy,
+      storedSuggestedSelfFund: item.app.settlementSuggestedSelfFund,
+      storedSuggestedTotal: item.app.settlementSuggestedTotal,
+    });
+
     rows.push({
       applicationId: item.app.id,
       companyName: item.companyName,
@@ -283,12 +320,14 @@ function buildSettlementRowsFromContext(
       appliedSubsidy,
       appliedSelfFund,
       appliedTotal,
-      suggestedSubsidy: item.app.settlementSuggestedSubsidy ?? null,
-      suggestedSelfFund:
-        item.app.settlementSuggestedSelfFund ?? appliedSelfFund ?? null,
-      suggestedTotal: item.app.settlementSuggestedTotal ?? null,
+      suggestedSubsidy: funding.suggestedSubsidy,
+      suggestedSelfFund: funding.suggestedSelfFund,
+      suggestedTotal: funding.suggestedTotal,
       committeeScores: scores,
       avgScore: avgCommitteeScore(scores),
+      subsidyGradeRatio: funding.subsidyGradeRatio,
+      subsidyRatio: funding.subsidyRatio,
+      totalSubsidyRatio: funding.totalSubsidyRatio,
       overallRank: null,
       briefingOrder,
       isJoint: item.isJoint,
@@ -297,9 +336,7 @@ function buildSettlementRowsFromContext(
     });
   }
 
-  const sorted = sortRowsByAvgScoreDesc(rows);
-  assignSkipTieRanks(sorted);
-  return sorted;
+  return rows;
 }
 
 export async function buildSettlementRows(
@@ -308,15 +345,18 @@ export async function buildSettlementRows(
 ): Promise<SettlementRow[]> {
   const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
   const context = await createSettlementBuildContext(config);
-  return buildSettlementRowsFromContext(context, jointOnly);
+  return finalizeSettlementRows(buildSettlementRowsFromContext(context, jointOnly));
 }
 
 export async function loadSettlementRowsForExport(committeeConfig?: SettlementCommitteeConfig) {
   const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
   const context = await createSettlementBuildContext(config);
+  const standardRaw = buildSettlementRowsFromContext(context, false);
+  const jointRaw = buildSettlementRowsFromContext(context, true);
+  const combinedMainRows = finalizeSettlementRows([...standardRaw, ...jointRaw]);
   return {
-    standardRows: buildSettlementRowsFromContext(context, false),
-    jointRows: buildSettlementRowsFromContext(context, true),
+    standardRows: combinedMainRows,
+    jointRows: finalizeSettlementRows(jointRaw),
   };
 }
 
@@ -329,8 +369,8 @@ export async function loadSettlementPageData() {
   ]);
 
   return {
-    standardRows: buildSettlementRowsFromContext(context, false),
-    jointRows: buildSettlementRowsFromContext(context, true),
+    standardRows: finalizeSettlementRows(buildSettlementRowsFromContext(context, false)),
+    jointRows: finalizeSettlementRows(buildSettlementRowsFromContext(context, true)),
     committeeConfig,
     reviewerOptions,
     memberNames: committeeConfig.slots.map((s) => s.displayName),

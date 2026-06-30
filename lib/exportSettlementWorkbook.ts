@@ -1,5 +1,6 @@
 import XLSX from "xlsx-js-style";
 
+import { gradeRatioFromAvgScore } from "@/lib/settlementFormulas";
 import type { SettlementRow } from "@/lib/settlementTable";
 
 type CellValue = string | number | null;
@@ -10,6 +11,9 @@ const THIN_BORDER = {
   left: { style: "thin", color: { rgb: "FF000000" } },
   right: { style: "thin", color: { rgb: "FF000000" } },
 };
+
+const DATA_LAST_COL = 17; // A..R
+const HEADER_LAST_COL = 24; // through Y (grade legend)
 
 function cellStyle(extra?: Record<string, unknown>) {
   return {
@@ -43,6 +47,22 @@ function setCell(
   };
 }
 
+function setFormulaCell(
+  ws: XLSX.WorkSheet,
+  addr: string,
+  formula: string,
+  value?: CellValue,
+  style?: Record<string, unknown>,
+) {
+  const cell: XLSX.CellObject = {
+    t: typeof value === "number" ? "n" : "s",
+    v: value ?? "",
+    f: formula,
+    s: cellStyle(style),
+  };
+  ws[addr] = cell;
+}
+
 function displayWidth(text: string): number {
   let w = 0;
   for (const ch of text) {
@@ -59,7 +79,7 @@ function applyAutoColumnWidths(ws: XLSX.WorkSheet, colCount: number, lastRow: nu
       const cell = ws[addr];
       if (!cell || cell.v == null) continue;
       const text = String(cell.v);
-      const extra = c === 1 || c === 2 ? 2 : 1;
+      const extra = c === 2 || c === 3 ? 2 : 1;
       widths[c] = Math.max(widths[c], displayWidth(text) + extra);
     }
   }
@@ -117,112 +137,182 @@ function appendCommitteeSignatureBlock(
   return boxEndRow;
 }
 
-function buildSheet(
-  rows: SettlementRow[],
-  memberNames: string[],
-  appendSignature = false,
-): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
-  const lastCol = 16; // A..Q
+function buildGradeLegend(ws: XLSX.WorkSheet) {
+  setCell(ws, "R1", "研發個案補助比例建議", { font: { bold: true } });
+  setCell(ws, "Y1", "補助比例", { font: { bold: true } });
+  setCell(ws, "E2", "領域分類");
+  setCell(ws, "H2", "■創新服務  ■創新技術");
+  setCell(ws, "R2", "A級");
+  setCell(ws, "S2", "(90分以上)");
+  setCell(ws, "Y2", "45%~50%");
+  setCell(ws, "R3", "B級");
+  setCell(ws, "S3", "(80~89分)");
+  setCell(ws, "Y3", "35%~45%");
+  setCell(ws, "R4", "C級");
+  setCell(ws, "S4", "(70~79分)");
+  setCell(ws, "Y4", "21%~35%");
+  setCell(ws, "R5", "F級");
+  setCell(ws, "S5", "(69分以下)");
+  setCell(ws, "Y5", "不補助");
+}
 
-  setCell(ws, "A1", "115年度基隆市地方產業創新研發推動計畫(地方型 SBIR) 決算清表", {
+function buildHeaderRows(ws: XLSX.WorkSheet, memberNames: string[], titleLine1: string) {
+  setCell(ws, "A1", titleLine1, {
     alignment: { horizontal: "center", vertical: "center" },
     font: { bold: true },
   });
-  setCell(ws, "F2", "領域");
-  setCell(ws, "G2", "■ 創新服務    ■ 創新技術");
-  setCell(ws, "F3", "分類");
+  setCell(ws, "A2", "會議決算清表", { font: { bold: true } });
 
-  const headers4: Record<string, string> = {
-    A4: "編號",
-    B4: "申請單位",
-    C4: "計畫名稱",
-    D4: "申請",
-    G4: "建議",
-    J4: "委員評分",
-    M4: "分數",
-    N4: "補助款",
-    O4: "總補助",
-    P4: "總排序",
-    Q4: "編號排序",
+  buildGradeLegend(ws);
+
+  const h3: Record<string, string> = {
+    A3: "總排序",
+    B3: "編號",
+    C3: "申請單位",
+    D3: "計畫名稱",
+    E3: "申請",
+    H3: "建議",
+    K3: "委員評分",
+    N3: "分數",
+    O3: "補助款",
+    P3: "總補助",
   };
-  for (const [k, v] of Object.entries(headers4)) setCell(ws, k, v, { font: { bold: true } });
+  for (const [addr, text] of Object.entries(h3)) {
+    setCell(ws, addr, text, { font: { bold: true }, alignment: { horizontal: "center" } });
+  }
 
-  setCell(ws, "D5", "補助款");
-  setCell(ws, "E5", "自籌款");
-  setCell(ws, "F5", "總經費");
-  setCell(ws, "G5", "補助款");
-  setCell(ws, "H5", "自籌款");
-  setCell(ws, "I5", "總經費");
-  setCell(ws, "M5", "平均");
-  setCell(ws, "N5", "補助比例");
-  setCell(ws, "O5", "比例");
-  setCell(ws, "D6", "(千)");
-  setCell(ws, "E6", "(千)");
-  setCell(ws, "F6", "(千)");
-  setCell(ws, "G6", "(千)");
-  setCell(ws, "H6", "(千)");
-  setCell(ws, "I6", "(千)");
+  const h4: Record<string, string> = {
+    E4: "補助款",
+    F4: "自籌款",
+    G4: "總經費",
+    H4: "補助款",
+    I4: "自籌款",
+    J4: "總經費",
+    K4: "A",
+    L4: "B",
+    M4: "C",
+    N4: "平均",
+    O4: "補助比例",
+    P4: "比例",
+  };
+  for (const [addr, text] of Object.entries(h4)) {
+    setCell(ws, addr, text, { font: { bold: true }, alignment: { horizontal: "center" } });
+  }
+
+  for (const col of ["E", "F", "G", "H", "I", "J"]) {
+    setCell(ws, `${col}5`, "(千)", { alignment: { horizontal: "center" } });
+  }
 
   memberNames.forEach((name, i) => {
-    const scoreCol = colLetter(9 + i);
-    setCell(ws, `${scoreCol}6`, name);
+    setCell(ws, `${colLetter(10 + i)}5`, name, { alignment: { horizontal: "center" } });
+  });
+}
+
+function writeDataRow(
+  ws: XLSX.WorkSheet,
+  row: SettlementRow,
+  excelRow: number,
+  jointSheet: boolean,
+) {
+  const scored = row.avgScore != null;
+  const gradeRatio = row.subsidyGradeRatio ?? gradeRatioFromAvgScore(row.avgScore);
+
+  const rankCell = jointSheet ? row.briefingOrder : row.overallRank;
+  const briefingCell = jointSheet ? "" : row.briefingOrder;
+
+  setCell(ws, `A${excelRow}`, rankCell);
+  setCell(ws, `B${excelRow}`, briefingCell);
+  setCell(ws, `C${excelRow}`, row.companyName);
+  setCell(ws, `D${excelRow}`, row.title);
+  setCell(ws, `E${excelRow}`, row.appliedSubsidy);
+  setCell(ws, `F${excelRow}`, row.appliedSelfFund);
+  setCell(ws, `G${excelRow}`, row.appliedTotal);
+
+  if (scored && gradeRatio != null) {
+    setFormulaCell(
+      ws,
+      `H${excelRow}`,
+      `ROUND(G${excelRow}*R${excelRow},0)`,
+      row.suggestedSubsidy,
+    );
+    setFormulaCell(ws, `I${excelRow}`, `F${excelRow}`, row.suggestedSelfFund);
+    setFormulaCell(
+      ws,
+      `J${excelRow}`,
+      `ROUND(SUM(H${excelRow}:I${excelRow}),0)`,
+      row.suggestedTotal,
+    );
+    setCell(ws, `R${excelRow}`, gradeRatio);
+    setFormulaCell(ws, `O${excelRow}`, `H${excelRow}/E${excelRow}`, row.subsidyRatio);
+    setFormulaCell(ws, `P${excelRow}`, `H${excelRow}/J${excelRow}`, row.totalSubsidyRatio);
+  } else {
+    setCell(ws, `H${excelRow}`, row.suggestedSubsidy ?? 0);
+    setCell(ws, `I${excelRow}`, row.suggestedSelfFund);
+    setCell(ws, `J${excelRow}`, row.suggestedTotal);
+  }
+
+  row.committeeScores.forEach((score, i) => {
+    if (score != null) setCell(ws, `${colLetter(10 + i)}${excelRow}`, score);
   });
 
-  const startRow = 7;
+  if (row.avgScore != null) {
+    setCell(ws, `N${excelRow}`, Math.round(row.avgScore * 10) / 10);
+  }
+}
+
+function buildSheet(
+  rows: SettlementRow[],
+  memberNames: string[],
+  options: { appendSignature?: boolean; jointSheet?: boolean; titleLine1?: string } = {},
+): XLSX.WorkSheet {
+  const { appendSignature = false, jointSheet = false, titleLine1 } = options;
+  const ws: XLSX.WorkSheet = {};
+  const sheetTitle =
+    titleLine1 ??
+    "                 115年 6月22日、7月1日基隆市地方型SBIR補助分組審查會議";
+
+  buildHeaderRows(ws, memberNames, sheetTitle);
+
+  const startRow = 6;
   rows.forEach((row, idx) => {
-    const r = startRow + idx;
-    setCell(ws, `A${r}`, row.overallRank);
-    setCell(ws, `B${r}`, row.companyName);
-    setCell(ws, `C${r}`, row.title);
-    setCell(ws, `D${r}`, row.appliedSubsidy);
-    setCell(ws, `E${r}`, row.appliedSelfFund);
-    setCell(ws, `F${r}`, row.appliedTotal);
-    setCell(ws, `G${r}`, row.suggestedSubsidy);
-    setCell(ws, `H${r}`, row.suggestedSelfFund);
-    setCell(ws, `I${r}`, row.suggestedTotal);
-    setCell(ws, `J${r}`, row.committeeScores[0]);
-    setCell(ws, `K${r}`, row.committeeScores[1]);
-    setCell(ws, `L${r}`, row.committeeScores[2]);
-    setCell(ws, `M${r}`, row.avgScore != null ? Math.round(row.avgScore * 10) / 10 : null);
-    setCell(ws, `P${r}`, row.overallRank);
-    setCell(ws, `Q${r}`, row.briefingOrder);
+    writeDataRow(ws, row, startRow + idx, jointSheet);
   });
 
-  const totalRow = startRow + rows.length + 1;
-  setCell(ws, `F${totalRow}`, "總計", { font: { bold: true } });
+  const totalRow = startRow + rows.length + (rows.length > 0 ? 1 : 0);
   if (rows.length > 0) {
     const first = startRow;
     const last = startRow + rows.length - 1;
-    for (const col of ["G", "H", "I"]) {
-      ws[`${col}${totalRow}`] = {
-        t: "n",
-        f: `SUM(${col}${first}:${col}${last})`,
-        s: cellStyle({ font: { bold: true } }),
-      };
+    setCell(ws, `D${totalRow}`, "總計", { font: { bold: true } });
+    for (const col of ["E", "F", "G", "H", "I", "J"]) {
+      setFormulaCell(ws, `${col}${totalRow}`, `SUM(${col}${first}:${col}${last})`, undefined, {
+        font: { bold: true },
+      });
     }
   }
 
-  setCell(ws, `B${totalRow + 1}`, "*本表係依據上開計畫之個案決議彙總表彙總而成");
+  const footnoteRow = totalRow + (rows.length > 0 ? 1 : 0);
+  setCell(ws, `A${footnoteRow}`, "*本表係依據上開計畫之個案決議彙總表彙總而成");
 
-  const footnoteRow = totalRow + 1;
   let lastRowIndex = footnoteRow;
   if (appendSignature) {
-    lastRowIndex = appendCommitteeSignatureBlock(ws, footnoteRow, lastCol);
+    lastRowIndex = appendCommitteeSignatureBlock(ws, footnoteRow, DATA_LAST_COL - 1);
   }
 
-  ws["!ref"] = `A1:Q${lastRowIndex}`;
-  applyGridToRange(ws, 3, footnoteRow - 1, 0, lastCol);
-  ws["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
-    { s: { r: 1, c: 0 }, e: { r: 2, c: 4 } },
-    { s: { r: 1, c: 5 }, e: { r: 2, c: lastCol } },
-    { s: { r: 3, c: 3 }, e: { r: 3, c: 5 } },
-    { s: { r: 3, c: 6 }, e: { r: 3, c: 8 } },
-    { s: { r: 3, c: 9 }, e: { r: 3, c: 11 } },
-  ];
+  ws["!ref"] = `A1:${colLetter(HEADER_LAST_COL)}${lastRowIndex}`;
+  applyGridToRange(ws, 2, footnoteRow - 1, 0, DATA_LAST_COL - 1);
 
-  applyAutoColumnWidths(ws, lastCol + 1, footnoteRow - 1);
+  const merges: XLSX.Range[] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: DATA_LAST_COL - 1 } },
+    { s: { r: 2, c: 4 }, e: { r: 2, c: 6 } },
+    { s: { r: 2, c: 7 }, e: { r: 2, c: 9 } },
+    { s: { r: 2, c: 10 }, e: { r: 2, c: 12 } },
+    { s: { r: 2, c: 13 }, e: { r: 2, c: 13 } },
+    { s: { r: 2, c: 14 }, e: { r: 2, c: 15 } },
+  ];
+  if (ws["!merges"]) merges.push(...ws["!merges"]);
+  ws["!merges"] = merges;
+
+  applyAutoColumnWidths(ws, DATA_LAST_COL, footnoteRow);
   return ws;
 }
 
@@ -231,11 +321,23 @@ export function buildSettlementWorkbook(
   jointRows: SettlementRow[],
   memberNames: string[],
 ): Buffer {
+  const mainRows = [...standardRows, ...jointRows];
   const wb = XLSX.utils.book_new();
   const hasJointSheet = jointRows.length > 0;
-  XLSX.utils.book_append_sheet(wb, buildSheet(standardRows, memberNames, !hasJointSheet), "決算清表");
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    buildSheet(mainRows, memberNames, { appendSignature: !hasJointSheet }),
+    "決算清表",
+  );
+
   if (hasJointSheet) {
-    XLSX.utils.book_append_sheet(wb, buildSheet(jointRows, memberNames, true), "聯合提案");
+    XLSX.utils.book_append_sheet(
+      wb,
+      buildSheet(jointRows, memberNames, { appendSignature: true, jointSheet: true }),
+      "聯合提案",
+    );
   }
+
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 }

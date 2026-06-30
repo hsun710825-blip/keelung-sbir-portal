@@ -2,7 +2,7 @@ import { ensurePortalSettingsTable } from "@/lib/settlementConfig";
 import { prisma } from "@/lib/prisma";
 
 let ensured = false;
-const SCHEMA_FLAG_KEY = "evaluation_schema_ready_v1";
+const SCHEMA_FLAG_KEY = "evaluation_schema_ready_v2";
 
 async function isEvaluationSchemaReady(): Promise<boolean> {
   try {
@@ -87,6 +87,7 @@ export async function ensureEvaluationSchema(): Promise<void> {
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedSubsidy" INTEGER;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedSelfFund" INTEGER;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementAppliedTotal" INTEGER;`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "settlementSubsidyTierRate" DOUBLE PRECISION;`);
     await prisma.$executeRawUnsafe(`ALTER TABLE "Application" ADD COLUMN IF NOT EXISTS "displayCompanyName" TEXT;`);
     await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "Application_reviewMeetingDate_reviewAgendaOrder_idx"
