@@ -367,17 +367,16 @@ function buildSheet(
 }
 
 export function buildSettlementWorkbook(
-  standardRows: SettlementRow[],
+  combinedRows: SettlementRow[],
   jointRows: SettlementRow[],
   memberNames: string[],
 ): Buffer {
-  const mainRows = [...standardRows, ...jointRows];
   const wb = XLSX.utils.book_new();
   const hasJointSheet = jointRows.length > 0;
 
   XLSX.utils.book_append_sheet(
     wb,
-    buildSheet(mainRows, memberNames, { appendSignature: true }),
+    buildSheet(combinedRows, memberNames, { appendSignature: true }),
     "決算清表",
   );
 

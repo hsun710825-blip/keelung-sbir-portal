@@ -48,7 +48,15 @@ function ReadOnlyCell({ children, className = "" }: { children: React.ReactNode;
   );
 }
 
-function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberNames: string[] }) {
+function SettlementRowEditor({
+  row,
+  memberNames,
+  showProposalType = false,
+}: {
+  row: SettlementRow;
+  memberNames: string[];
+  showProposalType?: boolean;
+}) {
   const [state, action, pending] = useActionState(saveSettlementRowAction, {} as SettlementActionState);
   const formId = `settlement-row-${row.applicationId}`;
 
@@ -56,6 +64,19 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
     <>
       <td className="px-2 py-2 text-center font-semibold tabular-nums">{row.overallRank ?? "—"}</td>
       <td className="px-2 py-2 text-center tabular-nums">{row.briefingOrder}</td>
+      {showProposalType ? (
+        <td className="px-2 py-2 text-center text-xs">
+          <span
+            className={`inline-flex rounded-full border px-2 py-0.5 font-medium ${
+              row.isJoint
+                ? "border-violet-200 bg-violet-50 text-violet-800"
+                : "border-slate-200 bg-slate-50 text-slate-700"
+            }`}
+          >
+            {row.isJoint ? "聯合" : "一般"}
+          </span>
+        </td>
+      ) : null}
       <td className="min-w-[120px] px-2 py-2">{row.companyName}</td>
       <td className="min-w-[200px] px-2 py-2 text-sm">{row.title}</td>
       <td className="px-2 py-2">
@@ -103,7 +124,13 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
   );
 }
 
-function SettlementTableHeader({ memberNames }: { memberNames: string[] }) {
+function SettlementTableHeader({
+  memberNames,
+  showProposalType = false,
+}: {
+  memberNames: string[];
+  showProposalType?: boolean;
+}) {
   const th = "border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-xs font-semibold text-slate-700";
   return (
     <thead className="sticky top-0 z-10">
@@ -114,6 +141,11 @@ function SettlementTableHeader({ memberNames }: { memberNames: string[] }) {
         <th className={th} rowSpan={3}>
           編號
         </th>
+        {showProposalType ? (
+          <th className={th} rowSpan={3}>
+            類型
+          </th>
+        ) : null}
         <th className={th} rowSpan={3}>
           申請單位
         </th>
@@ -180,19 +212,21 @@ export function SettlementEditableTable({
   title,
   rows,
   memberNames,
+  showProposalType = false,
 }: {
   title: string;
   rows: SettlementRow[];
   memberNames: string[];
+  showProposalType?: boolean;
 }) {
-  const colCount = 18;
+  const colCount = showProposalType ? 19 : 18;
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <HorizontalScrollPanel>
           <table className="w-full min-w-[1500px] border-collapse text-left text-sm">
-            <SettlementTableHeader memberNames={memberNames} />
+            <SettlementTableHeader memberNames={memberNames} showProposalType={showProposalType} />
             <tbody className="divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
@@ -203,7 +237,11 @@ export function SettlementEditableTable({
               ) : (
                 rows.map((row) => (
                   <tr key={row.applicationId} className="hover:bg-slate-50/80">
-                    <SettlementRowEditor row={row} memberNames={memberNames} />
+                    <SettlementRowEditor
+                      row={row}
+                      memberNames={memberNames}
+                      showProposalType={showProposalType}
+                    />
                   </tr>
                 ))
               )}

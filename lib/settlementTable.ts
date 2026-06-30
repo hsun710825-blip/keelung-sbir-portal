@@ -333,6 +333,20 @@ function buildSettlementRowsFromContext(
   return rows;
 }
 
+function buildAllRawSettlementRows(context: SettlementBuildContext): SettlementRow[] {
+  return [
+    ...buildSettlementRowsFromContext(context, false),
+    ...buildSettlementRowsFromContext(context, true),
+  ];
+}
+
+function splitCombinedSettlementRows(combinedRows: SettlementRow[]) {
+  return {
+    combinedRows,
+    jointRows: combinedRows.filter((row) => row.isJoint),
+  };
+}
+
 export async function buildSettlementRows(
   jointOnly: boolean,
   committeeConfig?: SettlementCommitteeConfig,
@@ -345,12 +359,13 @@ export async function buildSettlementRows(
 export async function loadSettlementRowsForExport(committeeConfig?: SettlementCommitteeConfig) {
   const config = committeeConfig ?? (await loadSettlementCommitteeConfig());
   const context = await createSettlementBuildContext(config);
-  const standardRaw = buildSettlementRowsFromContext(context, false);
-  const jointRaw = buildSettlementRowsFromContext(context, true);
-  const combinedMainRows = finalizeSettlementRows([...standardRaw, ...jointRaw]);
+  const combinedRows = finalizeSettlementRows(buildAllRawSettlementRows(context));
+  const { jointRows } = splitCombinedSettlementRows(combinedRows);
   return {
-    standardRows: combinedMainRows,
-    jointRows: finalizeSettlementRows(jointRaw),
+    combinedRows,
+    jointRows,
+    /** @deprecated use combinedRows */
+    standardRows: combinedRows,
   };
 }
 
@@ -362,9 +377,14 @@ export async function loadSettlementPageData() {
     listReviewerOptionsForSettlement(),
   ]);
 
+  const combinedRows = finalizeSettlementRows(buildAllRawSettlementRows(context));
+  const { jointRows } = splitCombinedSettlementRows(combinedRows);
+
   return {
-    standardRows: finalizeSettlementRows(buildSettlementRowsFromContext(context, false)),
-    jointRows: finalizeSettlementRows(buildSettlementRowsFromContext(context, true)),
+    combinedRows,
+    jointRows,
+    /** @deprecated use combinedRows */
+    standardRows: combinedRows,
     committeeConfig,
     reviewerOptions,
     memberNames: committeeConfig.slots.map((s) => s.displayName),

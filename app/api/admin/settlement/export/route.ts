@@ -18,9 +18,9 @@ export async function GET() {
 
   const committeeConfig = await loadSettlementCommitteeConfig();
   const memberNames = committeeConfig.slots.map((s) => s.displayName);
-  const { standardRows, jointRows } = await loadSettlementRowsForExport(committeeConfig);
+  const { combinedRows, jointRows } = await loadSettlementRowsForExport(committeeConfig);
 
-  const buffer = buildSettlementWorkbook(standardRows, jointRows, memberNames);
+  const buffer = buildSettlementWorkbook(combinedRows, jointRows, memberNames);
   const filename = encodeURIComponent("115決算清表.xlsx");
 
   return new NextResponse(new Uint8Array(buffer), {

@@ -132,7 +132,7 @@ export async function loadYouthVerificationTable(options?: {
   const runOcr = options?.runOcr ?? false;
   const sheetRows = (await loadYouthIdSheetRows()).rows;
   const settlementExport = await loadSettlementRowsForExport();
-  const settlementRows = settlementExport.standardRows;
+  const settlementRows = settlementExport.combinedRows;
   const usedSheet = new Set<YouthSheetRow>();
   const applicationIds = settlementRows.map((r) => r.applicationId);
   const [responsibleByApp, storedMap] = await Promise.all([
