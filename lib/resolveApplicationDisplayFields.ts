@@ -1,5 +1,7 @@
 import { pickRegistryFieldsFromFormData } from "@/app/api/_registrySheet";
 
+import { normalizeCompanyDisplayName } from "@/lib/companyNameNormalize";
+
 import { resolveOnlineDraftViewPayload } from "@/lib/adminOnlineDraftResolve";
 
 import { parseKeyValueDescription } from "@/lib/parseMigratedDescription";
@@ -80,7 +82,7 @@ export function resolveDisplayFieldsFromFormData(
 
     return {
 
-      companyName,
+      companyName: normalizeCompanyDisplayName(companyName),
 
       contactPerson,
 
@@ -114,7 +116,7 @@ export function resolveDisplayFieldsFromDescription(
 
   if (companyName || contactPerson || contactPhone) {
 
-    return { companyName, contactPerson, contactPhone, source: "description" };
+    return { companyName: normalizeCompanyDisplayName(companyName), contactPerson, contactPhone, source: "description" };
 
   }
 
@@ -142,7 +144,7 @@ async function persistDisplayCompanyName(applicationId: string, companyName: str
 
       },
 
-      data: { displayCompanyName: name },
+      data: { displayCompanyName: normalizeCompanyDisplayName(name) },
 
     });
 
@@ -174,7 +176,7 @@ export async function resolveApplicationDisplayFields(input: {
 
     return {
 
-      companyName: cached,
+      companyName: normalizeCompanyDisplayName(cached),
 
       contactPerson: "",
 

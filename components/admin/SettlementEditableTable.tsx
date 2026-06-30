@@ -8,7 +8,11 @@ import {
   type SettlementActionState,
 } from "@/app/admin/settlement/actions";
 import type { SettlementCommitteeConfig } from "@/lib/settlementConfig";
-import { formatRatioPercent } from "@/lib/settlementFormulas";
+import {
+  formatFundingAmount,
+  formatRatioPercent,
+  formatTierRatePercent,
+} from "@/lib/settlementFormulas";
 import type { SettlementRow } from "@/lib/settlementTable";
 
 function FundingInput({
@@ -30,9 +34,15 @@ function FundingInput({
       min={0}
       step={step}
       defaultValue={defaultValue ?? ""}
-      className="w-20 rounded border border-slate-200 px-2 py-1 text-sm"
+      className="w-20 rounded border border-slate-200 px-2 py-1 text-sm tabular-nums"
       placeholder="千"
     />
+  );
+}
+
+function ReadOnlyCell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <td className={`px-2 py-2 text-center text-sm tabular-nums text-slate-800 ${className}`}>{children}</td>
   );
 }
 
@@ -42,10 +52,10 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
 
   return (
     <>
-      <td className="px-2 py-2 tabular-nums text-center font-semibold">{row.overallRank ?? "—"}</td>
-      <td className="px-2 py-2 tabular-nums text-center">{row.briefingOrder}</td>
+      <td className="px-2 py-2 text-center font-semibold tabular-nums">{row.overallRank ?? "—"}</td>
+      <td className="px-2 py-2 text-center tabular-nums">{row.briefingOrder}</td>
       <td className="min-w-[120px] px-2 py-2">{row.companyName}</td>
-      <td className="min-w-[160px] px-2 py-2 text-sm">{row.title}</td>
+      <td className="min-w-[200px] px-2 py-2 text-sm">{row.title}</td>
       <td className="px-2 py-2">
         <FundingInput formId={formId} name="appliedSubsidy" defaultValue={row.appliedSubsidy} />
       </td>
@@ -55,29 +65,15 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
       <td className="px-2 py-2">
         <FundingInput formId={formId} name="appliedTotal" defaultValue={row.appliedTotal} />
       </td>
-      <td className="px-2 py-2">
-        <FundingInput formId={formId} name="suggestedSubsidy" defaultValue={row.suggestedSubsidy} />
-      </td>
-      <td className="px-2 py-2">
-        <FundingInput formId={formId} name="suggestedSelfFund" defaultValue={row.suggestedSelfFund} />
-      </td>
-      <td className="px-2 py-2">
-        <FundingInput formId={formId} name="suggestedTotal" defaultValue={row.suggestedTotal} />
-      </td>
+      <ReadOnlyCell>{formatFundingAmount(row.suggestedSubsidy)}</ReadOnlyCell>
+      <ReadOnlyCell>{formatFundingAmount(row.suggestedSelfFund)}</ReadOnlyCell>
+      <ReadOnlyCell>{formatFundingAmount(row.suggestedTotal)}</ReadOnlyCell>
       {row.committeeScores.map((s, i) => (
-        <td key={`s-${memberNames[i] ?? i}`} className="px-2 py-2 tabular-nums text-center">
-          {s != null ? s.toFixed(0) : "—"}
-        </td>
+        <ReadOnlyCell key={`s-${memberNames[i] ?? i}`}>{s != null ? String(Math.round(s)) : "—"}</ReadOnlyCell>
       ))}
-      <td className="px-2 py-2 tabular-nums text-center">
-        {row.avgScore != null ? row.avgScore.toFixed(1) : "—"}
-      </td>
-      <td className="px-2 py-2 tabular-nums text-center text-xs">
-        {formatRatioPercent(row.subsidyRatio)}
-      </td>
-      <td className="px-2 py-2 tabular-nums text-center text-xs">
-        {formatRatioPercent(row.totalSubsidyRatio)}
-      </td>
+      <ReadOnlyCell>{row.avgScore != null ? row.avgScore.toFixed(1) : "—"}</ReadOnlyCell>
+      <ReadOnlyCell>{formatRatioPercent(row.subsidyRatio)}</ReadOnlyCell>
+      <ReadOnlyCell>{formatRatioPercent(row.totalSubsidyRatio)}</ReadOnlyCell>
       <td className="px-2 py-2">
         <FundingInput
           formId={formId}
@@ -85,6 +81,7 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
           defaultValue={row.subsidyGradeRatio}
           step="0.01"
         />
+        <div className="mt-0.5 text-[10px] text-slate-500">{formatTierRatePercent(row.subsidyGradeRatio)}</div>
       </td>
       <td className="px-2 py-2">
         <form id={formId} action={action}>
@@ -104,6 +101,79 @@ function SettlementRowEditor({ row, memberNames }: { row: SettlementRow; memberN
   );
 }
 
+function SettlementTableHeader({ memberNames }: { memberNames: string[] }) {
+  const th = "border border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-xs font-semibold text-slate-700";
+  return (
+    <thead className="sticky top-0 z-10">
+      <tr>
+        <th className={th} rowSpan={3}>
+          總排序
+        </th>
+        <th className={th} rowSpan={3}>
+          編號
+        </th>
+        <th className={th} rowSpan={3}>
+          申請單位
+        </th>
+        <th className={th} rowSpan={3}>
+          計畫名稱
+        </th>
+        <th className={th} colSpan={3}>
+          申請
+        </th>
+        <th className={th} colSpan={3}>
+          建議
+        </th>
+        <th className={th} colSpan={3}>
+          委員評分
+        </th>
+        <th className={th} rowSpan={2}>
+          分數
+        </th>
+        <th className={th} rowSpan={2}>
+          補助額度
+        </th>
+        <th className={th} rowSpan={2}>
+          總補助
+        </th>
+        <th className={th} rowSpan={3}>
+          比例係數(R)
+        </th>
+        <th className={th} rowSpan={3}>
+          操作
+        </th>
+      </tr>
+      <tr>
+        <th className={th}>補助款</th>
+        <th className={th}>自籌款</th>
+        <th className={th}>總經費</th>
+        <th className={th}>補助款</th>
+        <th className={th}>自籌款</th>
+        <th className={th}>總經費</th>
+        <th className={th}>A</th>
+        <th className={th}>B</th>
+        <th className={th}>C</th>
+      </tr>
+      <tr>
+        <th className={th}>(千)</th>
+        <th className={th}>(千)</th>
+        <th className={th}>(千)</th>
+        <th className={th}>(千)</th>
+        <th className={th}>(千)</th>
+        <th className={th}>(千)</th>
+        {memberNames.map((n) => (
+          <th key={`n-${n}`} className={th}>
+            {n}
+          </th>
+        ))}
+        <th className={th}>平均</th>
+        <th className={th}>補助比例</th>
+        <th className={th}>比例</th>
+      </tr>
+    </thead>
+  );
+}
+
 export function SettlementEditableTable({
   title,
   rows,
@@ -113,51 +183,31 @@ export function SettlementEditableTable({
   rows: SettlementRow[];
   memberNames: string[];
 }) {
+  const colCount = 18;
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full min-w-[1600px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-xs">
-              <th className="px-2 py-2">總排序</th>
-              <th className="px-2 py-2">編號</th>
-              <th className="px-2 py-2">申請單位</th>
-              <th className="px-2 py-2">計畫名稱</th>
-              <th className="px-2 py-2">申請補助(千)</th>
-              <th className="px-2 py-2">申請自籌(千)</th>
-              <th className="px-2 py-2">申請總計(千)</th>
-              <th className="px-2 py-2">建議補助(千)</th>
-              <th className="px-2 py-2">建議自籌(千)</th>
-              <th className="px-2 py-2">建議總計(千)</th>
-              {memberNames.map((n) => (
-                <th key={`s-${n}`} className="px-2 py-2">
-                  {n}
-                </th>
-              ))}
-              <th className="px-2 py-2">平均</th>
-              <th className="px-2 py-2">補助款比例</th>
-              <th className="px-2 py-2">總補助比例</th>
-              <th className="px-2 py-2">比例係數(R)</th>
-              <th className="px-2 py-2">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={20} className="px-4 py-8 text-center text-slate-500">
-                  無資料
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.applicationId} className="hover:bg-slate-50/80">
-                  <SettlementRowEditor row={row} memberNames={memberNames} />
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="max-h-[calc(100vh-11rem)] overflow-auto">
+          <table className="w-full min-w-[1500px] border-collapse text-left text-sm">
+            <SettlementTableHeader memberNames={memberNames} />
+            <tbody className="divide-y divide-slate-100">
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={colCount} className="px-4 py-8 text-center text-slate-500">
+                    無資料
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.applicationId} className="hover:bg-slate-50/80">
+                    <SettlementRowEditor row={row} memberNames={memberNames} />
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

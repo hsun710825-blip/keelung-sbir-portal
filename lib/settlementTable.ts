@@ -1,4 +1,5 @@
 import { COMMITTEE_VISIBLE_APPLICATION_STATUSES } from "@/lib/committeeApplicationStatuses";
+import { normalizeCompanyDisplayName } from "@/lib/companyNameNormalize";
 import { ensureEvaluationSchema } from "@/lib/ensureEvaluationSchema";
 import { matchApplicationToAgenda } from "@/lib/matchApplicationToAgenda";
 import { prisma } from "@/lib/prisma";
@@ -315,11 +316,11 @@ function buildSettlementRowsFromContext(
 
     rows.push({
       applicationId: item.app.id,
-      companyName: item.companyName,
+      companyName: normalizeCompanyDisplayName(item.companyName) || item.companyName,
       title: item.app.title?.trim() || item.agendaProject,
-      appliedSubsidy,
-      appliedSelfFund,
-      appliedTotal,
+      appliedSubsidy: funding.appliedSubsidy,
+      appliedSelfFund: funding.appliedSelfFund,
+      appliedTotal: funding.appliedTotal,
       suggestedSubsidy: funding.suggestedSubsidy,
       suggestedSelfFund: funding.suggestedSelfFund,
       suggestedTotal: funding.suggestedTotal,
