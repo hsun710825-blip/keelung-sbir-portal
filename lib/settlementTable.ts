@@ -16,6 +16,7 @@ import {
   type SettlementCommitteeConfig,
 } from "@/lib/settlementConfig";
 import { resolveSuggestedFunding } from "@/lib/settlementFormulas";
+import { resolveSettlementDisplayTitle } from "@/lib/settlementTitleOverrides";
 import { assignSkipTieRanks, avgCommitteeScore, sortRowsByAvgScoreDesc } from "@/lib/settlementRank";
 
 export type SettlementRow = {
@@ -310,7 +311,11 @@ function buildSettlementRowsFromContext(
     rows.push({
       applicationId: item.app.id,
       companyName: normalizeCompanyDisplayName(item.companyName) || item.companyName,
-      title: item.app.title?.trim() || item.agendaProject,
+      title: resolveSettlementDisplayTitle({
+        companyName: item.companyName,
+        applicationTitle: item.app.title,
+        agendaProject: item.agendaProject,
+      }),
       appliedSubsidy: funding.appliedSubsidy,
       appliedSelfFund: funding.appliedSelfFund,
       appliedTotal: funding.appliedTotal,
