@@ -11,6 +11,10 @@ declare module "next-auth" {
       applicantSupplementAccess?: boolean;
       /** 補件窗口內未送件：應顯示登入阻擋畫面 */
       applicantSupplementDenied?: boolean;
+      /** 複審階段且為 COMMITTEE_REVIEW：可登入查詢（不可編輯） */
+      applicantReviewAccess?: boolean;
+      /** 複審階段非審查中：阻擋登入 */
+      applicantReviewDenied?: boolean;
     };
   }
 }
@@ -20,5 +24,7 @@ declare module "next-auth/jwt" {
     role?: Role | null;
     applicantSupplementAccess?: boolean;
     applicantSupplementDenied?: boolean;
+    applicantReviewAccess?: boolean;
+    applicantReviewDenied?: boolean;
   }
 }

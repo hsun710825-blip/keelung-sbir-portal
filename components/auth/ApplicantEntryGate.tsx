@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 
+import { ApplicantReviewPhaseBlockedView } from "@/components/auth/ApplicantReviewPhaseBlockedView";
 import { ApplicantSupplementBlockedView } from "@/components/auth/ApplicantSupplementBlockedView";
 
 type Props = {
@@ -10,11 +11,12 @@ type Props = {
 };
 
 /**
- * 申請者進入撰寫區前的 Auth 閘道（補件期資格由 JWT 決定）。
+ * 申請者進入撰寫區前的 Auth 閘道（補件期／複審期資格由 JWT 決定）。
  */
 export function ApplicantEntryGate({ onLogout, children }: Props) {
   const { data: session, status } = useSession();
   const supplementDenied = session?.user?.applicantSupplementDenied === true;
+  const reviewDenied = session?.user?.applicantReviewDenied === true;
 
   if (status === "loading") {
     return (
@@ -26,6 +28,10 @@ export function ApplicantEntryGate({ onLogout, children }: Props) {
 
   if (supplementDenied) {
     return <ApplicantSupplementBlockedView onLogout={onLogout} />;
+  }
+
+  if (reviewDenied) {
+    return <ApplicantReviewPhaseBlockedView onLogout={onLogout} />;
   }
 
   return <>{children}</>;

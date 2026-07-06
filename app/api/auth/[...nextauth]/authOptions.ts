@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { getPrismaRoleByEmail, isBackofficePrismaRole } from "@/lib/adminAuth";
 import { canApplicantAccessSupplementChannel } from "@/lib/applicantSupplementEligibility";
+import { hasApplicantCommitteeReviewAccess } from "@/lib/applicantCommitteeReviewAccess";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 
 function requireEnv(name: string) {
@@ -40,10 +41,15 @@ export const authOptions: NextAuthOptions = {
       const role = await getPrismaRoleByEmail(email);
       if (isBackofficePrismaRole(role)) return true;
 
-      if (!isWithinSupplementWindow()) return true;
-
-      const allowed = await canApplicantAccessSupplementChannel(email, role);
-      if (!allowed) return "/auth/applicant-denied";
+      if (!isBackofficePrismaRole(role)) {
+        if (isWithinSupplementWindow()) {
+          const allowed = await canApplicantAccessSupplementChannel(email, role);
+          if (!allowed) return "/auth/applicant-denied";
+        } else {
+          const allowed = await hasApplicantCommitteeReviewAccess(email, role);
+          if (!allowed) return "/auth/applicant-review-closed";
+        }
+      }
 
       return true;
     },
@@ -53,18 +59,32 @@ export const authOptions: NextAuthOptions = {
         token.role = null;
         token.applicantSupplementAccess = false;
         token.applicantSupplementDenied = false;
+        token.applicantReviewAccess = false;
+        token.applicantReviewDenied = false;
         return token;
       }
 
       token.role = await getPrismaRoleByEmail(email);
 
-      if (isWithinSupplementWindow() && !isBackofficePrismaRole(token.role as string | null)) {
-        const allowed = await canApplicantAccessSupplementChannel(email, token.role as string | null);
-        token.applicantSupplementAccess = allowed;
-        token.applicantSupplementDenied = !allowed;
+      if (!isBackofficePrismaRole(token.role as string | null)) {
+        if (isWithinSupplementWindow()) {
+          const allowed = await canApplicantAccessSupplementChannel(email, token.role as string | null);
+          token.applicantSupplementAccess = allowed;
+          token.applicantSupplementDenied = !allowed;
+          token.applicantReviewAccess = false;
+          token.applicantReviewDenied = false;
+        } else {
+          const allowed = await hasApplicantCommitteeReviewAccess(email, token.role as string | null);
+          token.applicantReviewAccess = allowed;
+          token.applicantReviewDenied = !allowed;
+          token.applicantSupplementAccess = false;
+          token.applicantSupplementDenied = false;
+        }
       } else {
         token.applicantSupplementAccess = false;
         token.applicantSupplementDenied = false;
+        token.applicantReviewAccess = false;
+        token.applicantReviewDenied = false;
       }
 
       return token;
@@ -75,6 +95,8 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role ?? null;
         session.user.applicantSupplementAccess = token.applicantSupplementAccess === true;
         session.user.applicantSupplementDenied = token.applicantSupplementDenied === true;
+        session.user.applicantReviewAccess = token.applicantReviewAccess === true;
+        session.user.applicantReviewDenied = token.applicantReviewDenied === true;
       }
       return session;
     },
