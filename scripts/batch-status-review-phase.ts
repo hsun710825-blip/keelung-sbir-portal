@@ -20,7 +20,7 @@ const EXCEL_PATH =
   process.env.BATCH_STATUS_EXCEL_PATH?.trim() ||
   String.raw`c:\恂\02-業務\05-115\02-115基隆市SBIR\115徵件\115SBIR審查評分補助結果.xlsx`;
 
-const REJECT_COMPANY_HINTS = ["馬頭報飯館", "馬頭", "有炬", "超寶"];
+const REJECT_COMPANY_HINTS = ["馬頭報飯館","馬頭","碼頭","報飯","有炬","超寶"];
 
 function normalizeCore(name: string): string {
   return normalizeCompanyForMatch(name)
