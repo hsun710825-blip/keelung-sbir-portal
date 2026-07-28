@@ -11,7 +11,7 @@ type Props = {
 };
 
 /**
- * 申請者進入撰寫區前的 Auth 閘道（補件期／複審期資格由 JWT 決定）。
+ * 申請者進入撰寫區前的 Auth 閘道（補件期／修改開放期資格由 JWT 決定）。
  */
 export function ApplicantEntryGate({ onLogout, children }: Props) {
   const { data: session, status } = useSession();

@@ -1051,7 +1051,9 @@ function formatApiErrorForAlert(prefix: string, err: unknown): string {
 
 function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () => void }) {
   const { data: authSession } = useSession();
-  const supplementUnlock = authSession?.user?.applicantSupplementAccess === true;
+  const supplementUnlock =
+    authSession?.user?.applicantSupplementAccess === true ||
+    authSession?.user?.applicantReviewAccess === true;
   const coverFieldUid = useId();
   const benefitFieldUid = useId();
   const coverId = (suffix: string) => `${coverFieldUid}-${suffix}`;

@@ -11,9 +11,9 @@ declare module "next-auth" {
       applicantSupplementAccess?: boolean;
       /** 補件窗口內未送件：應顯示登入阻擋畫面 */
       applicantSupplementDenied?: boolean;
-      /** 複審階段且為 COMMITTEE_REVIEW：可登入查詢（不可編輯） */
+      /** 修改開放期且在白名單：可登入、編輯、送出與重新上傳 */
       applicantReviewAccess?: boolean;
-      /** 複審階段非審查中：阻擋登入 */
+      /** 修改開放期外或非白名單：阻擋登入 */
       applicantReviewDenied?: boolean;
     };
   }

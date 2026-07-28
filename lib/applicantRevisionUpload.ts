@@ -1,0 +1,211 @@
+import { NextResponse } from "next/server";
+import { Readable } from "node:stream";
+import { getServerSession } from "next-auth";
+import type { drive_v3 } from "googleapis";
+
+import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
+import { getDriveSaClient, loadServiceAccount } from "@/app/api/_driveSa";
+import { withGoogleApiRetry } from "@/app/api/_googleApiRetry";
+import {
+  APPLICANT_REVISION_UPLOAD_FOLDER_ID,
+  buildApplicantRevisionProposalFileName,
+  findApplicantRevisionAllowlistEntry,
+  hasApplicantRevisionAccess,
+} from "@/lib/applicantRevisionAccess";
+import { googleDriveFileViewUrl } from "@/lib/driveLinks";
+import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "@/lib/applicantApplicationSync";
+import { google } from "googleapis";
+
+async function getSaAccessToken(): Promise<string> {
+  const { client_email, private_key } = await loadServiceAccount();
+  const auth = new google.auth.JWT({
+    email: client_email,
+    key: private_key,
+    scopes: ["https://www.googleapis.com/auth/drive"],
+  });
+  const token = await auth.getAccessToken();
+  const accessToken = token?.token;
+  if (!accessToken) throw new Error("Unable to get Google SA access token");
+  return accessToken;
+}
+
+async function deleteFilesWithNameInFolder(
+  drive: drive_v3.Drive,
+  folderId: string,
+  fileName: string,
+): Promise<void> {
+  const escaped = fileName.replace(/'/g, "\\'");
+  const oldFiles = await drive.files.list({
+    q: `'${folderId}' in parents and name='${escaped}' and trashed=false`,
+    fields: "files(id,name)",
+    pageSize: 20,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  for (const old of oldFiles.data.files ?? []) {
+    if (!old.id) continue;
+    await drive.files.delete({ fileId: old.id, supportsAllDrives: true });
+  }
+}
+
+export async function requireRevisionUploadSession() {
+  const session = await getServerSession(authOptions);
+  const email = session?.user?.email?.trim();
+  if (!session?.user || !email) {
+    return { ok: false as const, status: 401, error: "Unauthorized" };
+  }
+  const role = session.user.role ?? null;
+  if (!hasApplicantRevisionAccess(email, role)) {
+    return { ok: false as const, status: 403, error: "目前不在修改開放期，或帳號未在開放名單內。" };
+  }
+  const entry = findApplicantRevisionAllowlistEntry(email);
+  if (!entry) {
+    return { ok: false as const, status: 403, error: "帳號未在開放名單內。" };
+  }
+  return { ok: true as const, session, email, entry };
+}
+
+export async function createRevisionResumableUpload(input: {
+  companyName: string;
+  projectName: string;
+  fileSize: number;
+}): Promise<{ uploadUrl: string; fileName: string }> {
+  const fileName = buildApplicantRevisionProposalFileName({
+    companyName: input.companyName,
+    projectName: input.projectName,
+  });
+  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
+
+  await withGoogleApiRetry("revisionUpload.prepare", async () => {
+    const drive = await getDriveSaClient();
+    await deleteFilesWithNameInFolder(drive, folderId, fileName);
+  });
+
+  const accessToken = await getSaAccessToken();
+  const initRes = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink&supportsAllDrives=true",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": "application/pdf",
+        "X-Upload-Content-Length": String(input.fileSize),
+      },
+      body: JSON.stringify({
+        name: fileName,
+        mimeType: "application/pdf",
+        parents: [folderId],
+      }),
+    },
+  );
+  if (!initRes.ok) {
+    const txt = await initRes.text().catch(() => "");
+    throw new Error(`Google resumable init failed (${initRes.status}): ${txt || "unknown"}`);
+  }
+  const uploadUrl = initRes.headers.get("Location") || "";
+  if (!uploadUrl) throw new Error("Google resumable session missing Location");
+  return { uploadUrl, fileName };
+}
+
+export async function uploadRevisionProposalBytes(input: {
+  companyName: string;
+  projectName: string;
+  bytes: Uint8Array;
+}): Promise<{ fileId: string; fileName: string; uploadedProposalUrl: string }> {
+  const fileName = buildApplicantRevisionProposalFileName({
+    companyName: input.companyName,
+    projectName: input.projectName,
+  });
+  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
+
+  const fileId = await withGoogleApiRetry("revisionUpload.create", async () => {
+    const drive = await getDriveSaClient();
+    await deleteFilesWithNameInFolder(drive, folderId, fileName);
+    const created = await drive.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: "application/pdf",
+        body: Readable.from(Buffer.from(input.bytes)),
+      },
+      fields: "id,name,webViewLink",
+      supportsAllDrives: true,
+    });
+    const id = created.data.id;
+    if (!id) throw new Error("Drive did not return file id");
+    return id;
+  });
+
+  return {
+    fileId,
+    fileName,
+    uploadedProposalUrl: googleDriveFileViewUrl(fileId) || "",
+  };
+}
+
+export async function finalizeRevisionUploadedFile(input: {
+  email: string;
+  userName?: string | null;
+  companyName: string;
+  projectName: string;
+  submitYear?: string;
+  summary?: string;
+  fileId: string;
+  /** 申請人既有專案資料夾（勿使用共用修改版資料夾，避免互相覆寫 Application） */
+  driveProjectFolderId: string;
+}): Promise<{ uploadedProposalUrl: string } | { error: string }> {
+  const expectedName = buildApplicantRevisionProposalFileName({
+    companyName: input.companyName,
+    projectName: input.projectName,
+  });
+  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
+
+  const checked = await withGoogleApiRetry("revisionUpload.finalize", async () => {
+    const drive = await getDriveSaClient();
+    const file = await drive.files.get({
+      fileId: input.fileId,
+      fields: "id,name,mimeType,parents",
+      supportsAllDrives: true,
+    });
+    const parentIds = file.data.parents || [];
+    if (!parentIds.includes(folderId)) {
+      return { ok: false as const, error: "上傳檔案不屬於修改版資料夾。" };
+    }
+    if (String(file.data.mimeType || "").toLowerCase() !== "application/pdf") {
+      return { ok: false as const, error: "上傳檔案格式錯誤，僅接受 PDF。" };
+    }
+    if (String(file.data.name || "") !== expectedName) {
+      await drive.files.update({
+        fileId: input.fileId,
+        requestBody: { name: expectedName },
+        supportsAllDrives: true,
+      });
+    }
+    return { ok: true as const };
+  });
+
+  if (!checked.ok) return { error: checked.error };
+
+  const uploadedProposalUrl = googleDriveFileViewUrl(input.fileId) || "";
+  const dbUser = await ensureApplicantDbUser(input.email, input.userName);
+  await upsertApplicationFromDraftSave({
+    applicantUserId: dbUser.id,
+    driveProjectFolderId: input.driveProjectFolderId,
+    projectTitle: input.projectName || "未命名計畫",
+    formData: {
+      projectName: input.projectName,
+      submitYear: String(input.submitYear ?? "").trim(),
+      summary: String(input.summary ?? "").trim(),
+      submissionMode: "UPLOAD",
+      uploadedProposalUrl,
+    },
+  });
+  return { uploadedProposalUrl };
+}
+
+export function revisionUploadJsonError(status: number, error: string) {
+  return NextResponse.json({ ok: false, error }, { status });
+}

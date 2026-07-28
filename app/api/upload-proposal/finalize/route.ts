@@ -5,6 +5,12 @@ import { authOptions } from "../../auth/[...nextauth]/authOptions";
 import { ensureProjectFolder, ensureUserFolder } from "../../_driveFolders";
 import { getDriveOauthClient } from "../../_driveOauth";
 import { withGoogleApiRetry } from "../../_googleApiRetry";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import {
+  finalizeRevisionUploadedFile,
+  requireRevisionUploadSession,
+  revisionUploadJsonError,
+} from "@/lib/applicantRevisionUpload";
 import { sanitizeProjectNameForFolder } from "../../../../lib/serverSecurity";
 import { googleDriveFileViewUrl } from "../../../../lib/driveLinks";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "../../../../lib/applicantApplicationSync";
@@ -24,6 +30,32 @@ export async function POST(req: Request) {
     const projectName = sanitizeProjectNameForFolder(body.projectName);
     const fileId = String(body.fileId || "").trim();
     if (!fileId) return NextResponse.json({ ok: false, error: "Missing fileId" }, { status: 400 });
+
+    if (hasApplicantRevisionAccess(email, session.user.role ?? null)) {
+      const gate = await requireRevisionUploadSession();
+      if (!gate.ok) return revisionUploadJsonError(gate.status, gate.error);
+      const drive = getDriveOauthClient();
+      const userFolder = await ensureUserFolder(drive, session);
+      const projectFolder = await ensureProjectFolder({
+        drive,
+        userFolderId: userFolder.folderId,
+        projectName,
+      });
+      const result = await finalizeRevisionUploadedFile({
+        email: gate.email,
+        userName: gate.session.user?.name,
+        companyName: gate.entry.companyName,
+        projectName,
+        submitYear: String(body.submitYear ?? "").trim(),
+        summary: String(body.summary ?? "").trim(),
+        fileId,
+        driveProjectFolderId: projectFolder.folderId,
+      });
+      if ("error" in result) {
+        return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, uploadedProposalUrl: result.uploadedProposalUrl });
+    }
 
     const result = await withGoogleApiRetry("upload-proposal.finalize", async () => {
       const drive = getDriveOauthClient();
@@ -66,4 +98,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Upload finalize failed" }, { status: 500 });
   }
 }
-

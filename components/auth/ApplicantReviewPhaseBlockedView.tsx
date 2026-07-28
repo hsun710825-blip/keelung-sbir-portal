@@ -18,8 +18,8 @@ export function ApplicantReviewPhaseBlockedView({ onLogout }: Props) {
           <AlertTriangle className="h-12 w-12 text-amber-500" strokeWidth={2.2} aria-hidden />
         </section>
         <p className="text-xl md:text-2xl font-bold text-slate-900 leading-relaxed whitespace-pre-wrap">
-          目前系統僅開放「審查中」之複審提案者登入查詢進度。{"\n"}
-          您的案件未在複審審查名單內，暫不提供申請人登入。{"\n"}
+          目前系統僅開放指定名單之提案者登入修改與重新上傳計畫書。{"\n"}
+          您的帳號未在本次開放名單內，或開放期間已結束，暫不提供申請人登入。{"\n"}
           如有疑問，歡迎加入「115基隆SBIR幫」LINE 官方帳號聯繫專案辦公室。
         </p>
         <p className="mt-6 text-lg md:text-xl font-bold text-slate-900 leading-relaxed">

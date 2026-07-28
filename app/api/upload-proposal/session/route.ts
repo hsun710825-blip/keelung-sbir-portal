@@ -5,6 +5,12 @@ import { authOptions } from "../../auth/[...nextauth]/authOptions";
 import { emailHashKey, ensureProjectFolder, ensureUserFolder } from "../../_driveFolders";
 import { getDriveOauthAuthClient, getDriveOauthClient } from "../../_driveOauth";
 import { withGoogleApiRetry } from "../../_googleApiRetry";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import {
+  createRevisionResumableUpload,
+  requireRevisionUploadSession,
+  revisionUploadJsonError,
+} from "@/lib/applicantRevisionUpload";
 import { sanitizeProjectNameForFolder } from "../../../../lib/serverSecurity";
 import { assertDraftUnlocked, findDraftFileIdInFolder } from "../../../../lib/projectSecurity";
 
@@ -31,6 +37,17 @@ export async function POST(req: Request) {
     }
     if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MAX_PROPOSAL_BYTES) {
       return NextResponse.json({ ok: false, error: "PDF 檔案不可超過 100MB。" }, { status: 413 });
+    }
+
+    if (hasApplicantRevisionAccess(email, session.user.role ?? null)) {
+      const gate = await requireRevisionUploadSession();
+      if (!gate.ok) return revisionUploadJsonError(gate.status, gate.error);
+      const result = await createRevisionResumableUpload({
+        companyName: gate.entry.companyName,
+        projectName,
+        fileSize,
+      });
+      return NextResponse.json({ ok: true, uploadUrl: result.uploadUrl, fileName: result.fileName });
     }
 
     const result = await withGoogleApiRetry("upload-proposal.session", async () => {
@@ -88,4 +105,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Upload session failed" }, { status: 500 });
   }
 }
-

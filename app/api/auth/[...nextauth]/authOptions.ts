@@ -3,7 +3,8 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { getPrismaRoleByEmail, isBackofficePrismaRole } from "@/lib/adminAuth";
 import { canApplicantAccessSupplementChannel } from "@/lib/applicantSupplementEligibility";
-import { hasApplicantCommitteeReviewAccess } from "@/lib/applicantCommitteeReviewAccess";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import { isWithinApplicantRevisionWindow } from "@/lib/applicantRevisionWindow";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 
 function requireEnv(name: string) {
@@ -41,17 +42,19 @@ export const authOptions: NextAuthOptions = {
       const role = await getPrismaRoleByEmail(email);
       if (isBackofficePrismaRole(role)) return true;
 
-      if (!isBackofficePrismaRole(role)) {
-        if (isWithinSupplementWindow()) {
-          const allowed = await canApplicantAccessSupplementChannel(email, role);
-          if (!allowed) return "/auth/applicant-denied";
-        } else {
-          const allowed = await hasApplicantCommitteeReviewAccess(email, role);
-          if (!allowed) return "/auth/applicant-review-closed";
-        }
+      if (isWithinSupplementWindow()) {
+        const allowed = await canApplicantAccessSupplementChannel(email, role);
+        if (!allowed) return "/auth/applicant-denied";
+        return true;
       }
 
-      return true;
+      if (isWithinApplicantRevisionWindow()) {
+        const allowed = hasApplicantRevisionAccess(email, role);
+        if (!allowed) return "/auth/applicant-review-closed";
+        return true;
+      }
+
+      return "/auth/applicant-review-closed";
     },
     async jwt({ token, user }) {
       const email = (user?.email ?? token.email) as string | undefined;
@@ -73,12 +76,17 @@ export const authOptions: NextAuthOptions = {
           token.applicantSupplementDenied = !allowed;
           token.applicantReviewAccess = false;
           token.applicantReviewDenied = false;
-        } else {
-          const allowed = await hasApplicantCommitteeReviewAccess(email, token.role as string | null);
+        } else if (isWithinApplicantRevisionWindow()) {
+          const allowed = hasApplicantRevisionAccess(email, token.role as string | null);
           token.applicantReviewAccess = allowed;
           token.applicantReviewDenied = !allowed;
           token.applicantSupplementAccess = false;
           token.applicantSupplementDenied = false;
+        } else {
+          token.applicantSupplementAccess = false;
+          token.applicantSupplementDenied = false;
+          token.applicantReviewAccess = false;
+          token.applicantReviewDenied = true;
         }
       } else {
         token.applicantSupplementAccess = false;

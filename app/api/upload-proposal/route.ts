@@ -15,6 +15,12 @@ import { googleDriveFileViewUrl } from "../../../lib/driveLinks";
 import { draftUnlockContextFromSession } from "../../../lib/draftUnlockContext";
 import { assertDraftUnlocked, findDraftFileIdInFolder } from "../../../lib/projectSecurity";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "../../../lib/applicantApplicationSync";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import {
+  requireRevisionUploadSession,
+  revisionUploadJsonError,
+  uploadRevisionProposalBytes,
+} from "@/lib/applicantRevisionUpload";
 
 // Vercel Serverless request body hard-limit guardrail.
 const MAX_PROPOSAL_BYTES = 4 * 1024 * 1024;
@@ -56,6 +62,41 @@ export async function POST(req: Request) {
     const magicCheck = ensureAllowedUploadMagic(bytes, "application/pdf");
     if (!magicCheck.ok) {
       return NextResponse.json({ ok: false, error: magicCheck.error }, { status: 400 });
+    }
+
+    if (hasApplicantRevisionAccess(email, session.user.role ?? null)) {
+      const gate = await requireRevisionUploadSession();
+      if (!gate.ok) return revisionUploadJsonError(gate.status, gate.error);
+      const uploaded = await uploadRevisionProposalBytes({
+        companyName: gate.entry.companyName,
+        projectName,
+        bytes,
+      });
+      const { drive } = await getDriveAndSession();
+      const userFolder = await ensureUserFolder(drive, session);
+      const projectFolder = await ensureProjectFolder({
+        drive,
+        userFolderId: userFolder.folderId,
+        projectName,
+      });
+      const dbUser = await ensureApplicantDbUser(email, session.user?.name);
+      await upsertApplicationFromDraftSave({
+        applicantUserId: dbUser.id,
+        driveProjectFolderId: projectFolder.folderId,
+        projectTitle: projectName || "未命名計畫",
+        formData: {
+          projectName,
+          submitYear,
+          summary,
+          submissionMode: "UPLOAD",
+          uploadedProposalUrl: uploaded.uploadedProposalUrl,
+        },
+      });
+      return NextResponse.json({
+        ok: true,
+        uploadedProposalUrl: uploaded.uploadedProposalUrl,
+        fileName: uploaded.fileName,
+      });
     }
 
     const result = await withGoogleApiRetry("upload-proposal.POST", async () => {

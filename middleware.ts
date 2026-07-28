@@ -8,6 +8,7 @@ import {
   isCommitteeAccessLockedPath,
   isRestrictedCommitteeLocked,
 } from "@/lib/committeeAccessWindow";
+import { isWithinApplicantRevisionWindow } from "@/lib/applicantRevisionWindow";
 import { isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 
@@ -79,15 +80,27 @@ export async function middleware(req: NextRequest) {
     method !== "GET" &&
     method !== "HEAD";
 
-  if (isApplicantWrite && isWithinSupplementWindow()) {
-    if (!token?.email) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-    if (!isBackofficePrismaRole(role) && token.applicantSupplementAccess !== true) {
-      return NextResponse.json(
-        { ok: false, error: "目前系統僅提供本年度已送件提案者補件使用。" },
-        { status: 403 },
-      );
+  if (isApplicantWrite) {
+    if (isWithinSupplementWindow()) {
+      if (!token?.email) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      if (!isBackofficePrismaRole(role) && token.applicantSupplementAccess !== true) {
+        return NextResponse.json(
+          { ok: false, error: "目前系統僅提供本年度已送件提案者補件使用。" },
+          { status: 403 },
+        );
+      }
+    } else if (isWithinApplicantRevisionWindow()) {
+      if (!token?.email) {
+        return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      if (!isBackofficePrismaRole(role) && token.applicantReviewAccess !== true) {
+        return NextResponse.json(
+          { ok: false, error: "目前僅開放指定名單提案者修改與重新上傳。" },
+          { status: 403 },
+        );
+      }
     }
   }
 
