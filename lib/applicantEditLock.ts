@@ -1,5 +1,5 @@
 import { isPastApplicationDeadline } from "@/lib/applicationDeadline";
-import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAllowlistCore";
 import { isWithinApplicantRevisionWindow } from "@/lib/applicantRevisionWindow";
 import { canApplicantAccessSupplementChannel } from "@/lib/applicantSupplementEligibility";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";

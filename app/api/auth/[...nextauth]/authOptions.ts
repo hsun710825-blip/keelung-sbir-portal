@@ -3,7 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { getPrismaRoleByEmail, isBackofficePrismaRole } from "@/lib/adminAuth";
 import { canApplicantAccessSupplementChannel } from "@/lib/applicantSupplementEligibility";
-import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAccess";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAllowlistCore";
 import { isWithinApplicantRevisionWindow } from "@/lib/applicantRevisionWindow";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 

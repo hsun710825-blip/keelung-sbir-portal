@@ -9,6 +9,7 @@ import {
   isRestrictedCommitteeLocked,
 } from "@/lib/committeeAccessWindow";
 import { isWithinApplicantRevisionWindow } from "@/lib/applicantRevisionWindow";
+import { hasApplicantRevisionAccess } from "@/lib/applicantRevisionAllowlistCore";
 import { isGovReadOnlyRole, isReviewerRole } from "@/lib/rbac";
 import { isWithinSupplementWindow } from "@/lib/supplementWindow";
 
@@ -95,7 +96,10 @@ export async function middleware(req: NextRequest) {
       if (!token?.email) {
         return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
       }
-      if (!isBackofficePrismaRole(role) && token.applicantReviewAccess !== true) {
+      // 即時重算白名單（避免部署後舊 JWT 旗標尚未刷新仍被擋／誤放）
+      const liveAllowed =
+        isBackofficePrismaRole(role) || hasApplicantRevisionAccess(String(token.email), role);
+      if (!liveAllowed) {
         return NextResponse.json(
           { ok: false, error: "目前僅開放指定名單提案者修改與重新上傳。" },
           { status: 403 },
