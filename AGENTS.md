@@ -75,3 +75,28 @@
 請先讀 AGENTS.md 與 git log -5，我們繼續基隆 SBIR 後台／委員端。
 本次要做：（填你的任務）
 ```
+
+## Cursor Cloud specific instructions
+
+Standard commands live in `package.json` (`dev`, `build`, `lint`, `start`). Notes below are the non-obvious caveats for running this app in a fresh cloud VM.
+
+### Services & how to run
+- Single service: the Next.js app. Dev server is `npm run dev` (`next dev --webpack`, port 3000). Build is `npm run build`; production start is `npm run start`.
+- There is no test framework/`test` script in this repo — "running tests" is not applicable.
+- Lint (`npm run lint`) currently reports pre-existing errors in the repo's own source (e.g. `react-hooks/rules-of-hooks`, `prefer-const`). These are baseline; the linter itself runs fine. Do not treat them as caused by your change unless your diff added them.
+
+### Required local setup (not in the startup update script)
+The update script only runs `npm install` (which triggers `prisma generate` via `postinstall`). Everything below is startup work a cloud agent must do itself; it is intentionally kept out of the update script.
+
+1. PostgreSQL must be running locally. If installed via apt: `sudo pg_ctlcluster 16 main start`, then ensure a DB exists: user `postgres`/password `postgres`, database `keelung_sbir`.
+2. `.env.local` (git-ignored) must exist. Minimum for the server to boot and homepage/API to work:
+   - `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/keelung_sbir"`
+   - `NEXTAUTH_URL="http://localhost:3000"` and a generated `NEXTAUTH_SECRET`
+   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — `authOptions.ts` calls `requireEnv` and THROWS at module load if these are missing, which breaks `/api/auth/*`. Placeholders are enough to boot; real Google OAuth credentials are required for actual login.
+3. Apply the schema to the DB with `npx prisma db push` (no `prisma/migrations/` exist; schema is applied via `db push`, not migrations).
+
+### Auth / testing gotchas
+- The entire authenticated experience (applicant form, `/admin/*`, `/committee/*`) is gated behind Google OAuth only — there is no local/password login. Without real `GOOGLE_CLIENT_ID`/`SECRET` you cannot log in, so authenticated end-to-end flows are blocked in the cloud VM.
+- Applicant login is further restricted by time windows/allowlists (`isWithinApplicantRevisionWindow`, `isWithinSupplementWindow`, `applicantRevisionAllowlistCore`). Even with valid Google creds, a non-allowlisted applicant is redirected to `/auth/applicant-review-closed`. Backoffice access requires a matching Prisma `Role` (ADMIN/COMMITTEE/etc.) row for the login email.
+- Draft save/submit and PDF resolution read/write Google Drive/Sheets; those need `GOOGLE_REFRESH_TOKEN` + Drive folder / service-account credentials to exercise fully.
+- Without secrets you can still verify the stack: homepage renders at `/`, and backend routes like `GET /api/postal?q=基隆市中正區` return real data (`{"ok":true,"zip":"202001"}`).
