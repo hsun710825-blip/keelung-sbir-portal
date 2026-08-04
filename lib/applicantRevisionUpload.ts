@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import type { drive_v3 } from "googleapis";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
-import { getDriveSaClient, loadServiceAccount } from "@/app/api/_driveSa";
+import { getDriveOauthAuthClient, getDriveOauthClient } from "@/app/api/_driveOauth";
 import { withGoogleApiRetry } from "@/app/api/_googleApiRetry";
 import {
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
@@ -14,18 +14,12 @@ import {
 } from "@/lib/applicantRevisionAccess";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "@/lib/applicantApplicationSync";
-import { google } from "googleapis";
 
-async function getSaAccessToken(): Promise<string> {
-  const { client_email, private_key } = await loadServiceAccount();
-  const auth = new google.auth.JWT({
-    email: client_email,
-    key: private_key,
-    scopes: ["https://www.googleapis.com/auth/drive"],
-  });
-  const token = await auth.getAccessToken();
-  const accessToken = token?.token;
-  if (!accessToken) throw new Error("Unable to get Google SA access token");
+async function getOauthAccessToken(): Promise<string> {
+  const authClient = getDriveOauthAuthClient();
+  const tokenObj = await authClient.getAccessToken();
+  const accessToken = tokenObj?.token;
+  if (!accessToken) throw new Error("Unable to get Google OAuth access token");
   return accessToken;
 }
 
@@ -65,6 +59,10 @@ export async function requireRevisionUploadSession() {
   return { ok: true as const, session, email, entry };
 }
 
+/**
+ * 修改版上傳必須使用 OAuth（有儲存配額的帳號）。
+ * 不可用 Service Account：個人雲端硬碟資料夾會回 403「Service Accounts do not have storage quota」。
+ */
 export async function createRevisionResumableUpload(input: {
   companyName: string;
   projectName: string;
@@ -77,11 +75,11 @@ export async function createRevisionResumableUpload(input: {
   const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
   await withGoogleApiRetry("revisionUpload.prepare", async () => {
-    const drive = await getDriveSaClient();
+    const drive = getDriveOauthClient();
     await deleteFilesWithNameInFolder(drive, folderId, fileName);
   });
 
-  const accessToken = await getSaAccessToken();
+  const accessToken = await getOauthAccessToken();
   const initRes = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink&supportsAllDrives=true",
     {
@@ -120,7 +118,7 @@ export async function uploadRevisionProposalBytes(input: {
   const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
   const fileId = await withGoogleApiRetry("revisionUpload.create", async () => {
-    const drive = await getDriveSaClient();
+    const drive = getDriveOauthClient();
     await deleteFilesWithNameInFolder(drive, folderId, fileName);
     const created = await drive.files.create({
       requestBody: {
@@ -164,7 +162,7 @@ export async function finalizeRevisionUploadedFile(input: {
   const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
   const checked = await withGoogleApiRetry("revisionUpload.finalize", async () => {
-    const drive = await getDriveSaClient();
+    const drive = getDriveOauthClient();
     const file = await drive.files.get({
       fileId: input.fileId,
       fields: "id,name,mimeType,parents",
