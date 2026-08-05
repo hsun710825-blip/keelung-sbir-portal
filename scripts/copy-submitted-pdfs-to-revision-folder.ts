@@ -11,12 +11,12 @@
  *   npm run revision:copy-submitted -- --execute
  *   npm run revision:copy-submitted -- --execute --force
  */
-import type { drive_v3 } from "googleapis";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { drive_v3 } from "googleapis";
 import { ApplicationStatus, AttachmentCategory } from "@prisma/client";
 
-/** 本機常見：從 .env / .env.local 載入（不覆蓋已存在的 process.env） */
+/** 必須在載入 prisma 模組前執行（PrismaClient 會讀取 DATABASE_URL） */
 function loadEnvFiles() {
   for (const name of [".env", ".env.local"]) {
     const p = path.join(process.cwd(), name);
@@ -43,18 +43,6 @@ function loadEnvFiles() {
 }
 loadEnvFiles();
 
-import { getDriveOauthClient } from "../app/api/_driveOauth";
-import { withGoogleApiRetry } from "../app/api/_googleApiRetry";
-import {
-  APPLICANT_REVISION_UPLOAD_FOLDER_ID,
-  buildApplicantRevisionProposalFileName,
-  getApplicantRevisionAllowlist,
-} from "../lib/applicantRevisionAccess";
-import { extractGoogleDriveFileId } from "../lib/driveLinks";
-import { prisma } from "../lib/prisma";
-import { withPrismaRetry } from "../lib/prismaRetry";
-import { normalizeEmailForCompare } from "../lib/rbac";
-
 /** 使用者指定：僅複製此區間送出的修改版（台北時間） */
 const COPY_WINDOW_START_ISO = "2026-07-30T00:00:00+08:00";
 const COPY_WINDOW_END_ISO = "2026-08-05T23:59:59.999+08:00";
@@ -78,147 +66,19 @@ function parseDriveTime(raw: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-async function listRevisionFolderNames(drive: drive_v3.Drive): Promise<Set<string>> {
-  const names = new Set<string>();
-  let pageToken: string | undefined;
-  do {
-    const res = await drive.files.list({
-      q: `'${APPLICANT_REVISION_UPLOAD_FOLDER_ID}' in parents and trashed=false and mimeType='application/pdf'`,
-      fields: "nextPageToken,files(id,name)",
-      pageSize: 100,
-      pageToken,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
-    for (const f of res.data.files ?? []) {
-      if (f.name) names.add(f.name);
-    }
-    pageToken = res.data.nextPageToken || undefined;
-  } while (pageToken);
-  return names;
-}
-
-async function deleteFilesWithNameInFolder(
-  drive: drive_v3.Drive,
-  folderId: string,
-  fileName: string,
-): Promise<void> {
-  const escaped = fileName.replace(/'/g, "\\'");
-  const oldFiles = await drive.files.list({
-    q: `'${folderId}' in parents and name='${escaped}' and trashed=false`,
-    fields: "files(id,name)",
-    pageSize: 20,
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true,
-  });
-  for (const old of oldFiles.data.files ?? []) {
-    if (!old.id) continue;
-    await drive.files.delete({ fileId: old.id, supportsAllDrives: true });
-  }
-}
-
-async function listProjectFolderPdfsInWindow(
-  drive: drive_v3.Drive,
-  folderId: string,
-): Promise<Array<{ fileId: string; name: string; atMs: number }>> {
-  const out: Array<{ fileId: string; name: string; atMs: number }> = [];
-  let pageToken: string | undefined;
-  do {
-    const res = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false and mimeType='application/pdf'`,
-      fields: "nextPageToken,files(id,name,createdTime,modifiedTime)",
-      pageSize: 100,
-      pageToken,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      orderBy: "modifiedTime desc",
-    });
-    for (const f of res.data.files ?? []) {
-      if (!f.id) continue;
-      const created = parseDriveTime(f.createdTime);
-      const modified = parseDriveTime(f.modifiedTime);
-      const atMs = Math.max(created ?? 0, modified ?? 0) || null;
-      if (!inCopyWindow(atMs)) continue;
-      out.push({ fileId: f.id, name: f.name || "", atMs: atMs! });
-    }
-    pageToken = res.data.nextPageToken || undefined;
-  } while (pageToken);
-  out.sort((a, b) => b.atMs - a.atMs);
-  return out;
-}
-
-async function getDriveFileTimeInWindow(
-  drive: drive_v3.Drive,
-  fileId: string,
-): Promise<number | null> {
-  try {
-    const file = await drive.files.get({
-      fileId,
-      fields: "id,createdTime,modifiedTime",
-      supportsAllDrives: true,
-    });
-    const created = parseDriveTime(file.data.createdTime);
-    const modified = parseDriveTime(file.data.modifiedTime);
-    const atMs = Math.max(created ?? 0, modified ?? 0) || null;
-    return inCopyWindow(atMs) ? atMs : null;
-  } catch {
-    return null;
-  }
-}
-
-type ResolvedPdf = {
-  fileId: string;
-  source: "uploaded" | "draft_pdf" | "project_folder";
-  atMs: number;
-};
-
-/**
- * 只採用 7/30–8/5 區間內產生／更新的 PDF：
- * 1) 區間內 DRAFT_PDF 附件
- * 2) uploadedProposalUrl 對應檔案時間落在區間
- * 3) 專案資料夾內區間新寫入的 PDF（含已 SUBMITTED 後再送出、DB 未再寫附件的情況）
- */
-async function resolveWindowSubmittedPdf(input: {
-  drive: drive_v3.Drive;
-  uploadedProposalUrl: string | null;
-  driveProjectFolderId: string | null;
-  attachments: Array<{ category: AttachmentCategory; driveFileId: string | null; createdAt: Date }>;
-  hasSubmitInWindow: boolean;
-}): Promise<ResolvedPdf | null> {
-  const candidates: ResolvedPdf[] = [];
-
-  for (const a of input.attachments) {
-    if (a.category !== AttachmentCategory.DRAFT_PDF || !a.driveFileId) continue;
-    const atMs = a.createdAt.getTime();
-    if (!inCopyWindow(atMs)) continue;
-    candidates.push({ fileId: a.driveFileId, source: "draft_pdf", atMs });
-  }
-
-  const uploadId = extractGoogleDriveFileId(input.uploadedProposalUrl);
-  if (uploadId) {
-    const atMs = await getDriveFileTimeInWindow(input.drive, uploadId);
-    if (atMs != null) {
-      candidates.push({ fileId: uploadId, source: "uploaded", atMs });
-    }
-  }
-
-  if (input.driveProjectFolderId) {
-    const folderPdfs = await listProjectFolderPdfsInWindow(input.drive, input.driveProjectFolderId);
-    for (const f of folderPdfs) {
-      // 略過已在修改版資料夾命名風格的檔（理論上不會在專案夾）
-      if (f.name.endsWith("-修改版.pdf")) continue;
-      candidates.push({ fileId: f.fileId, source: "project_folder", atMs: f.atMs });
-    }
-  }
-
-  if (candidates.length === 0) return null;
-  // 無送出紀錄時仍允許：只要 PDF 時間在區間內即視為該期間產出
-  void input.hasSubmitInWindow;
-  candidates.sort((a, b) => b.atMs - a.atMs);
-  return candidates[0]!;
-}
-
 async function main() {
+  const { getDriveOauthClient } = await import("../app/api/_driveOauth");
+  const { withGoogleApiRetry } = await import("../app/api/_googleApiRetry");
+  const {
+    APPLICANT_REVISION_UPLOAD_FOLDER_ID,
+    buildApplicantRevisionProposalFileName,
+    getApplicantRevisionAllowlist,
+  } = await import("../lib/applicantRevisionAccess");
+  const { extractGoogleDriveFileId } = await import("../lib/driveLinks");
+  const { prisma } = await import("../lib/prisma");
+  const { withPrismaRetry } = await import("../lib/prismaRetry");
+  const { normalizeEmailForCompare } = await import("../lib/rbac");
+
   const dryRun = !hasFlag("--execute");
   const force = hasFlag("--force");
 
@@ -229,6 +89,136 @@ async function main() {
     console.log("模式：dry-run（僅預覽，不加 --execute 不會寫入 Drive）\n");
   } else {
     console.log(`模式：execute${force ? " + force" : ""}\n`);
+  }
+
+  async function listRevisionFolderNames(drive: drive_v3.Drive): Promise<Set<string>> {
+    const names = new Set<string>();
+    let pageToken: string | undefined;
+    do {
+      const res = await drive.files.list({
+        q: `'${APPLICANT_REVISION_UPLOAD_FOLDER_ID}' in parents and trashed=false and mimeType='application/pdf'`,
+        fields: "nextPageToken,files(id,name)",
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+      for (const f of res.data.files ?? []) {
+        if (f.name) names.add(f.name);
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    return names;
+  }
+
+  async function deleteFilesWithNameInFolder(
+    drive: drive_v3.Drive,
+    folderId: string,
+    fileName: string,
+  ): Promise<void> {
+    const escaped = fileName.replace(/'/g, "\\'");
+    const oldFiles = await drive.files.list({
+      q: `'${folderId}' in parents and name='${escaped}' and trashed=false`,
+      fields: "files(id,name)",
+      pageSize: 20,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const old of oldFiles.data.files ?? []) {
+      if (!old.id) continue;
+      await drive.files.delete({ fileId: old.id, supportsAllDrives: true });
+    }
+  }
+
+  async function listProjectFolderPdfsInWindow(
+    drive: drive_v3.Drive,
+    folderId: string,
+  ): Promise<Array<{ fileId: string; name: string; atMs: number }>> {
+    const out: Array<{ fileId: string; name: string; atMs: number }> = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and trashed=false and mimeType='application/pdf'`,
+        fields: "nextPageToken,files(id,name,createdTime,modifiedTime)",
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        orderBy: "modifiedTime desc",
+      });
+      for (const f of res.data.files ?? []) {
+        if (!f.id) continue;
+        const created = parseDriveTime(f.createdTime);
+        const modified = parseDriveTime(f.modifiedTime);
+        const atMs = Math.max(created ?? 0, modified ?? 0) || null;
+        if (!inCopyWindow(atMs)) continue;
+        out.push({ fileId: f.id, name: f.name || "", atMs: atMs! });
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    out.sort((a, b) => b.atMs - a.atMs);
+    return out;
+  }
+
+  async function getDriveFileTimeInWindow(
+    drive: drive_v3.Drive,
+    fileId: string,
+  ): Promise<number | null> {
+    try {
+      const file = await drive.files.get({
+        fileId,
+        fields: "id,createdTime,modifiedTime",
+        supportsAllDrives: true,
+      });
+      const created = parseDriveTime(file.data.createdTime);
+      const modified = parseDriveTime(file.data.modifiedTime);
+      const atMs = Math.max(created ?? 0, modified ?? 0) || null;
+      return inCopyWindow(atMs) ? atMs : null;
+    } catch {
+      return null;
+    }
+  }
+
+  type ResolvedPdf = {
+    fileId: string;
+    source: "uploaded" | "draft_pdf" | "project_folder";
+    atMs: number;
+  };
+
+  async function resolveWindowSubmittedPdf(input: {
+    drive: drive_v3.Drive;
+    uploadedProposalUrl: string | null;
+    driveProjectFolderId: string | null;
+    attachments: Array<{ category: AttachmentCategory; driveFileId: string | null; createdAt: Date }>;
+  }): Promise<ResolvedPdf | null> {
+    const candidates: ResolvedPdf[] = [];
+
+    for (const a of input.attachments) {
+      if (a.category !== AttachmentCategory.DRAFT_PDF || !a.driveFileId) continue;
+      const atMs = a.createdAt.getTime();
+      if (!inCopyWindow(atMs)) continue;
+      candidates.push({ fileId: a.driveFileId, source: "draft_pdf", atMs });
+    }
+
+    const uploadId = extractGoogleDriveFileId(input.uploadedProposalUrl);
+    if (uploadId) {
+      const atMs = await getDriveFileTimeInWindow(input.drive, uploadId);
+      if (atMs != null) {
+        candidates.push({ fileId: uploadId, source: "uploaded", atMs });
+      }
+    }
+
+    if (input.driveProjectFolderId) {
+      const folderPdfs = await listProjectFolderPdfsInWindow(input.drive, input.driveProjectFolderId);
+      for (const f of folderPdfs) {
+        if (f.name.endsWith("-修改版.pdf")) continue;
+        candidates.push({ fileId: f.fileId, source: "project_folder", atMs: f.atMs });
+      }
+    }
+
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.atMs - a.atMs);
+    return candidates[0]!;
   }
 
   const allowlist = getApplicantRevisionAllowlist();
@@ -279,7 +269,6 @@ async function main() {
       )
     : [];
 
-  // 每位申請人取最新一筆案件
   const latestByEmail = new Map<string, (typeof apps)[number]>();
   for (const app of apps) {
     const key = normalizeEmailForCompare(app.applicant.email);
@@ -311,7 +300,6 @@ async function main() {
       uploadedProposalUrl: app.uploadedProposalUrl,
       driveProjectFolderId: app.driveProjectFolderId,
       attachments: app.attachments,
-      hasSubmitInWindow,
     });
 
     const targetName = buildApplicantRevisionProposalFileName({
@@ -367,13 +355,11 @@ async function main() {
   if (dryRun) {
     console.log("確認無誤後加上 --execute 執行實際複製；若要覆蓋已有修改版再加 --force。");
   }
+
+  await prisma.$disconnect().catch(() => undefined);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect().catch(() => undefined);
-  });
+main().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});
