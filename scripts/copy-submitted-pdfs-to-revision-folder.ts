@@ -12,7 +12,36 @@
  *   npm run revision:copy-submitted -- --execute --force
  */
 import type { drive_v3 } from "googleapis";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { ApplicationStatus, AttachmentCategory } from "@prisma/client";
+
+/** 本機常見：從 .env / .env.local 載入（不覆蓋已存在的 process.env） */
+function loadEnvFiles() {
+  for (const name of [".env", ".env.local"]) {
+    const p = path.join(process.cwd(), name);
+    if (!existsSync(p)) continue;
+    const text = readFileSync(p, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (process.env[key] == null || process.env[key] === "") {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+loadEnvFiles();
 
 import { getDriveOauthClient } from "../app/api/_driveOauth";
 import { withGoogleApiRetry } from "../app/api/_googleApiRetry";
