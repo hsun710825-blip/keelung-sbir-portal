@@ -18,7 +18,8 @@
     "settlement:import": "npx tsx --env-file=.env --env-file=.env.local scripts/import-settlement-reference.ts",
     "settlement:fix-junyan": "npx tsx --env-file=.env --env-file=.env.local scripts/fix-junyan-typo.ts",
     "export:subsidized-115": "npx tsx --env-file=.env --env-file=.env.local scripts/export-subsidized-vendors-115.ts --approved-only",
-    "app:delete-unnamed": "npx tsx --env-file=.env --env-file=.env.local scripts/delete-unnamed-test-app.ts"
+    "app:delete-unnamed": "npx tsx --env-file=.env --env-file=.env.local scripts/delete-unnamed-test-app.ts",
+    "revision:copy-submitted": "npx tsx scripts/copy-submitted-pdfs-to-revision-folder.ts"
   },
   "dependencies": {
     "@fontsource/noto-sans-tc": "^5.2.9",
