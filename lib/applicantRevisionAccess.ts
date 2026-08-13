@@ -1,4 +1,5 @@
 import {
+  APPLICANT_REVISION_AUG13_SUBFOLDER_NAME,
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
   findApplicantRevisionAllowlistEntry,
   getApplicantRevisionAllowlist,
@@ -10,6 +11,7 @@ import { sanitizeProjectNameForFolder } from "@/lib/serverSecurity";
 
 export type { ApplicantRevisionAllowlistEntry };
 export {
+  APPLICANT_REVISION_AUG13_SUBFOLDER_NAME,
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
   findApplicantRevisionAllowlistEntry,
   getApplicantRevisionAllowlist,

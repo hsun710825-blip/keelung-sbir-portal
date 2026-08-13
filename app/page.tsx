@@ -1054,6 +1054,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const supplementUnlock =
     authSession?.user?.applicantSupplementAccess === true ||
     authSession?.user?.applicantReviewAccess === true;
+  const revisionPdfVariant = authSession?.user?.applicantReviewAccess === true;
   const coverFieldUid = useId();
   const benefitFieldUid = useId();
   const coverId = (suffix: string) => `${coverFieldUid}-${suffix}`;
@@ -1493,7 +1494,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     const res = await fetch('/api/pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData: payloadFormData, filename }),
+      body: JSON.stringify({
+        formData: payloadFormData,
+        filename,
+        ...(revisionPdfVariant ? { pdfVariant: "revision" } : {}),
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(async () => ({ error: await res.text().catch(() => 'PDF 產製失敗') }));
@@ -1621,7 +1626,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         const pdfRes = await fetch("/api/pdf", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ formData: payloadFormData, filename }),
+          body: JSON.stringify({
+            formData: payloadFormData,
+            filename,
+            ...(revisionPdfVariant ? { pdfVariant: "revision" } : {}),
+          }),
           signal: controller.signal,
         });
         if (!pdfRes.ok) {

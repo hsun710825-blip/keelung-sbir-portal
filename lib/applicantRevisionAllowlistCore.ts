@@ -14,8 +14,11 @@ const BY_EMAIL = new Map(
   ENTRIES.map((e) => [normalizeEmailForCompare(e.email), e] as const),
 );
 
-/** 重新上傳計畫書目標資料夾（修改版專用） */
+/** 重新上傳計畫書根資料夾（修改版專用） */
 export const APPLICANT_REVISION_UPLOAD_FOLDER_ID = "1M6EzztAjjv7DyHgnTndK8f0-iHE7SsGQ";
+
+/** 2026-08-13 起新修改檔改放此子資料夾（根目錄舊檔不回溯） */
+export const APPLICANT_REVISION_AUG13_SUBFOLDER_NAME = "8/13後重新修改";
 
 export function getApplicantRevisionAllowlist(): ApplicantRevisionAllowlistEntry[] {
   return ENTRIES;

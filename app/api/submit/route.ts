@@ -26,6 +26,11 @@ import {
   finalizeApplicationOnSubmit,
   pickApplicationMetaFormData,
 } from "../../../lib/applicantApplicationSync";
+import {
+  findApplicantRevisionAllowlistEntry,
+  hasApplicantRevisionAccess,
+} from "@/lib/applicantRevisionAccess";
+import { uploadRevisionProposalBytes } from "@/lib/applicantRevisionUpload";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -73,10 +78,20 @@ async function parseSubmitPayload(req: Request): Promise<ParsedPayload> {
           formData: cleanFormData,
         };
       }
+
+      const sessionForPdf = await getServerSession(authOptions);
+      const pdfEmail = sessionForPdf?.user?.email?.trim() || "";
+      const revisionPdf =
+        !!pdfEmail && hasApplicantRevisionAccess(pdfEmail, sessionForPdf?.user?.role ?? null);
+
       const pdfRes = await fetch(new URL("/api/pdf", req.url), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formData: cleanFormData, filename }),
+        body: JSON.stringify({
+          formData: cleanFormData,
+          filename,
+          ...(revisionPdf ? { pdfVariant: "revision" } : {}),
+        }),
         cache: "no-store",
       });
       if (!pdfRes.ok) {
@@ -245,6 +260,37 @@ export async function POST(req: Request) {
         fields: "id",
         supportsAllDrives: true,
       });
+    }
+
+    // 白名單修改期：ONLINE 產出之修改版另存至「8/13後重新修改」（不回溯根目錄舊檔）
+    if (
+      submissionMode === "ONLINE" &&
+      pdfBytes &&
+      hasApplicantRevisionAccess(email, session.user.role ?? null)
+    ) {
+      try {
+        const allowEntry = findApplicantRevisionAllowlistEntry(email);
+        const fd = (registryFormData ?? {}) as AnyRecord;
+        const profileFd =
+          fd.companyProfile && typeof fd.companyProfile === "object"
+            ? ((fd.companyProfile as AnyRecord).formData as AnyRecord | undefined)
+            : undefined;
+        const companyName =
+          String(fd.companyName ?? "").trim() ||
+          String(profileFd?.companyName ?? "").trim() ||
+          allowEntry?.companyName ||
+          "未命名公司";
+        await uploadRevisionProposalBytes({
+          companyName,
+          projectName,
+          bytes: pdfBytes,
+        });
+      } catch (revErr) {
+        console.warn(
+          "[submit.revisionCopy] failed:",
+          revErr instanceof Error ? revErr.message : String(revErr),
+        );
+      }
     }
 
     // 動作 C：專案總表標記「已確認送出」（不影響 Drive 上傳結果；失敗僅記錄 log）

@@ -1070,8 +1070,14 @@ export async function POST(req: Request) {
     if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
 
     const jwtRole = session?.user?.role ?? null;
+    const scriptSecret = process.env.PDF_REGEN_SCRIPT_SECRET?.trim() || "";
+    const scriptBypass =
+      !!scriptSecret &&
+      typeof body.__scriptRegenerate === "string" &&
+      body.__scriptRegenerate === scriptSecret;
     const adminPdfBypass =
-      body.__adminRegenerate === true && !!session?.user?.email && canOperateApplications(jwtRole);
+      scriptBypass ||
+      (body.__adminRegenerate === true && !!session?.user?.email && canOperateApplications(jwtRole));
 
     const userKey = session?.user?.email?.trim() || session?.user?.name || "anonymous";
     if (!adminPdfBypass) {
@@ -1082,6 +1088,10 @@ export async function POST(req: Request) {
 
     const requestedName = typeof body.filename === "string" ? (body.filename as string) : "";
     const filename = makeSafeFilename(requestedName) || "sbir-plan.pdf";
+
+    /** 僅明確標記的修改版 PDF 才覆寫封面「(草案)」→「(修改版)」；不回溯舊檔 */
+    const pdfVariant: "draft" | "revision" =
+      body.pdfVariant === "revision" || body.__revisionPdf === true ? "revision" : "draft";
 
     const formData = getFormData(body);
     const files = (formData.files as FileItem[] | undefined) || [];
@@ -1197,6 +1207,22 @@ export async function POST(req: Request) {
         font: fontBold,
       });
     }
+  }
+
+  // 修改版：遮罩模板「(草案)」並改印「(修改版)」（模板座標約 x=270..319, y=490）
+  if (pdfVariant === "revision") {
+    drawWhiteRect(p1, 248, 476, 100, 28);
+    drawCenteredInBox({
+      page: p1,
+      x: 248,
+      y: 476,
+      width: 100,
+      height: 28,
+      text: "(修改版)",
+      font,
+      fontSize: 12,
+      maxWidthPad: 6,
+    });
   }
 
   // 計畫期間 / 月數
@@ -2289,11 +2315,12 @@ export async function POST(req: Request) {
       const cropBox = treeRender.cropBox as
         | { left: number; right: number; top: number; bottom: number }
         | undefined;
-      const defaultCrop = Math.max(0, Math.min(24, Math.min(tw, th) * 0.04));
-      const left = Math.max(0, Math.min(tw - 2, cropBox?.left ?? defaultCrop));
-      const right = Math.max(left + 1, Math.min(tw, cropBox?.right ?? tw - defaultCrop));
-      const bottom = Math.max(0, Math.min(th - 2, cropBox?.bottom ?? defaultCrop));
-      const top = Math.max(bottom + 1, Math.min(th, cropBox?.top ?? th - defaultCrop));
+      // 預設改為近乎整頁，避免舊版緊縮 crop 裁切樹枝；有 cropBox 時仍尊重但夾在頁面內
+      const defaultInset = 4;
+      const left = Math.max(0, Math.min(tw - 2, cropBox?.left ?? defaultInset));
+      const right = Math.max(left + 1, Math.min(tw, cropBox?.right ?? tw - defaultInset));
+      const bottom = Math.max(0, Math.min(th - 2, cropBox?.bottom ?? defaultInset));
+      const top = Math.max(bottom + 1, Math.min(th, cropBox?.top ?? th - defaultInset));
       const embeddedTree = await pdfDoc.embedPage(treePage, {
         left,
         bottom,
@@ -2307,7 +2334,8 @@ export async function POST(req: Request) {
       const cropH = Math.max(1, top - bottom);
       const widthScale = boxW / cropW;
       const widthFillHeight = Math.max(1, cropH * widthScale);
-      const treeBlockHeight = Math.max(120, widthFillHeight + Math.round(BODY_LINE_HEIGHT * 1.5));
+      // 區塊高度略加緩衝，避免最後一列節點貼齊裁切感
+      const treeBlockHeight = Math.max(120, widthFillHeight + Math.round(BODY_LINE_HEIGHT * 2));
       ensure(treeBlockHeight + 20);
       const boxY = y - treeBlockHeight;
       const drawW = boxW;

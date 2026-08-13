@@ -335,15 +335,26 @@ export type TreeLayoutSpec = {
 };
 
 const DEFAULT_TREE_LAYOUT: TreeLayoutSpec = {
-  nameFont: 22,
-  metaFont: 18,
-  cardW: 240,
-  marginV: 20,
-  branchColW: 30,
-  connectorW: 26,
-  connectorH: 2.6,
-  cardPad: 18,
+  nameFont: 18,
+  metaFont: 13,
+  cardW: 220,
+  marginV: 14,
+  branchColW: 28,
+  connectorW: 24,
+  connectorH: 2.4,
+  cardPad: 12,
 };
+
+/** CJK／全形字寬接近 em；略放大避免低估行數造成裁切或文字溢出方塊 */
+const CJK_CHAR_WIDTH_FACTOR = 1.05;
+const LINE_HEIGHT_FACTOR = 1.3;
+
+function countWrappedLines(text: string, fontSize: number, maxWidth: number, minChars = 4) {
+  const len = Array.from(String(text || "")).length;
+  if (len <= 0) return 1;
+  const charsPerLine = Math.max(minChars, Math.floor(maxWidth / (fontSize * CJK_CHAR_WIDTH_FACTOR)));
+  return Math.max(1, Math.ceil(len / charsPerLine));
+}
 
 const TreeBranch = ({
   node,
@@ -361,10 +372,12 @@ const TreeBranch = ({
   if (!node) return null;
   const hasChildren = node.children && node.children.length > 0;
   const labelName = String(node.name || "").trim() || "未命名項目";
-  const labelWeight = node.weight || 0;
+  const labelWeight = String(node.weight ?? "").trim() || "0";
   const labelUnit = String(node.unit || "").trim();
   const bw = layout.branchColW;
   const ch = layout.connectorH;
+  const innerW = Math.max(40, layout.cardW - layout.cardPad * 2);
+  const minCardH = estimateTreeCardHeight(node, layout);
 
   return (
     <View style={{ flexDirection: "row", alignItems: "stretch" }}>
@@ -380,17 +393,34 @@ const TreeBranch = ({
         <View
           style={{
             width: layout.cardW,
+            minHeight: minCardH,
             marginVertical: layout.marginV,
             padding: layout.cardPad,
             borderWidth: 2,
             borderColor: "#444",
             borderRadius: 6,
             backgroundColor: "#fff",
+            justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: layout.nameFont, fontWeight: "bold", marginBottom: 6, lineHeight: 1.2 }}>{wrapCJK(labelName)}</Text>
-          <Text style={{ fontSize: layout.metaFont, color: "#444", lineHeight: 1.2 }}>
-            {wrapCJK(`${labelUnit ? `單位: ${labelUnit}\n` : ""}權重: ${labelWeight}%`)}
+          <Text
+            style={{
+              width: innerW,
+              fontSize: layout.nameFont,
+              fontWeight: "bold",
+              marginBottom: 4,
+              lineHeight: LINE_HEIGHT_FACTOR,
+            }}
+          >
+            {wrapCJK(labelName)}
+          </Text>
+          {labelUnit ? (
+            <Text style={{ width: innerW, fontSize: layout.metaFont, color: "#444", lineHeight: LINE_HEIGHT_FACTOR }}>
+              {wrapCJK(`單位: ${labelUnit}`)}
+            </Text>
+          ) : null}
+          <Text style={{ width: innerW, fontSize: layout.metaFont, color: "#444", lineHeight: LINE_HEIGHT_FACTOR }}>
+            {wrapCJK(`權重: ${labelWeight}%`)}
           </Text>
         </View>
 
@@ -417,21 +447,29 @@ const TreeBranch = ({
 };
 
 function estimateTreeCardHeight(node: PdfTreeNodeData | null | undefined, layout: TreeLayoutSpec) {
-  const nameLen = Array.from(String(node?.name || "")).length;
-  const unitLen = Array.from(String(node?.unit || "")).length;
-  const weightLen = Array.from(String(node?.weight || "")).length;
-  const charsPerNameLine = Math.max(4, Math.floor(layout.cardW / (layout.nameFont * 0.92)));
-  const charsPerMetaLine = Math.max(6, Math.floor(layout.cardW / (layout.metaFont * 0.92)));
-  const nameLines = Math.max(1, Math.ceil(nameLen / charsPerNameLine));
-  const metaLines = Math.max(1, Math.ceil((unitLen + weightLen + 12) / charsPerMetaLine));
-  return layout.cardPad * 2 + 8 + nameLines * (layout.nameFont * 1.25) + metaLines * (layout.metaFont * 1.25);
+  const labelName = String(node?.name || "").trim() || "未命名項目";
+  const labelUnit = String(node?.unit || "").trim();
+  const labelWeight = String(node?.weight ?? "").trim() || "0";
+  const innerW = Math.max(40, layout.cardW - layout.cardPad * 2);
+  const nameLines = countWrappedLines(labelName, layout.nameFont, innerW, 4);
+  const unitLines = labelUnit ? countWrappedLines(`單位: ${labelUnit}`, layout.metaFont, innerW, 6) : 0;
+  const weightLines = countWrappedLines(`權重: ${labelWeight}%`, layout.metaFont, innerW, 6);
+  const gapAfterName = 4;
+  return (
+    layout.cardPad * 2 +
+    gapAfterName +
+    nameLines * (layout.nameFont * LINE_HEIGHT_FACTOR) +
+    unitLines * (layout.metaFont * LINE_HEIGHT_FACTOR) +
+    weightLines * (layout.metaFont * LINE_HEIGHT_FACTOR) +
+    10
+  );
 }
 
 function measureTree(node: PdfTreeNodeData | null | undefined, layout: TreeLayoutSpec): { width: number; height: number } {
   if (!node) return { width: 360, height: 220 };
   const children = Array.isArray(node.children) ? node.children : [];
   const cardWidth = layout.cardW;
-  const cardHeight = Math.max(layout.nameFont + layout.metaFont + layout.cardPad * 2 + 8, estimateTreeCardHeight(node, layout));
+  const cardHeight = estimateTreeCardHeight(node, layout);
   const spine = layout.branchColW + layout.connectorW;
   if (!children.length) {
     return { width: cardWidth, height: cardHeight + layout.marginV * 2 };
@@ -457,60 +495,59 @@ function TreePage({
   pageHeight: number;
 }) {
   return (
-    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }}>
-      <View style={{ padding: 28, flexDirection: "column", width: "100%" }}>
+    <Page size={[pageWidth, pageHeight]} orientation="landscape" style={{ fontFamily: "NotoSansTC", paddingHorizontal: 0, paddingVertical: 0 }} wrap={false}>
+      <View style={{ padding: 36, flexDirection: "column", width: "100%" }}>
         <TreeBranch layout={layout} node={treeData} isRoot={true} />
       </View>
     </Page>
   );
 }
 
-/** 單頁優先縮排與字級（下限 8pt），仍超出時允許極高單頁以避免節點被裁切。 */
+/** 單頁優先縮排與字級（下限 9pt），頁面與 crop 採寬鬆邊界，避免節點／文字被裁切。 */
 export async function renderTreeBranchPageBuffer(treeData: PdfTreeNodeData) {
   ensureFontRegistered();
-  const pagePadding = 28;
-  const cropPadding = 14;
-  const layoutBudgetH = 520;
+  const pagePadding = 36;
+  const layoutBudgetH = 560;
 
   let layout: TreeLayoutSpec = { ...DEFAULT_TREE_LAYOUT };
   let measured = measureTree(treeData, layout);
   let guard = 0;
-  while (measured.height > layoutBudgetH && layout.nameFont > 8 && guard < 80) {
+  // 優先縮小字級與間距，盡量保留卡片寬度讓長中文可換行落在框內
+  while (measured.height > layoutBudgetH && layout.nameFont > 9 && guard < 100) {
     layout = {
       ...layout,
-      nameFont: Math.max(8, Math.round((layout.nameFont - 0.5) * 10) / 10),
-      metaFont: Math.max(8, Math.round((layout.metaFont - 0.5) * 10) / 10),
-      cardW: Math.max(150, layout.cardW - 3),
-      marginV: Math.max(4, layout.marginV - 1),
-      branchColW: Math.max(22, layout.branchColW - 0.5),
-      connectorW: Math.max(18, layout.connectorW - 0.5),
-      cardPad: Math.max(10, layout.cardPad - 0.5),
+      nameFont: Math.max(9, Math.round((layout.nameFont - 0.5) * 10) / 10),
+      metaFont: Math.max(9, Math.round((layout.metaFont - 0.4) * 10) / 10),
+      cardW: Math.max(170, layout.cardW - 2),
+      marginV: Math.max(6, layout.marginV - 0.5),
+      branchColW: Math.max(20, layout.branchColW - 0.4),
+      connectorW: Math.max(16, layout.connectorW - 0.4),
+      cardPad: Math.max(8, layout.cardPad - 0.3),
     };
     measured = measureTree(treeData, layout);
     guard += 1;
   }
 
-  const slack = 1.08;
-  const contentW = Math.ceil(measured.width * slack);
-  const contentH = Math.ceil(measured.height * slack);
-  const pageWidth = Math.max(640, contentW + pagePadding * 2);
-  const pageHeight = Math.max(360, contentH + pagePadding * 2);
-  const contentLeft = pagePadding;
-  const contentRight = contentLeft + contentW;
-  const contentTop = pageHeight - pagePadding;
-  const contentBottom = contentTop - contentH;
+  // 寬鬆 slack：量測偏低估時仍留足空間，避免嵌入 crop 裁到節點／文字溢出感
+  const slack = 1.35;
+  const contentW = Math.ceil(measured.width * slack + 32);
+  const contentH = Math.ceil(measured.height * slack + 32);
+  const pageWidth = Math.max(720, contentW + pagePadding * 2);
+  const pageHeight = Math.max(400, contentH + pagePadding * 2);
   const doc = (
     <Document>
       <TreePage treeData={treeData} layout={layout} pageWidth={pageWidth} pageHeight={pageHeight} />
     </Document>
   );
+  // crop 對齊內容區（已含 slack），左右上下再外擴，避免緊貼裁切；不改用整頁以免小樹被空白過度縮小
+  const cropPad = 20;
   return {
     buffer: await renderToBuffer(doc),
     cropBox: {
-      left: Math.max(0, contentLeft - cropPadding),
-      right: Math.min(pageWidth, contentRight + cropPadding),
-      top: Math.min(pageHeight, contentTop + cropPadding),
-      bottom: Math.max(0, contentBottom - cropPadding),
+      left: Math.max(0, pagePadding - cropPad),
+      right: Math.min(pageWidth, pagePadding + contentW + cropPad),
+      top: Math.min(pageHeight, pageHeight - pagePadding + cropPad),
+      bottom: Math.max(0, pageHeight - pagePadding - contentH - cropPad),
     },
   };
 }

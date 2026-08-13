@@ -7,6 +7,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
 import { getDriveOauthAuthClient, getDriveOauthClient } from "@/app/api/_driveOauth";
 import { withGoogleApiRetry } from "@/app/api/_googleApiRetry";
 import {
+  APPLICANT_REVISION_AUG13_SUBFOLDER_NAME,
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
   buildApplicantRevisionProposalFileName,
   findApplicantRevisionAllowlistEntry,
@@ -14,6 +15,9 @@ import {
 } from "@/lib/applicantRevisionAccess";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "@/lib/applicantApplicationSync";
+
+/** 進程內快取「8/13後重新修改」資料夾 id，避免每次上傳都 list */
+let cachedAug13RevisionFolderId: string | null = null;
 
 async function getOauthAccessToken(): Promise<string> {
   const authClient = getDriveOauthAuthClient();
@@ -42,6 +46,47 @@ async function deleteFilesWithNameInFolder(
   }
 }
 
+/**
+ * 解析本次修改上傳目標：根資料夾下「8/13後重新修改」（不存在則建立）。
+ * 根目錄既有修改版不回溯搬移。
+ */
+export async function resolveApplicantRevisionUploadFolderId(
+  drive: drive_v3.Drive = getDriveOauthClient(),
+): Promise<string> {
+  if (cachedAug13RevisionFolderId) return cachedAug13RevisionFolderId;
+
+  const parentId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
+  const name = APPLICANT_REVISION_AUG13_SUBFOLDER_NAME;
+  const escaped = name.replace(/'/g, "\\'");
+
+  const listed = await drive.files.list({
+    q: `'${parentId}' in parents and trashed=false and mimeType='application/vnd.google-apps.folder' and name='${escaped}'`,
+    fields: "files(id,name)",
+    pageSize: 10,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  });
+  const existing = listed.data.files?.[0]?.id;
+  if (existing) {
+    cachedAug13RevisionFolderId = existing;
+    return existing;
+  }
+
+  const created = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    },
+    fields: "id,name",
+    supportsAllDrives: true,
+  });
+  const id = String(created.data.id || "");
+  if (!id) throw new Error(`建立資料夾失敗：${name}`);
+  cachedAug13RevisionFolderId = id;
+  return id;
+}
+
 export async function requireRevisionUploadSession() {
   const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim();
@@ -67,16 +112,17 @@ export async function createRevisionResumableUpload(input: {
   companyName: string;
   projectName: string;
   fileSize: number;
-}): Promise<{ uploadUrl: string; fileName: string }> {
+}): Promise<{ uploadUrl: string; fileName: string; folderId: string }> {
   const fileName = buildApplicantRevisionProposalFileName({
     companyName: input.companyName,
     projectName: input.projectName,
   });
-  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
-  await withGoogleApiRetry("revisionUpload.prepare", async () => {
+  const folderId = await withGoogleApiRetry("revisionUpload.prepare", async () => {
     const drive = getDriveOauthClient();
-    await deleteFilesWithNameInFolder(drive, folderId, fileName);
+    const targetFolderId = await resolveApplicantRevisionUploadFolderId(drive);
+    await deleteFilesWithNameInFolder(drive, targetFolderId, fileName);
+    return targetFolderId;
   });
 
   const accessToken = await getOauthAccessToken();
@@ -103,27 +149,27 @@ export async function createRevisionResumableUpload(input: {
   }
   const uploadUrl = initRes.headers.get("Location") || "";
   if (!uploadUrl) throw new Error("Google resumable session missing Location");
-  return { uploadUrl, fileName };
+  return { uploadUrl, fileName, folderId };
 }
 
 export async function uploadRevisionProposalBytes(input: {
   companyName: string;
   projectName: string;
   bytes: Uint8Array;
-}): Promise<{ fileId: string; fileName: string; uploadedProposalUrl: string }> {
+}): Promise<{ fileId: string; fileName: string; uploadedProposalUrl: string; folderId: string }> {
   const fileName = buildApplicantRevisionProposalFileName({
     companyName: input.companyName,
     projectName: input.projectName,
   });
-  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
-  const fileId = await withGoogleApiRetry("revisionUpload.create", async () => {
+  const { fileId, folderId } = await withGoogleApiRetry("revisionUpload.create", async () => {
     const drive = getDriveOauthClient();
-    await deleteFilesWithNameInFolder(drive, folderId, fileName);
+    const targetFolderId = await resolveApplicantRevisionUploadFolderId(drive);
+    await deleteFilesWithNameInFolder(drive, targetFolderId, fileName);
     const created = await drive.files.create({
       requestBody: {
         name: fileName,
-        parents: [folderId],
+        parents: [targetFolderId],
       },
       media: {
         mimeType: "application/pdf",
@@ -134,12 +180,13 @@ export async function uploadRevisionProposalBytes(input: {
     });
     const id = created.data.id;
     if (!id) throw new Error("Drive did not return file id");
-    return id;
+    return { fileId: id, folderId: targetFolderId };
   });
 
   return {
     fileId,
     fileName,
+    folderId,
     uploadedProposalUrl: googleDriveFileViewUrl(fileId) || "",
   };
 }
@@ -159,10 +206,10 @@ export async function finalizeRevisionUploadedFile(input: {
     companyName: input.companyName,
     projectName: input.projectName,
   });
-  const folderId = APPLICANT_REVISION_UPLOAD_FOLDER_ID;
 
   const checked = await withGoogleApiRetry("revisionUpload.finalize", async () => {
     const drive = getDriveOauthClient();
+    const folderId = await resolveApplicantRevisionUploadFolderId(drive);
     const file = await drive.files.get({
       fileId: input.fileId,
       fields: "id,name,mimeType,parents",

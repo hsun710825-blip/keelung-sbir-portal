@@ -103,11 +103,18 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ ok: false, error: "找不到線上草稿檔，無法重製 PDF" }, { status: 400 });
   }
 
-  const cleanForm = sanitizeDeepInput(draftState.draft) as Record<string, unknown>;
+  const { extractFormDataFromDraftPayload } = await import("@/lib/resolveApplicationDisplayFields");
+  // draft 檔為 { formData, updatedAt } 外層；/api/pdf 需要內層扁平 formData
+  const cleanForm = sanitizeDeepInput(extractFormDataFromDraftPayload(draftState.draft)) as Record<string, unknown>;
+  const hasPlanObj = !!(cleanForm.planContent && typeof cleanForm.planContent === "object");
+  const hasBudget = !!(cleanForm.humanBudget && typeof cleanForm.humanBudget === "object");
   const projectNameRaw =
     (typeof cleanForm.projectName === "string" && cleanForm.projectName.trim() ? cleanForm.projectName : null) ||
     (draftState.title?.trim() ? draftState.title : null) ||
     "未命名計畫";
+  if (!String(cleanForm.projectName || "").trim() && !hasPlanObj && !hasBudget) {
+    return NextResponse.json({ ok: false, error: "草稿內容為空，拒絕重製空白 PDF" }, { status: 400 });
+  }
   const displayPdfName = buildSafeDisplayPdfName(projectNameRaw);
 
   const origin = absoluteOriginFromRequest(req);
