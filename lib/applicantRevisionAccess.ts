@@ -1,6 +1,8 @@
 import {
   APPLICANT_REVISION_AUG13_SUBFOLDER_NAME,
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
+  DEEP_REVIEW_REFS_FOLDER_ID,
+  DEEP_REVIEW_REFS_FOLDER_NAME,
   findApplicantRevisionAllowlistEntry,
   getApplicantRevisionAllowlist,
   hasApplicantRevisionAccess,
@@ -13,6 +15,8 @@ export type { ApplicantRevisionAllowlistEntry };
 export {
   APPLICANT_REVISION_AUG13_SUBFOLDER_NAME,
   APPLICANT_REVISION_UPLOAD_FOLDER_ID,
+  DEEP_REVIEW_REFS_FOLDER_ID,
+  DEEP_REVIEW_REFS_FOLDER_NAME,
   findApplicantRevisionAllowlistEntry,
   getApplicantRevisionAllowlist,
   hasApplicantRevisionAccess,

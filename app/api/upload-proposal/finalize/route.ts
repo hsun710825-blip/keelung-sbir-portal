@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 
+export const maxDuration = 60;
+
 import { authOptions } from "../../auth/[...nextauth]/authOptions";
 import { ensureProjectFolder, ensureUserFolder } from "../../_driveFolders";
 import { getDriveOauthClient } from "../../_driveOauth";

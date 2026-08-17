@@ -23,6 +23,7 @@ import {
   upsertApplicationFromDraftSave,
 } from "../../../lib/applicantApplicationSync";
 import { normalizeDraftFormDataShape } from "../../../lib/draftFormNormalize";
+import { hasJointSecondCompanyData } from "@/lib/jointOnlineApplicant";
 
 type DraftKeys = {
   // 以登入者 email hash 作為草稿識別鍵，避免直接暴露可猜測識別資訊。
@@ -102,6 +103,25 @@ function hasScheduleData(input: unknown): boolean {
   return rowHasData || kpiHasData || notesHasData || testReportImages.length > 0;
 }
 
+function hasHumanBudgetData(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const hb = input as Record<string, unknown>;
+  const rows = Array.isArray(hb.budgetRows) ? hb.budgetRows : [];
+  const rowHas = rows.some((r) => {
+    if (!r || typeof r !== "object") return false;
+    const row = r as Record<string, unknown>;
+    const money = `${row.gov ?? ""}${row.self ?? ""}${row.total ?? ""}`.replace(/[0,\s]/g, "");
+    return money.length > 0;
+  });
+  const profile = hb.piProfile && typeof hb.piProfile === "object" ? (hb.piProfile as Record<string, unknown>) : {};
+  const profileHas = hasAnyMeaningfulText(profile.name) || hasAnyMeaningfulText(profile.id);
+  const personnel = Array.isArray(hb.personnelCosts) ? hb.personnelCosts : [];
+  const personnelHas = personnel.some(
+    (r) => r && typeof r === "object" && hasAnyMeaningfulText((r as Record<string, unknown>).name),
+  );
+  return rowHas || profileHas || personnelHas;
+}
+
 function mergeCriticalFormSections(existingPayload: Record<string, unknown> | null, incomingPayload: Record<string, unknown>) {
   if (!existingPayload || typeof existingPayload !== "object") return incomingPayload;
   const existingFormData =
@@ -125,6 +145,18 @@ function mergeCriticalFormSections(existingPayload: Record<string, unknown> | nu
   const existingSchedule = existingFormData.scheduleCheckpoints;
   if (!hasScheduleData(incomingSchedule) && hasScheduleData(existingSchedule)) {
     incomingFormData.scheduleCheckpoints = existingSchedule;
+  }
+
+  const incomingBudget = incomingFormData.humanBudget;
+  const existingBudget = existingFormData.humanBudget;
+  if (!hasHumanBudgetData(incomingBudget) && hasHumanBudgetData(existingBudget)) {
+    incomingFormData.humanBudget = existingBudget;
+  }
+
+  const incomingJoint = incomingFormData.jointSecondCompany;
+  const existingJoint = existingFormData.jointSecondCompany;
+  if (!hasJointSecondCompanyData(incomingJoint) && hasJointSecondCompanyData(existingJoint)) {
+    incomingFormData.jointSecondCompany = existingJoint;
   }
 
   return {

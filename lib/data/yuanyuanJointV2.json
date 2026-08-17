@@ -1,0 +1,284 @@
+{
+  "companyName": "元羽科技股份有限公司",
+  "leaderName": "周育欣",
+  "firstCompanyPatch": {
+    "govAllocPct": { "personnel": "42.3", "consultant": "0", "consumables": "0", "equipUse": "0" },
+    "piProfile": {
+      "name": "吳品謙",
+      "salutation": "先生",
+      "id": "C120946439",
+      "birth": "1984-09-28",
+      "applicant": "元元計程車客運服務業有限公司",
+      "title": "負責人",
+      "outsideYears": "0",
+      "insideYears": "25",
+      "field": "運輸業",
+      "achievements": "本計畫主持人具備系統開發、產業應用及跨界整合之實務經驗,於智慧交通與數位服務領域累積多項具體成果,說明如下:\n1.推動在地語音叫車系統建置,具備創新技術整合能力:在地語音叫車系統建置計畫,結合語音辨識(ASR)技術與基隆在地地名資料庫,導入人工智慧技術進行語意解析與地點辨識,有效提升叫車成功率與使用便利性。\n2.強化企業數位轉型與跨界合作,具備系統整合與營運管理能力:積極推動企業數位轉型,並與中華電信、頎佳科技、華興科技等單位合作,整合通訊技術、硬體設備與系統開發資源,建立完整服務架構。\n3.具備產品化思維與市場拓展規劃能力:規劃將既有技術應用拓展至全台其他縣市,並結合專利授權模式,發展B2B商業應用,推動系統由專案型開發逐步邁向平台化與商品化發展。"
+    },
+    "piEducation": [
+      { "school": "中國文化大學", "time": "98/06", "degree": "碩士", "dept": "國際企業管理系" }
+    ],
+    "piExperience": [
+      {
+        "org": "元元計程車",
+        "time": "84/02至今",
+        "dept": "管理",
+        "title": "負責人",
+        "timeStartYear": "84",
+        "timeStartMonth": "02",
+        "timeEndYear": "115",
+        "timeEndMonth": "04"
+      }
+    ],
+    "piProjects": [
+      {
+        "org": "元元計程車客運服務業有限公司",
+        "time": "114/07-115/04",
+        "name": "「景點快派」：基隆市智慧觀光景點導向派車平台開發計畫",
+        "task": "計畫主持人"
+      }
+    ],
+    "team": [
+      {
+        "no": "1",
+        "name": "支文玲",
+        "title": "客戶管理經理",
+        "education": "能仁高中",
+        "experience": "元元計程車客運服務業有限公司",
+        "achievements": "參與司機訓練及形象改良、參與計程車叫車系統沿革",
+        "years": "9",
+        "tasks": "B2",
+        "months": "10"
+      },
+      {
+        "no": "2",
+        "name": "林雨柔",
+        "title": "客戶管理經理",
+        "education": "崇右技術學院",
+        "experience": "元元計程車客運服務業有限公司",
+        "achievements": "參與司機訓練及形象改良、參與計程車叫車系統沿革",
+        "years": "1",
+        "tasks": "B2",
+        "months": "10"
+      },
+      {
+        "no": "3",
+        "name": "蘇祐慈",
+        "title": "客戶管理經理",
+        "education": "中山大學企業管理學系",
+        "experience": "元元計程車客運服務業有限公司",
+        "achievements": "客戶管理優良、增加派車率",
+        "years": "4",
+        "tasks": "B3",
+        "months": "10"
+      }
+    ],
+    "manpowerStats": [
+      {
+        "company": "元元計程車客運服務業有限公司",
+        "phd": "0",
+        "master": "1",
+        "bachelor": "1",
+        "junior": "2",
+        "male": "1",
+        "female": "3",
+        "avgAge": "32",
+        "avgYears": "12",
+        "toHire": "0"
+      }
+    ],
+    "budgetRows": [
+      { "subject": "1. 人事費", "item": "計畫人員", "gov": "381", "self": "520", "total": "901", "ratio": "" },
+      { "subject": "1. 人事費", "item": "顧問", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "1. 人事費", "item": "小計", "gov": "381", "self": "520", "total": "901", "ratio": "" },
+      { "subject": "2. 消耗性器材及原材料費", "item": "2. 消耗性器材及原材料費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "3. 研發設備使用費", "item": "3. 研發設備使用費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "4. 研發設備維護費", "item": "4. 研發設備維護費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(1) 技術或智慧財產權購買費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(2) 委託研究費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(3) 委託勞務費", "gov": "94", "self": "655", "total": "749", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(4)委託設計費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "小計", "gov": "94", "self": "655", "total": "749", "ratio": "" },
+      { "subject": "合計", "item": "合計", "gov": "475", "self": "1175", "total": "1650", "ratio": "100%" },
+      { "subject": "百分比", "item": "百分比", "gov": "28.8%", "self": "71.2%", "total": "100%", "ratio": "100%" }
+    ],
+    "personnelCosts": [
+      { "name": "支文玲", "avgSalary": "30.3", "manMonths": "10", "cost": "303" },
+      { "name": "林雨柔", "avgSalary": "30.3", "manMonths": "10", "cost": "303" },
+      { "name": "蘇祐慈", "avgSalary": "29.5", "manMonths": "10", "cost": "295" }
+    ],
+    "techIntroCosts": {
+      "buy": [{ "item": "(1) 技術或智慧財產權購買費", "gov": "", "self": "", "total": "0" }],
+      "research": [{ "item": "(2) 委託研究費", "gov": "", "self": "", "total": "0" }],
+      "service": [{ "item": "(3) 委託勞務費 華興科技", "gov": "94", "self": "655", "total": "749" }],
+      "design": [{ "item": "(4) 委託設計費", "gov": "", "self": "", "total": "0" }]
+    }
+  },
+  "secondHumanBudget": {
+    "govAllocPct": { "personnel": "46.1", "consultant": "0", "consumables": "0", "equipUse": "0" },
+    "piProfile": {
+      "name": "周育欣",
+      "salutation": "女士",
+      "id": "S222764921",
+      "birth": "1983-01-15",
+      "applicant": "元羽科技股份有限公司",
+      "title": "負責人",
+      "outsideYears": "0",
+      "insideYears": "20",
+      "field": "資訊業",
+      "achievements": "本計畫聯合廠商主持人具備行動應用開發、系統整合與在地場域連結之實務經驗,長期專注於智慧應用系統之開發與落地,相關專業能力說明如下:\n1.行動應用開發能力,具備實務上架與部署經驗:聯合廠商於Google Play平台累計發布多款Android應用,應用範圍涵蓋健康管理及醫療機構整合等場域,具備完整之App開發、測試與上架經驗。\n2.長期投入系統開發,具備穩定技術基礎:公司自2013年成立以來,以電腦程式設計為主要業務,累積多年系統開發與資訊技術經驗,具備穩定之技術研發能力。\n3.在地場域經驗,具備實務導入與協作能力:聯合廠商長期深耕基隆地區,並與大象計程車建立合作關係,針對觀光導向派車方案已有初步規劃與共識,累積在地場域操作與車隊協作經驗。"
+    },
+    "piEducation": [
+      { "school": "銘傳大學", "time": "98/06", "degree": "碩士", "dept": "資訊傳播工程學系" }
+    ],
+    "piExperience": [
+      {
+        "org": "元羽科技",
+        "time": "102/05至今",
+        "dept": "管理",
+        "title": "負責人",
+        "timeStartYear": "102",
+        "timeStartMonth": "05",
+        "timeEndYear": "115",
+        "timeEndMonth": "04"
+      }
+    ],
+    "piProjects": [
+      {
+        "org": "元羽科技股份有限公司",
+        "time": "114/07-115/04",
+        "name": "「景點快派」：基隆市智慧觀光景點導向派車平台開發計畫",
+        "task": "協同主持人"
+      }
+    ],
+    "team": [
+      {
+        "no": "1",
+        "name": "黃倍輝",
+        "title": "技術長",
+        "education": "成功大學資訊工程所碩士",
+        "experience": "元羽科技股份有限公司／技術長",
+        "achievements": "元羽科技技術長",
+        "years": "14",
+        "tasks": "A1、B1、C1、C2",
+        "months": "10"
+      },
+      {
+        "no": "2",
+        "name": "吳雅婷",
+        "title": "技術員",
+        "education": "德育護理專科學校",
+        "experience": "元羽科技股份有限公司",
+        "achievements": "元羽科技技術專員",
+        "years": "2",
+        "tasks": "A2、A3、B4、C3",
+        "months": "10"
+      },
+      {
+        "no": "3",
+        "name": "黃秀娟",
+        "title": "技術員",
+        "education": "國立基隆商工",
+        "experience": "元羽科技股份有限公司",
+        "achievements": "元羽科技技術專員",
+        "years": "1",
+        "tasks": "A2、A3、B4、C3",
+        "months": "10"
+      },
+      {
+        "no": "4",
+        "name": "楊麗萍",
+        "title": "技術員",
+        "education": "國立基隆女中",
+        "experience": "元羽科技股份有限公司",
+        "achievements": "元羽科技技術專員",
+        "years": "20",
+        "tasks": "A2、A3、B4、C3",
+        "months": "10"
+      }
+    ],
+    "manpowerStats": [
+      {
+        "company": "元羽科技股份有限公司",
+        "phd": "0",
+        "master": "1",
+        "bachelor": "2",
+        "junior": "2",
+        "male": "1",
+        "female": "4",
+        "avgAge": "36",
+        "avgYears": "13",
+        "toHire": "0"
+      }
+    ],
+    "budgetRows": [
+      { "subject": "1. 人事費", "item": "計畫人員", "gov": "475", "self": "555", "total": "1030", "ratio": "" },
+      { "subject": "1. 人事費", "item": "顧問", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "1. 人事費", "item": "小計", "gov": "475", "self": "555", "total": "1030", "ratio": "" },
+      { "subject": "2. 消耗性器材及原材料費", "item": "2. 消耗性器材及原材料費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "3. 研發設備使用費", "item": "3. 研發設備使用費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "4. 研發設備維護費", "item": "4. 研發設備維護費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(1) 技術或智慧財產權購買費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(2) 委託研究費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(3) 委託勞務費", "gov": "0", "self": "481", "total": "481", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "(4)委託設計費", "gov": "0", "self": "0", "total": "0", "ratio": "" },
+      { "subject": "5. 技術引進及委託研究費", "item": "小計", "gov": "0", "self": "481", "total": "481", "ratio": "" },
+      { "subject": "合計", "item": "合計", "gov": "475", "self": "1036", "total": "1511", "ratio": "100%" },
+      { "subject": "百分比", "item": "百分比", "gov": "31.4%", "self": "68.6%", "total": "100%", "ratio": "100%" }
+    ],
+    "personnelCosts": [
+      { "name": "黃倍輝", "avgSalary": "30.3", "manMonths": "10", "cost": "303" },
+      { "name": "吳雅婷", "avgSalary": "31.3", "manMonths": "10", "cost": "313" },
+      { "name": "黃秀娟", "avgSalary": "30.3", "manMonths": "10", "cost": "303" },
+      { "name": "楊麗萍", "avgSalary": "11.1", "manMonths": "10", "cost": "111" }
+    ],
+    "consultantCosts": [{ "name": "", "avgSalary": "", "manMonths": "", "cost": "" }],
+    "consumables": [
+      { "item": "", "unit": "", "qty": "", "price": "", "total": "" },
+      { "item": "", "unit": "", "qty": "", "price": "", "total": "" }
+    ],
+    "equipments": {
+      "existing": [
+        {
+          "name": "一、已有設備",
+          "assetId": "",
+          "valueA": "",
+          "countB": "",
+          "remainingYears": "",
+          "durableYears": "",
+          "depreciatedYears": "",
+          "nFactor": "1",
+          "residualValue": "",
+          "planExecYears": "",
+          "monthlyFee": "",
+          "months": "",
+          "total": ""
+        }
+      ],
+      "new": [
+        {
+          "name": "二、計畫新增設備",
+          "assetId": "",
+          "valueA": "",
+          "countB": "",
+          "remainingYears": "",
+          "durableYears": "",
+          "depreciatedYears": "",
+          "nFactor": "1",
+          "residualValue": "",
+          "planExecYears": "",
+          "monthlyFee": "",
+          "months": "",
+          "total": ""
+        }
+      ]
+    },
+    "equipmentMaintenanceCosts": [{ "item": "研發設備維護費", "gov": "", "self": "" }],
+    "techIntroCosts": {
+      "buy": [{ "item": "(1) 技術或智慧財產權購買費", "gov": "", "self": "", "total": "0" }],
+      "research": [{ "item": "(2) 委託研究費", "gov": "", "self": "", "total": "0" }],
+      "service": [{ "item": "(3) 委託勞務費 頎佳科技", "gov": "0", "self": "481", "total": "481" }],
+      "design": [{ "item": "(4) 委託設計費", "gov": "", "self": "", "total": "0" }]
+    }
+  }
+}

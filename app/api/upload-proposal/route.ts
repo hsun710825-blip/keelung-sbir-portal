@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { Readable } from "node:stream";
 import { getServerSession } from "next-auth";
 
+export const maxDuration = 60;
+
 import { authOptions } from "../auth/[...nextauth]/authOptions";
 import { emailHashKey, ensureProjectFolder, ensureUserFolder, getDriveAndSession } from "../_driveFolders";
 import { withGoogleApiRetry } from "../_googleApiRetry";

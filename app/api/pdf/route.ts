@@ -2535,11 +2535,36 @@ export async function POST(req: Request) {
   }
 
   // 伍、人力及經費需求表（表格形式輸出）
-  const humanBudget = (formData.humanBudget as HumanBudgetDraft | null) || null;
+  const budgetChapters: Array<{ humanBudget: HumanBudgetDraft; companyLabel: string; heading: string }> = [];
+  const primaryHumanBudget = (formData.humanBudget as HumanBudgetDraft | null) || null;
+  if (primaryHumanBudget) {
+    budgetChapters.push({
+      humanBudget: primaryHumanBudget,
+      companyLabel: companyName,
+      heading: "伍、人力及經費需求表",
+    });
+  }
+  const jointSecondRaw = (formData as AnyRecord).jointSecondCompany;
+  const jointSecond =
+    jointSecondRaw && typeof jointSecondRaw === "object" ? (jointSecondRaw as AnyRecord) : null;
+  const jointHumanBudget =
+    jointSecond?.humanBudget && typeof jointSecond.humanBudget === "object"
+      ? (jointSecond.humanBudget as HumanBudgetDraft)
+      : null;
+  if (jointHumanBudget) {
+    budgetChapters.push({
+      humanBudget: jointHumanBudget,
+      companyLabel: asString(jointSecond?.companyName) || "聯合第二家",
+      heading: "伍、人力及經費需求表（聯合第二家）",
+    });
+  }
+
+  for (const chapter of budgetChapters) {
+  const humanBudget = chapter.humanBudget;
   if (humanBudget) {
     ensure(9999);
-    p11Ref = cur;
-    drawHeading("伍、人力及經費需求表");
+    if (!p11Ref) p11Ref = cur;
+    drawHeading(chapter.heading);
     drawSubHeading("一、計畫人員簡歷表");
     const pi = humanBudget.piProfile || {};
     drawSubHeading("（一）計畫主持人資歷說明");
@@ -2551,7 +2576,7 @@ export async function POST(req: Request) {
     if (team.length) {
       drawSubHeading("（二）參與計畫研究發展人員資歷說明");
       // Web 端此處需顯示「公司名稱」欄位；PDF 顯示同等內容。
-      drawKV("公司名稱", companyName);
+      drawKV("公司名稱", chapter.companyLabel);
 
       const teamRows = team.map((r, idx) => [
         asString(r.no || String(idx + 1)),
@@ -2815,6 +2840,7 @@ export async function POST(req: Request) {
       });
       drawTableFlow(["項目", "政府補助款", "公司自籌款", "合計"], rows, [contentW * 0.46, contentW * 0.18, contentW * 0.18, contentW * 0.18]);
     }
+  }
   }
 
   // Cache page refs for TOC/page numbering (flow 已跑完，頁數已固定)

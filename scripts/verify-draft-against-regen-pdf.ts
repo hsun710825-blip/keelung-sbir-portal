@@ -38,9 +38,18 @@ loadEnvFiles();
 
 const REGEN_FOLDER_ID = "1xWDa9cYWZv-wxO6N4FwZz_IZJlCcb1Wm";
 
-/** 待驗證（無版本可回溯）＋對照組（已確認與重產一致） */
-const TARGETS = ["智勝生技有限公司"];
-const CONTROLS = ["碩品創研事業有限公司", "穎創資訊服務有限公司", "海育資訊有限公司"];
+/** 全部 ONLINE 白名單；UPLOAD 另外檢查上傳檔 */
+const TARGETS = [
+  "元元計程車客運服務業有限公司",
+  "初沐咖啡專賣店",
+  "台續有限公司",
+  "愛福玲企業社",
+  "智勝生技有限公司",
+  "海育資訊有限公司",
+  "碩品創研事業有限公司",
+  "穎創資訊服務有限公司",
+];
+const CONTROLS: string[] = [];
 
 type AnyRecord = Record<string, unknown>;
 

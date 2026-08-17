@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { Readable } from "node:stream";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/authOptions";
+
+export const maxDuration = 60;
 import { emailHashKey, ensureProjectFolder, ensureUserFolder } from "../_driveFolders";
 import { getDriveOauthClient } from "../_driveOauth";
 import { getDriveSaClient } from "../_driveSa";
@@ -284,6 +286,7 @@ export async function POST(req: Request) {
           companyName,
           projectName,
           bytes: pdfBytes,
+          mode: "ONLINE",
         });
       } catch (revErr) {
         console.warn(

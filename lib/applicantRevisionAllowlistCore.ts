@@ -20,6 +20,10 @@ export const APPLICANT_REVISION_UPLOAD_FOLDER_ID = "1M6EzztAjjv7DyHgnTndK8f0-iHE
 /** 2026-08-13 起新修改檔改放此子資料夾（根目錄舊檔不回溯） */
 export const APPLICANT_REVISION_AUG13_SUBFOLDER_NAME = "8/13後重新修改";
 
+/** 深審用：申請須知與修改清單總表（系統建立，OAuth 可讀） */
+export const DEEP_REVIEW_REFS_FOLDER_ID = "1FGZwMbwuaOOoNGj6DQXf9Iht2cj9zGrt";
+export const DEEP_REVIEW_REFS_FOLDER_NAME = "深審比對的資料";
+
 export function getApplicantRevisionAllowlist(): ApplicantRevisionAllowlistEntry[] {
   return ENTRIES;
 }

@@ -15,6 +15,8 @@ import {
 } from "@/lib/applicantRevisionAccess";
 import { googleDriveFileViewUrl } from "@/lib/driveLinks";
 import { ensureApplicantDbUser, upsertApplicationFromDraftSave } from "@/lib/applicantApplicationSync";
+import { notifyPoRevisionUploaded } from "@/lib/poRevisionUploadNotify";
+import { scheduleRevisionChecklistCompare } from "@/lib/revisionChecklistCompare";
 
 /** 進程內快取「8/13後重新修改」資料夾 id，避免每次上傳都 list */
 let cachedAug13RevisionFolderId: string | null = null;
@@ -156,6 +158,7 @@ export async function uploadRevisionProposalBytes(input: {
   companyName: string;
   projectName: string;
   bytes: Uint8Array;
+  mode?: "UPLOAD" | "ONLINE";
 }): Promise<{ fileId: string; fileName: string; uploadedProposalUrl: string; folderId: string }> {
   const fileName = buildApplicantRevisionProposalFileName({
     companyName: input.companyName,
@@ -183,11 +186,30 @@ export async function uploadRevisionProposalBytes(input: {
     return { fileId: id, folderId: targetFolderId };
   });
 
+  const uploadedProposalUrl = googleDriveFileViewUrl(fileId) || "";
+  await notifyPoRevisionUploaded({
+    companyName: input.companyName,
+    projectName: input.projectName,
+    fileName,
+    fileUrl: uploadedProposalUrl || undefined,
+    mode: input.mode ?? "UPLOAD",
+  }).catch((err) => {
+    console.warn(
+      "[revisionUpload.notify] failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+  scheduleRevisionChecklistCompare({
+    companyName: input.companyName,
+    fileId,
+    fileUrl: uploadedProposalUrl || undefined,
+    pdfBytes: input.bytes,
+  });
   return {
     fileId,
     fileName,
     folderId,
-    uploadedProposalUrl: googleDriveFileViewUrl(fileId) || "",
+    uploadedProposalUrl,
   };
 }
 
@@ -247,6 +269,24 @@ export async function finalizeRevisionUploadedFile(input: {
       submissionMode: "UPLOAD",
       uploadedProposalUrl,
     },
+  });
+  await notifyPoRevisionUploaded({
+    companyName: input.companyName,
+    projectName: input.projectName,
+    fileName: expectedName,
+    fileUrl: uploadedProposalUrl || undefined,
+    applicantEmail: input.email,
+    mode: "UPLOAD",
+  }).catch((err) => {
+    console.warn(
+      "[revisionUpload.notify] failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+  scheduleRevisionChecklistCompare({
+    companyName: input.companyName,
+    fileId: input.fileId,
+    fileUrl: uploadedProposalUrl || undefined,
   });
   return { uploadedProposalUrl };
 }

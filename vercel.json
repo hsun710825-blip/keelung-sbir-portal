@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/revision-upload-reminder",
+      "schedule": "0 7 18 8 *"
+    }
+  ]
+}

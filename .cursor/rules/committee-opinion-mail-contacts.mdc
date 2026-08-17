@@ -1,0 +1,13 @@
+---
+description: 115 委員意見寄信作業 — 使用已備妥的廠商聯絡名單
+alwaysApply: true
+---
+
+# 委員意見寄信 — 聯絡名單
+
+- 作業：明天繼續「基隆 SBIR 委員意見通知」寄信（`scripts/send-committee-opinion-emails.ts` 相關）。
+- 名單檔（已備妥，勿改路徑除非用戶另給）：`.data/contacts-committee-opinion-20260729.csv`
+- 來源：用戶上傳的 Google Contacts 匯出（`contacts_dd0a.csv`）。
+- 共 18 筆收件列（含元羽兩信箱、嘿路島民工作室等）；寄信前先 dry-run，經用戶確認再 `--send`。
+- 附件來源：Drive「委員意見」資料夾 `1b-P31NacYYMl-CMxSPFOk1U_Ns-3Hjo9`（或用戶指定本機路徑）。
+- 此 CSV 在 `.data/`（已 gitignore），勿 commit 進 repo。

@@ -23,6 +23,7 @@ import {
 } from "@/lib/taipeiTime";
 import { applicationStatusLabel } from "@/lib/applicationStatusLabels";
 import type { ApplicationStatus } from "@prisma/client";
+import { hasJointOnlineApplicantAccess } from "@/lib/jointOnlineApplicant";
 
 type UserRole = "applicant" | "reviewer";
 type UserContext = { name: string; role: UserRole; email: string };
@@ -641,6 +642,12 @@ type ApplicationFormData = {
   expectedBenefits: ExpectedBenefitsValue;
   scheduleCheckpoints: ScheduleCheckpointsValue;
   humanBudget: HumanBudgetValue;
+  /** 聯合案第二家（僅白名單帳號顯示；其他業者草稿不會出現此區塊） */
+  jointSecondCompany?: {
+    companyName: string;
+    leaderName: string;
+    humanBudget?: HumanBudgetValue;
+  };
   workflowStatus?: "draft" | "submitted";
   submittedAt?: string;
   expiresAt?: string;
@@ -1055,6 +1062,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     authSession?.user?.applicantSupplementAccess === true ||
     authSession?.user?.applicantReviewAccess === true;
   const revisionPdfVariant = authSession?.user?.applicantReviewAccess === true;
+  const showJointSecondCompany = hasJointOnlineApplicantAccess(authSession?.user?.email);
   const coverFieldUid = useId();
   const benefitFieldUid = useId();
   const coverId = (suffix: string) => `${coverFieldUid}-${suffix}`;
@@ -2327,6 +2335,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   (!draftLoaded ? (
                     draftLoadingPlaceholder
                   ) : (
+                  <div className="space-y-8">
                   <CompanyProfileForm
                     shared={{
                       companyName: formData.companyName,
@@ -2351,6 +2360,51 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       }))
                     }
                   />
+                  {showJointSecondCompany ? (
+                    <div className="max-w-6xl mx-auto rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                      <h2 className="text-lg font-semibold text-slate-900">聯合申請第二家公司</h2>
+                      <p className="mt-1 text-sm text-slate-600">
+                        僅聯合案顯示。請填第二家公司名稱與負責人；人力、經費請至「伍、人力及經費需求表」第二家區塊。
+                      </p>
+                      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <label className="block text-sm font-medium text-slate-700">
+                          第二家公司名稱
+                          <input
+                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            value={formData.jointSecondCompany?.companyName || ""}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                jointSecondCompany: {
+                                  companyName: e.target.value,
+                                  leaderName: prev.jointSecondCompany?.leaderName || "",
+                                  humanBudget: prev.jointSecondCompany?.humanBudget,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                          第二家負責人
+                          <input
+                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            value={formData.jointSecondCompany?.leaderName || ""}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                jointSecondCompany: {
+                                  companyName: prev.jointSecondCompany?.companyName || "",
+                                  leaderName: e.target.value,
+                                  humanBudget: prev.jointSecondCompany?.humanBudget,
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : null}
+                  </div>
                   ))}
 
                 {activeTab === 4 &&
@@ -2388,11 +2442,34 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   (!draftLoaded ? (
                     draftLoadingPlaceholder
                   ) : (
+                    <div className="space-y-10">
                     <HumanBudgetRequirementsForm
                       companyName={formData.companyName}
+                      heading="伍、人力及經費需求表"
+                      headingHint="請依計畫內容與預定進度填寫人力配置與經費預算。"
                       value={formData.humanBudget || undefined}
                       onChange={(next) => setFormData((p) => ({ ...p, humanBudget: next }))}
                     />
+                    {showJointSecondCompany ? (
+                    <HumanBudgetRequirementsForm
+                      companyName={formData.jointSecondCompany?.companyName || ""}
+                      leaderName={formData.jointSecondCompany?.leaderName || ""}
+                      heading="伍、人力及經費需求表（聯合第二家）"
+                      headingHint="請填聯合案第二家公司之主持人、人力與經費（與第一家分開）。"
+                      value={formData.jointSecondCompany?.humanBudget || undefined}
+                      onChange={(next) =>
+                        setFormData((p) => ({
+                          ...p,
+                          jointSecondCompany: {
+                            companyName: p.jointSecondCompany?.companyName || "",
+                            leaderName: p.jointSecondCompany?.leaderName || "",
+                            humanBudget: next,
+                          },
+                        }))
+                      }
+                    />
+                    ) : null}
+                    </div>
                   ))}
               </>
             </div>

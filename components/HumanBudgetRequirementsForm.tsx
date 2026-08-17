@@ -233,6 +233,8 @@ export default function HumanBudgetRequirementsForm({
   leaderName = "",
   birthDate = "",
   taxId = "",
+  heading = "伍、人力及經費需求表",
+  headingHint = "請依計畫內容與預定進度填寫人力配置與經費預算。",
   value,
   onChange,
 }: {
@@ -240,6 +242,8 @@ export default function HumanBudgetRequirementsForm({
   leaderName?: string;
   birthDate?: string;
   taxId?: string;
+  heading?: string;
+  headingHint?: string;
   value?: HumanBudgetDraft;
   onChange?: (next: HumanBudgetDraft) => void;
 }) {
@@ -339,6 +343,8 @@ export default function HumanBudgetRequirementsForm({
   const [techIntroCosts, setTechIntroCosts] = useState(defaultTechIntroCosts);
 
   const didInitFromValue = React.useRef(false);
+  /** 等草稿 state 真正 commit 後才回報，避免與 init 同一輪 effect 把空白模板寫回父層 */
+  const [hydrated, setHydrated] = useState(() => !value);
   useEffect(() => {
     if (!value || didInitFromValue.current) return;
     setGovAllocPct(value.govAllocPct);
@@ -393,10 +399,12 @@ export default function HumanBudgetRequirementsForm({
           }
     );
     didInitFromValue.current = true;
+    setHydrated(true);
   }, [value]);
 
   /** 由封面/公司概況自動帶入：負責人、生日、申請人名稱（僅在該欄位為空時帶入） */
   useEffect(() => {
+    if (!hydrated) return;
     setPiProfile((p) => ({
       ...p,
       name: p.name || leaderName || "",
@@ -404,10 +412,11 @@ export default function HumanBudgetRequirementsForm({
       birth: p.birth || birthDate || "",
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyName, leaderName, birthDate]);
+  }, [hydrated, companyName, leaderName, birthDate]);
 
   useEffect(() => {
     if (!onChange) return;
+    if (!hydrated) return;
     // 尚未由草稿完成初始化前不得回報：否則掛載當下的預設空值會覆蓋草稿既有內容。
     if (value && !didInitFromValue.current) return;
     onChange({
@@ -442,6 +451,7 @@ export default function HumanBudgetRequirementsForm({
     equipmentMaintenanceCosts,
     techIntroCosts,
     onChange,
+    hydrated,
   ]);
 
   // ---------- 自動計算：人事費明細 ----------
@@ -867,8 +877,8 @@ export default function HumanBudgetRequirementsForm({
     <div className="bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="bg-gray-800 text-white px-8 py-6">
-          <h1 className="text-2xl font-semibold tracking-wider">伍、人力及經費需求表</h1>
-          <p className="text-gray-300 text-sm mt-2">請依計畫內容與預定進度填寫人力配置與經費預算。</p>
+          <h1 className="text-2xl font-semibold tracking-wider">{heading}</h1>
+          <p className="text-gray-300 text-sm mt-2">{headingHint}</p>
         </div>
 
         <div className="p-8">
