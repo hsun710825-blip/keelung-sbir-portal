@@ -112,6 +112,8 @@ export default function ExpectedBenefitsForm({
 
   useEffect(() => {
     if (!onChange) return;
+    // 尚未由草稿完成初始化前不得回報：否則掛載當下的預設空值會覆蓋草稿既有內容。
+    if (value && !didInitFromValue.current) return;
     onChange({ formData });
   }, [formData, onChange]);
 

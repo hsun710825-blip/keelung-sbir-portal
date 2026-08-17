@@ -489,6 +489,8 @@ export default function PlanContentImplementationForm({
   useEffect(() => {
     if (!onChange) return;
     const handle = window.setTimeout(() => {
+      // 尚未由草稿完成初始化前不得回報：否則掛載當下的預設空值會覆蓋草稿既有內容。
+      if (value && !didInitFromValue.current) return;
       onChange({ formData, architectureTree, competitorRows, techTransferRows, images });
     }, 350);
     return () => window.clearTimeout(handle);

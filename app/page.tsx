@@ -1065,6 +1065,8 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  /** 草稿讀取失敗：禁止存檔，否則會以空白表單覆蓋雲端既有內容 */
+  const [draftLoadFailed, setDraftLoadFailed] = useState(false);
   const [statusToast, setStatusToast] = useState<string | null>(null);
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [lastPdfBlob, setLastPdfBlob] = useState<Blob | null>(null);
@@ -1179,7 +1181,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     fetch('/api/draft')
       .then((res) => res.json())
       .then((data: { ok?: boolean; draft?: { formData?: ApplicationFormData } }) => {
-        if (data?.ok && data?.draft?.formData) {
+        if (data?.ok !== true) {
+          setDraftLoadFailed(true);
+          return;
+        }
+        if (data?.draft?.formData) {
           const next = { ...data.draft!.formData };
           const lock = getPlanLockState(next, supplementUnlock);
           setIsPlanLocked(lock.locked);
@@ -1192,7 +1198,7 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
         }
       })
       .catch(() => {
-        // ignore
+        setDraftLoadFailed(true);
       })
       .finally(() => setDraftLoaded(true));
   }, [supplementUnlock]);
@@ -1203,6 +1209,11 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
     setIsPlanLocked(lock.locked);
     setPlanLockReason(lock.reason);
   }, [supplementUnlock, draftLoaded, formData.isDeleted, formData.deletedAt]);
+
+  /** 草稿載入前不掛載章節表單，避免表單預設空值回寫覆蓋既有內容 */
+  const draftLoadingPlaceholder = (
+    <div className="py-16 text-center text-slate-500 text-sm">載入草稿中，請稍候…</div>
+  );
 
   const tabs = [
     { id: 1, title: '封面與基本資料' },
@@ -1383,6 +1394,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
   const saveDraftCore = async (): Promise<boolean> => {
     if (!draftLoaded) return false;
+    if (draftLoadFailed) {
+      alert("草稿讀取失敗，為避免覆蓋雲端既有內容，目前暫停儲存。請重新整理頁面並確認資料完整後再編輯。");
+      return false;
+    }
     if (isPlanLocked) {
       alert(`此計畫書目前為鎖定狀態（${planLockReason || "已鎖定"}），不可再修改。`);
       return false;
@@ -2308,7 +2323,10 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
 
               {/* 第 3 分頁載入做好的 CompanyProfileForm，其餘佔位 */}
               <>
-                {activeTab === 3 && (
+                {activeTab === 3 &&
+                  (!draftLoaded ? (
+                    draftLoadingPlaceholder
+                  ) : (
                   <CompanyProfileForm
                     shared={{
                       companyName: formData.companyName,
@@ -2333,20 +2351,26 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                       }))
                     }
                   />
-                )}
+                  ))}
 
-                {activeTab === 4 && (
-                  <PlanContentImplementationForm
-                    value={formData.planContent || undefined}
-                    onChange={(next) => setFormData((p) => ({ ...p, planContent: next }))}
-                  />
-                )}
-                {activeTab === 5 && (
-                  <ExpectedBenefitsForm
-                    value={formData.expectedBenefits || undefined}
-                    onChange={(next) => setFormData((p) => ({ ...p, expectedBenefits: next }))}
-                  />
-                )}
+                {activeTab === 4 &&
+                  (!draftLoaded ? (
+                    draftLoadingPlaceholder
+                  ) : (
+                    <PlanContentImplementationForm
+                      value={formData.planContent || undefined}
+                      onChange={(next) => setFormData((p) => ({ ...p, planContent: next }))}
+                    />
+                  ))}
+                {activeTab === 5 &&
+                  (!draftLoaded ? (
+                    draftLoadingPlaceholder
+                  ) : (
+                    <ExpectedBenefitsForm
+                      value={formData.expectedBenefits || undefined}
+                      onChange={(next) => setFormData((p) => ({ ...p, expectedBenefits: next }))}
+                    />
+                  ))}
                 {activeTab === 6 &&
                   (draftLoaded ? (
                     <ScheduleCheckpointsForm
@@ -2360,13 +2384,16 @@ function ApplicationForm({ user, onLogout }: { user: UserContext; onLogout: () =
                   ) : (
                     <div className="py-16 text-center text-slate-500 text-sm">載入草稿中，請稍候…</div>
                   ))}
-                {activeTab === 7 && (
-                  <HumanBudgetRequirementsForm
-                    companyName={formData.companyName}
-                    value={formData.humanBudget || undefined}
-                    onChange={(next) => setFormData((p) => ({ ...p, humanBudget: next }))}
-                  />
-                )}
+                {activeTab === 7 &&
+                  (!draftLoaded ? (
+                    draftLoadingPlaceholder
+                  ) : (
+                    <HumanBudgetRequirementsForm
+                      companyName={formData.companyName}
+                      value={formData.humanBudget || undefined}
+                      onChange={(next) => setFormData((p) => ({ ...p, humanBudget: next }))}
+                    />
+                  ))}
               </>
             </div>
           </div>
