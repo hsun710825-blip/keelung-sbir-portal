@@ -1,10 +1,12 @@
 import sharp from "sharp";
 
+import { loadPdfjsForNode } from "@/lib/pdfjsNode";
+
 const ID_ASPECT = 8.57 / 5.4;
 
 async function rasterizeToPng(buffer: Buffer, mimeType: string): Promise<Buffer> {
   if (mimeType === "application/pdf" || buffer.slice(0, 4).toString() === "%PDF") {
-    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const pdfjs = await loadPdfjsForNode();
     const { createCanvas } = await import("@napi-rs/canvas");
     const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true });
     const pdf = await loadingTask.promise;

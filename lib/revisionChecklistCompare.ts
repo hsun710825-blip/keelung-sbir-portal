@@ -5,6 +5,7 @@ import {
   companyShortNameFromAllowlist,
 } from "@/lib/applicantRevisionAccess";
 import findingsData from "@/lib/data/sbir115RevisionFindings.json";
+import { loadPdfjsForNode } from "@/lib/pdfjsNode";
 import { pushLineToPo } from "@/lib/poRevisionUploadNotify";
 
 type FindingIssue = {
@@ -75,7 +76,7 @@ async function downloadRevisionPdf(fileId: string): Promise<Buffer> {
 }
 
 async function extractPdfPlainText(bytes: Uint8Array): Promise<{ text: string; pages: number; weakPages: number }> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfjsForNode();
   const doc = await pdfjs.getDocument({ data: bytes, useSystemFonts: true }).promise;
   const pages = doc.numPages;
   const parts: string[] = [];
