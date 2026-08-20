@@ -68,6 +68,14 @@ export default async function AdminPage() {
       icon: "overview",
     });
   }
+  if (canOperateApplications(jwtRole) || isGovReadOnlyRole(jwtRole)) {
+    cards.push({
+      href: "/admin/revision-uploads",
+      title: "修改版上傳狀態",
+      desc: "依開放修改白名單比對 Drive，列出尚未上傳修改版計畫書的業者。",
+      icon: "overview",
+    });
+  }
   if (canOperateApplications(jwtRole)) {
     cards.push({
       href: "/admin/committee-access",
