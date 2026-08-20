@@ -61,6 +61,13 @@ export function buildBackofficeNavItems(jwtRole: string | null): AdminNavItem[] 
       ],
     });
     navItems.push({
+      href: "/admin/revision-uploads",
+      label: "修改版上傳狀態",
+      description: "白名單業者計畫書回傳檢核",
+      icon: "dashboard",
+      matchPrefix: "/admin/revision-uploads",
+    });
+    navItems.push({
       href: "/admin/settlement",
       label: "決算清表",
       description: "經費決算與 Excel 匯出",

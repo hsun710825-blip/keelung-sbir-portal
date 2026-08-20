@@ -1,10 +1,18 @@
 import { getDriveOauthClient } from "@/app/api/_driveOauth";
+import { withGoogleApiRetry } from "@/app/api/_googleApiRetry";
 import {
+  APPLICANT_REVISION_UPLOAD_FOLDER_ID,
   companyShortNameFromAllowlist,
   getApplicantRevisionAllowlist,
 } from "@/lib/applicantRevisionAccess";
 import { resolveApplicantRevisionUploadFolderId } from "@/lib/applicantRevisionUpload";
 import { REVISION_UPLOAD_FOLDER_URL, pushLineToPo } from "@/lib/poRevisionUploadNotify";
+
+export type RevisionUploadFile = {
+  name: string;
+  url: string | null;
+  modifiedTime: string | null;
+};
 
 export type RevisionUploadStatusRow = {
   companyName: string;
@@ -12,29 +20,36 @@ export type RevisionUploadStatusRow = {
   shortName: string;
   uploaded: boolean;
   matchedFileName: string | null;
+  matchedFile: RevisionUploadFile | null;
+  /** 8/13 前放在根資料夾的舊修改版（本次仍算尚未上傳） */
+  legacyFile: RevisionUploadFile | null;
 };
 
 export type RevisionUploadStatus = {
   checkedAt: string;
   folderId: string;
   fileCount: number;
+  /** 資料夾內對不到任何白名單公司的檔名，供 PO 人工確認 */
+  unmatchedFileNames: string[];
   uploaded: RevisionUploadStatusRow[];
   missing: RevisionUploadStatusRow[];
 };
 
-async function listRevisionFolderFileNames(folderId: string): Promise<string[]> {
+async function listRevisionFolderFiles(folderId: string): Promise<RevisionUploadFile[]> {
   const drive = getDriveOauthClient();
-  const names: string[] = [];
+  const files: RevisionUploadFile[] = [];
   let pageToken: string | undefined;
   do {
-    const res = await drive.files.list({
-      q: `'${folderId}' in parents and trashed=false`,
-      fields: "nextPageToken,files(id,name,mimeType)",
-      pageSize: 100,
-      pageToken,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
+    const res = await withGoogleApiRetry("revisionUploadStatus.list", () =>
+      drive.files.list({
+        q: `'${folderId}' in parents and trashed=false`,
+        fields: "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink)",
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      }),
+    );
     for (const f of res.data.files ?? []) {
       const name = String(f.name || "").trim();
       if (!name) continue;
@@ -43,41 +58,61 @@ async function listRevisionFolderFileNames(folderId: string): Promise<string[]> 
       const isPdf = mime === "application/pdf" || name.toLowerCase().endsWith(".pdf");
       if (!isPdf) continue;
       if (!name.includes("修改版")) continue;
-      names.push(name);
+      files.push({
+        name,
+        url: f.webViewLink ? String(f.webViewLink) : null,
+        modifiedTime: f.modifiedTime ? String(f.modifiedTime) : null,
+      });
     }
     pageToken = res.data.nextPageToken || undefined;
   } while (pageToken);
-  return names;
+  return files;
 }
 
-function matchFile(fileNames: string[], companyName: string, shortName: string): string | null {
+function matchFile(
+  files: RevisionUploadFile[],
+  companyName: string,
+  shortName: string,
+): RevisionUploadFile | null {
   const needles = [shortName, companyName].filter((x) => x.length >= 2);
-  for (const fileName of fileNames) {
-    if (needles.some((n) => fileName.includes(n))) return fileName;
+  for (const file of files) {
+    if (needles.some((n) => file.name.includes(n))) return file;
   }
   return null;
 }
 
 export async function getRevisionUploadStatus(): Promise<RevisionUploadStatus> {
   const drive = getDriveOauthClient();
-  const folderId = await resolveApplicantRevisionUploadFolderId(drive);
-  const fileNames = await listRevisionFolderFileNames(folderId);
+  const folderId = await withGoogleApiRetry("revisionUploadStatus.resolveFolder", () =>
+    resolveApplicantRevisionUploadFolderId(drive),
+  );
+  const files = await listRevisionFolderFiles(folderId);
+  const legacyFiles =
+    folderId === APPLICANT_REVISION_UPLOAD_FOLDER_ID
+      ? []
+      : await listRevisionFolderFiles(APPLICANT_REVISION_UPLOAD_FOLDER_ID).catch(() => []);
+
+  const matchedNames = new Set<string>();
   const rows: RevisionUploadStatusRow[] = getApplicantRevisionAllowlist().map((entry) => {
     const shortName = companyShortNameFromAllowlist(entry.companyName) || entry.companyName;
-    const matchedFileName = matchFile(fileNames, entry.companyName, shortName);
+    const matchedFile = matchFile(files, entry.companyName, shortName);
+    if (matchedFile) matchedNames.add(matchedFile.name);
     return {
       companyName: entry.companyName,
       email: entry.email,
       shortName,
-      uploaded: Boolean(matchedFileName),
-      matchedFileName,
+      uploaded: Boolean(matchedFile),
+      matchedFileName: matchedFile?.name ?? null,
+      matchedFile,
+      legacyFile: matchedFile ? null : matchFile(legacyFiles, entry.companyName, shortName),
     };
   });
 
   return {
     checkedAt: new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }),
     folderId,
-    fileCount: fileNames.length,
+    fileCount: files.length,
+    unmatchedFileNames: files.map((f) => f.name).filter((name) => !matchedNames.has(name)),
     uploaded: rows.filter((r) => r.uploaded),
     missing: rows.filter((r) => !r.uploaded),
   };
